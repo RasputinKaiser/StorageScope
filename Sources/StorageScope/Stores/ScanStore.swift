@@ -455,6 +455,14 @@ final class ScanStore: ObservableObject {
         selectedCleanupCandidateIDs.removeAll()
     }
 
+    func setCleanupLaneFilter(_ lane: CleanupLaneFilter) {
+        guard cleanupLaneFilter != lane else {
+            return
+        }
+        cleanupLaneFilter = lane
+        clearCleanupSelection()
+    }
+
     func resetDisplayFilters() {
         query = ""
         sizeFilter = .all

@@ -94,7 +94,7 @@ private struct CleanupLaneControl: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Cleanup lane", selection: $store.cleanupLaneFilter) {
+            Picker("Cleanup lane", selection: cleanupLaneBinding) {
                 ForEach(CleanupLaneFilter.allCases) { lane in
                     Text(lane.title).tag(lane)
                 }
@@ -135,6 +135,13 @@ private struct CleanupLaneControl: View {
                 }
             }
         }
+    }
+
+    private var cleanupLaneBinding: Binding<CleanupLaneFilter> {
+        Binding(
+            get: { store.cleanupLaneFilter },
+            set: { store.setCleanupLaneFilter($0) }
+        )
     }
 }
 

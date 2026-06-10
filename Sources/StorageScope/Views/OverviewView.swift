@@ -57,12 +57,11 @@ struct OverviewView: View {
     private func perform(_ action: ReclaimPlanAction) {
         switch action {
         case .reviewVerifiedDuplicates:
-            store.cleanupLaneFilter = .verified
+            store.setCleanupLaneFilter(.verified)
             store.selectVerifiedCleanupCandidates()
             store.selectedView = .cleanupReview
         case .reviewCleanupSuggestions:
-            store.cleanupLaneFilter = .suggestions
-            store.clearCleanupSelection()
+            store.setCleanupLaneFilter(.suggestions)
             store.selectedView = .cleanupReview
         case .inspectInaccessibleItems:
             store.selectedView = .tree
