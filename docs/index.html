@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StorageScope - Open-source Mac storage cleaner and disk space analyzer</title>
+  <meta name="description" content="StorageScope is an open-source macOS storage management app for disk space analysis, large-folder review, duplicate candidates, and local-first Mac cleanup planning.">
+  <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/">
+  <meta property="og:title" content="StorageScope - Mac storage cleaner and disk space analyzer">
+  <meta property="og:description" content="Open-source Swift macOS app for storage management, disk usage analysis, duplicate review, and safe cleanup planning.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/">
+  <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --accent: #0a84ff;
+      --text: #1d1d1f;
+      --muted: #5f6368;
+      --bg: #f5f5f7;
+      --panel: #ffffff;
+      --border: #d8dee4;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #f5f5f7;
+        --muted: #a1a1a6;
+        --bg: #101114;
+        --panel: #1b1d22;
+        --border: #2f343d;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 56px 24px 72px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.35fr);
+      gap: 32px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.5rem, 6vw, 5rem);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    .lede {
+      color: var(--muted);
+      font-size: 1.2rem;
+      line-height: 1.5;
+      margin: 24px 0;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    a.button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 650;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: var(--panel);
+    }
+
+    a.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    .screenshot {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 44px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    footer {
+      margin-top: 36px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        padding-top: 32px;
+      }
+
+      .hero,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="hero">
+      <div>
+        <h1>StorageScope</h1>
+        <p class="lede">
+          An open-source Mac storage cleaner and disk space analyzer for finding large folders,
+          stale files, duplicate candidates, and cleanup targets without uploading your scan data.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope">View on GitHub</a>
+          <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
+        </div>
+      </div>
+      <img class="screenshot" src="images/storagescope-overview.png" alt="StorageScope macOS app overview showing storage views, cleanup review, folder tree, and inspector panes">
+    </div>
+
+    <div class="grid" aria-label="StorageScope features">
+      <section>
+        <h2>Mac storage management</h2>
+        <p>Rank largest folders, old large files, file types, installers, archives, disk images, caches, and build artifacts.</p>
+      </section>
+      <section>
+        <h2>Local-first cleanup planning</h2>
+        <p>Inspect cleanup candidates locally, confirm actions, and move files to Trash through macOS APIs.</p>
+      </section>
+      <section>
+        <h2>Duplicate file review</h2>
+        <p>Start from same-size duplicate candidates, verify matches with SHA-256, and keep hashing work bounded.</p>
+      </section>
+    </div>
+
+    <footer>
+      StorageScope is a SwiftUI/AppKit macOS app released under the MIT License.
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # StorageScope
 
-StorageScope is a native macOS storage explorer for finding the folders and files that are filling a Mac. It is local-first, sandbox-aware, and built with SwiftUI/AppKit.
+StorageScope is an open-source Mac storage cleaner and disk space analyzer for finding the folders and files that are filling a Mac. It is a local-first macOS storage management app, built with SwiftUI/AppKit, for large-folder analysis, duplicate review, and safe cleanup planning.
 
 The app scans only folders the user grants through macOS folder selection or stored security-scoped bookmarks. It does not upload scan results, file names, paths, contents, analytics, or identifiers.
 
@@ -8,6 +8,7 @@ The app scans only folders the user grants through macOS folder selection or sto
 
 ## Highlights
 
+- Mac storage management views for disk usage, file cleanup, old large files, duplicate candidates, and type-heavy storage.
 - Ranked storage views for largest folders, largest files, stale large files, and file type usage.
 - Folder tree browsing with size bars and an inspector for selected items.
 - Duplicate review that starts from same-size candidates and verifies matches with SHA-256 within a bounded work budget.
@@ -15,6 +16,16 @@ The app scans only folders the user grants through macOS folder selection or sto
 - Confirmed file actions for Reveal in Finder, Open, Copy Path, and Move to Trash.
 - Transactional cleanup batches that collapse nested selections, use macOS Trash APIs, and roll back earlier moves if a later move fails.
 - Broad-scan memory controls that retain a bounded UI tree while preserving full-scan summary results.
+
+## Use Cases
+
+StorageScope is designed for people looking for a transparent alternative to black-box Mac cleaner utilities:
+
+- Find what is taking up disk space on macOS.
+- Review large folders, old large files, installers, archives, disk images, and build artifacts.
+- Inspect duplicate file candidates before removing anything.
+- Plan Mac storage cleanup locally without uploading file names, paths, hashes, or scan results.
+- Explore disk usage with an open-source Swift macOS app instead of a closed cleanup tool.
 
 ## Requirements
 
