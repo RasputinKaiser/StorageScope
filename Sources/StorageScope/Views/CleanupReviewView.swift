@@ -148,7 +148,7 @@ private struct CleanupSelectionSummary: View {
 
     private var detail: String {
         guard !selectedCandidates.isEmpty else {
-            return "Use Select Verified for content-matched duplicates, or choose individual rows after checking their paths."
+            return "Use Verified for content-matched duplicates, or choose individual rows after checking their paths."
         }
         if store.selectedCleanupBatchContainsReviewRisk {
             return "This batch includes review-suggested items. Confirm every path before moving it to Trash."
