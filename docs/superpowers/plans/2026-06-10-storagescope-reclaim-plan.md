@@ -53,4 +53,4 @@
 - [x] Run `script/public_upload_audit.sh`.
 - [x] Run `./script/build_and_run.sh --verify`.
 - [x] Leave the public screenshot unchanged because there was no reliable automated scanned-state screenshot harness for the sandbox folder-picker flow.
-- [ ] Commit tracked changes and push `HEAD:main`.
+- [x] Commit tracked changes and push `HEAD:main`.
