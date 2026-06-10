@@ -207,7 +207,7 @@ private struct SizeDistributionView: View {
 
             if store.scan != nil {
                 let items = Array(store.items(for: .overview).prefix(10))
-                let maxSize = max(items.first?.displaySize ?? 1, 1)
+                let maxSize = max(items.map(\.displaySize).max() ?? 1, 1)
 
                 if items.isEmpty {
                     FilterRecoveryView(
