@@ -7,6 +7,7 @@ struct StorageItemTable: View {
     let items: [StorageItem]
     @ObservedObject var store: ScanStore
     var compact = false
+    var countLabel: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -21,7 +22,7 @@ struct StorageItemTable: View {
 
                 Spacer()
 
-                Text("\(items.count.formatted()) items")
+                Text(countLabel ?? "\(items.count.formatted()) items")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

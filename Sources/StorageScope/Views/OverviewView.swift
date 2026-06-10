@@ -19,7 +19,8 @@ struct OverviewView: View {
 
                     SizeDistributionView(store: store)
 
-                    let overviewItems = Array(store.items(for: .overview).prefix(12))
+                    let allOverviewItems = store.items(for: .overview)
+                    let overviewItems = Array(allOverviewItems.prefix(12))
                     let isFiltered = store.hasActiveDisplayFilters
                     HStack(alignment: .top, spacing: 16) {
                         StorageItemTable(
@@ -27,7 +28,8 @@ struct OverviewView: View {
                             subtitle: isFiltered ? "Immediate children matching the active filters" : "Immediate storage pressure under the scanned root",
                             items: overviewItems,
                             store: store,
-                            compact: true
+                            compact: true,
+                            countLabel: previewCountLabel(visible: overviewItems.count, total: allOverviewItems.count)
                         )
 
                         VStack(spacing: 16) {
@@ -68,6 +70,13 @@ struct OverviewView: View {
             store.selectedView = .tree
         }
     }
+}
+
+private func previewCountLabel(visible: Int, total: Int) -> String {
+    guard total > visible else {
+        return "\(visible.formatted()) items"
+    }
+    return "Showing \(visible.formatted()) of \(total.formatted())"
 }
 
 private struct ReclaimPlanView: View {
@@ -197,16 +206,18 @@ private struct SizeDistributionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            let allItems = store.items(for: .overview)
+            let items = Array(allItems.prefix(10))
+
             VStack(alignment: .leading, spacing: 3) {
                 Text("Storage Map")
                     .font(.headline)
-                Text(store.hasActiveDisplayFilters ? "Filtered folders and packages inside the scanned root" : "Top folders and packages inside the scanned root")
+                Text(storageMapSubtitle(visible: items.count, total: allItems.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             if store.scan != nil {
-                let items = Array(store.items(for: .overview).prefix(10))
                 let maxSize = max(items.map(\.displaySize).max() ?? 1, 1)
 
                 if items.isEmpty {
@@ -262,6 +273,14 @@ private struct SizeDistributionView: View {
                 }
             }
         }
+    }
+
+    private func storageMapSubtitle(visible: Int, total: Int) -> String {
+        let scope = store.hasActiveDisplayFilters ? "Filtered folders and packages" : "Top folders and packages"
+        guard total > visible else {
+            return "\(scope) inside the scanned root"
+        }
+        return "\(scope) inside the scanned root, showing \(visible.formatted()) of \(total.formatted())"
     }
 }
 
