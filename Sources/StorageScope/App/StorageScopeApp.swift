@@ -15,7 +15,7 @@ enum StorageScopeApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation {
     private let store = ScanStore()
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
@@ -179,6 +179,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
         return item
     }
 
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        switch item.itemIdentifier {
+        case .chooseFolder:
+            return !store.isScanning
+        case .rescan:
+            return store.canRescan
+        case .cancelScan:
+            return store.canCancelScan
+        case .revealItem:
+            return store.canUseSelectedItemActions
+        default:
+            return true
+        }
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(showMainWindow), #selector(showSettings), #selector(showAbout):
+            return true
+        case #selector(chooseFolder), #selector(scanHome), #selector(scanDocuments), #selector(scanDownloads):
+            return !store.isScanning
+        case #selector(rescan):
+            return store.canRescan
+        case #selector(cancelScan):
+            return store.canCancelScan
+        case #selector(revealSelectedItem), #selector(openSelectedItem), #selector(copySelectedPath):
+            return store.canUseSelectedItemActions
+        case #selector(moveSelectedItemToTrash):
+            return store.canMoveSelectedItemToTrash
+        default:
+            return true
+        }
+    }
+
     private func buildMainMenu() {
         let mainMenu = NSMenu()
 
@@ -194,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
 
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(menuItem("New Window", action: #selector(showMainWindow), key: "n"))
+        fileMenu.addItem(menuItem("Show Window", action: #selector(showMainWindow), key: "n"))
         fileMenu.addItem(menuItem("Choose Folder...", action: #selector(chooseFolder), key: "o"))
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)

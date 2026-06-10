@@ -285,6 +285,57 @@ struct FileSystemScannerTests {
         #expect(planned.map(\.id) == [cacheCandidate.id])
     }
 
+    @Test("cleanup verified batch selects only high-confidence duplicate candidates")
+    func cleanupVerifiedBatchSkipsReviewHeuristics() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let verifiedDuplicate = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("copy-a.mov"),
+            kind: .verifiedDuplicate,
+            bytes: 8_000,
+            confidence: .high
+        )
+        let diskImage = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("installer.dmg"),
+            kind: .diskImage,
+            bytes: 6_000,
+            confidence: .medium
+        )
+        let archive = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("archive.zip"),
+            kind: .archive,
+            bytes: 4_000,
+            confidence: .review
+        )
+
+        let planned = CleanupSelectionPlanner.verifiedDuplicateBatchCandidates([verifiedDuplicate, diskImage, archive])
+
+        #expect(planned.map(\.id) == [verifiedDuplicate.id])
+    }
+
+    @Test("cleanup planner flags batches that include review heuristics")
+    func cleanupPlannerFlagsReviewRisk() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let verifiedDuplicate = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("copy-a.mov"),
+            kind: .verifiedDuplicate,
+            bytes: 8_000,
+            confidence: .high
+        )
+        let installer = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("installer.pkg"),
+            kind: .installer,
+            bytes: 6_000,
+            confidence: .medium
+        )
+
+        #expect(!CleanupSelectionPlanner.containsReviewRisk([verifiedDuplicate]))
+        #expect(CleanupSelectionPlanner.containsReviewRisk([verifiedDuplicate, installer]))
+    }
+
     private func makeTemporaryRoot() throws -> URL {
         let temporaryRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("StorageScopeTests-\(UUID().uuidString)", isDirectory: true)
@@ -298,7 +349,12 @@ struct FileSystemScannerTests {
         try data.write(to: url)
     }
 
-    private func cleanupCandidate(url: URL, kind: CleanupCandidate.Kind, bytes: Int64) -> CleanupCandidate {
+    private func cleanupCandidate(
+        url: URL,
+        kind: CleanupCandidate.Kind,
+        bytes: Int64,
+        confidence: CleanupCandidate.Confidence = .medium
+    ) -> CleanupCandidate {
         CleanupCandidate(
             kind: kind,
             item: StorageItem(
@@ -314,7 +370,7 @@ struct FileSystemScannerTests {
             ),
             reason: "Test cleanup target.",
             reclaimableBytes: bytes,
-            confidence: .medium
+            confidence: confidence
         )
     }
 

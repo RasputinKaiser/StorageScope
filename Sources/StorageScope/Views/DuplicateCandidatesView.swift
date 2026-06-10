@@ -99,6 +99,14 @@ private struct DuplicateGroupCard: View {
     let group: DuplicateSizeGroup
     @ObservedObject var store: ScanStore
 
+    private var previewItems: [StorageItem] {
+        Array(group.items.prefix(8))
+    }
+
+    private var hiddenItemCount: Int {
+        max(0, group.items.count - previewItems.count)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -116,7 +124,13 @@ private struct DuplicateGroupCard: View {
                 }
             }
 
-            DuplicateItemList(items: Array(group.items.prefix(8)), store: store)
+            DuplicateItemList(items: previewItems, store: store)
+
+            if hiddenItemCount > 0 {
+                Label("\(hiddenItemCount.formatted()) more same-size files are hidden in this preview.", systemImage: "ellipsis.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))

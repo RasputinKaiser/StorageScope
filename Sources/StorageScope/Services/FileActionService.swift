@@ -52,11 +52,13 @@ enum FileActionService {
     }
 
     @MainActor
-    static func confirmTrash(urls: [URL]) -> Bool {
+    static func confirmTrash(urls: [URL], containsReviewRisk: Bool = false) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Move \(urls.count) Items to Trash?"
-        alert.informativeText = "The selected cleanup items will be moved to Trash. You can restore them from Finder if needed."
+        alert.informativeText = containsReviewRisk
+            ? "This batch includes review-suggested cleanup items that are not content-verified duplicates. Confirm each path is safe before moving them to Trash. You can restore items from Finder if needed."
+            : "The selected cleanup items will be moved to Trash. You can restore them from Finder if needed."
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn

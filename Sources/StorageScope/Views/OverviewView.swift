@@ -7,14 +7,15 @@ struct OverviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if let scan = store.scan {
+                if store.scan != nil {
                     SizeDistributionView(store: store)
 
+                    let overviewItems = Array(store.items(for: .overview).prefix(12))
                     HStack(alignment: .top, spacing: 16) {
                         StorageItemTable(
                             title: "Largest Children",
                             subtitle: "Immediate storage pressure under the scanned root",
-                            items: Array(scan.rootItem.children.prefix(12)),
+                            items: overviewItems,
                             store: store,
                             compact: true
                         )
@@ -22,12 +23,12 @@ struct OverviewView: View {
                         VStack(spacing: 16) {
                             InsightCard(
                                 title: "Largest File",
-                                item: scan.largestFiles.first,
+                                item: store.items(for: .largestFiles).first,
                                 systemImage: "doc.fill"
                             )
                             InsightCard(
                                 title: "Largest Folder",
-                                item: scan.largestFolders.first,
+                                item: store.items(for: .largestFolders).first,
                                 systemImage: "folder.fill"
                             )
                             InsightCard(
@@ -58,8 +59,8 @@ private struct SizeDistributionView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let scan = store.scan {
-                let items = Array(scan.rootItem.children.prefix(10))
+            if store.scan != nil {
+                let items = Array(store.items(for: .overview).prefix(10))
                 let maxSize = max(items.first?.displaySize ?? 1, 1)
 
                 VStack(spacing: 8) {

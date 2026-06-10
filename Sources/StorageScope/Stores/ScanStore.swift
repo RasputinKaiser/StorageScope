@@ -6,6 +6,11 @@ import StorageScopeCore
 final class ScanStore: ObservableObject {
     private static let recentScanPathsKey = "StorageScope.recentScanPaths"
 
+    private struct ScanOptionsSnapshot: Equatable {
+        let includeHiddenFiles: Bool
+        let oldFileAgeDays: Int
+    }
+
     @Published var selectedView: SmartView? = .overview
     @Published var selectedItemID: String?
     @Published var scan: StorageScan?
@@ -20,6 +25,7 @@ final class ScanStore: ObservableObject {
     @Published var selectedCleanupCandidateIDs = Set<String>()
     @Published var ignoredCleanupCandidateIDs = Set<String>()
     @Published private(set) var recentScanPaths: [String]
+    @Published private var appliedScanOptions: ScanOptionsSnapshot?
 
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
@@ -49,6 +55,35 @@ final class ScanStore: ObservableObject {
 
     var canRescan: Bool {
         lastScannedURL != nil && !isScanning
+    }
+
+    var canCancelScan: Bool {
+        isScanning
+    }
+
+    var canUseSelectedItemActions: Bool {
+        selectedItem != nil && !isScanning
+    }
+
+    var canMoveSelectedItemToTrash: Bool {
+        guard canUseSelectedItemActions, let selectedItem, let scan else {
+            return false
+        }
+        return selectedItem.id != scan.rootItem.id
+    }
+
+    var scanOptionsAreStale: Bool {
+        guard scan != nil, !isScanning, let appliedScanOptions else {
+            return false
+        }
+        return appliedScanOptions != currentScanOptions
+    }
+
+    var scanOptionsStatusText: String? {
+        guard scanOptionsAreStale else {
+            return nil
+        }
+        return "Rescan to apply scan options"
     }
 
     func chooseFolderAndScan(startingAt directoryURL: URL? = nil) {
@@ -178,6 +213,7 @@ final class ScanStore: ObservableObject {
             duplicateCandidateThreshold: max(sizeFilter.threshold, 100_000_000),
             maxRankedResults: 800
         )
+        let optionsSnapshot = currentScanOptions
         let scanCancellation = ScanCancellation()
         activeScanID = scanID
         cancellation = scanCancellation
@@ -217,6 +253,7 @@ final class ScanStore: ObservableObject {
                 }
 
                 scan = result
+                appliedScanOptions = optionsSnapshot
                 selectedView = .overview
                 selectedItemID = result.rootItem.id
                 progress = ScanProgress(
@@ -344,6 +381,14 @@ final class ScanStore: ObservableObject {
         CleanupSelectionPlanner.topLevelCandidates(selectedCleanupCandidates)
     }
 
+    var verifiedCleanupCandidates: [CleanupCandidate] {
+        CleanupSelectionPlanner.verifiedDuplicateBatchCandidates(cleanupCandidates)
+    }
+
+    var selectedCleanupBatchContainsReviewRisk: Bool {
+        CleanupSelectionPlanner.containsReviewRisk(selectedCleanupBatchCandidates)
+    }
+
     var selectedReclaimableBytes: Int64 {
         selectedCleanupBatchCandidates.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
     }
@@ -357,8 +402,8 @@ final class ScanStore: ObservableObject {
         selectedItemID = candidate.item.id
     }
 
-    func selectAllCleanupCandidates() {
-        selectedCleanupCandidateIDs = Set(cleanupCandidates.map(\.id))
+    func selectVerifiedCleanupCandidates() {
+        selectedCleanupCandidateIDs = Set(verifiedCleanupCandidates.map(\.id))
     }
 
     func clearCleanupSelection() {
@@ -381,7 +426,7 @@ final class ScanStore: ObservableObject {
         }
 
         let urls = candidates.map(\.item.url)
-        guard FileActionService.confirmTrash(urls: urls) else {
+        guard FileActionService.confirmTrash(urls: urls, containsReviewRisk: selectedCleanupBatchContainsReviewRisk) else {
             return
         }
 
@@ -492,6 +537,13 @@ final class ScanStore: ObservableObject {
         activeScanID = nil
         cancellation = nil
         scanTask = nil
+    }
+
+    private var currentScanOptions: ScanOptionsSnapshot {
+        ScanOptionsSnapshot(
+            includeHiddenFiles: includeHiddenFiles,
+            oldFileAgeDays: oldFileAgeDays
+        )
     }
 
     private func rememberScanURL(_ url: URL) {

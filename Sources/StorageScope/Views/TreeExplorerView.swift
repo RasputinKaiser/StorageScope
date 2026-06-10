@@ -11,7 +11,7 @@ struct TreeExplorerView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Folder Tree")
                         .font(.headline)
-                    Text("Browse the scanned hierarchy with storage bars at every level")
+                    Text(treeSummaryText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -41,6 +41,18 @@ struct TreeExplorerView: View {
             }
             .padding(20)
         }
+    }
+
+    private var treeSummaryText: String {
+        guard let scan = store.scan else {
+            return "Choose a folder to build a navigable storage tree."
+        }
+
+        let retainedCount = scan.rootItem.retainedItemCount
+        if retainedCount < scan.scannedItemCount {
+            return "Showing retained tree: top \(retainedCount.formatted()) of \(scan.scannedItemCount.formatted()) scanned items, summarized by largest retained children."
+        }
+        return "Browse the scanned hierarchy with storage bars at every level."
     }
 }
 

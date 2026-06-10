@@ -226,7 +226,15 @@ private struct FilterBarView: View {
 
     private var scanDurationLabel: some View {
         Group {
-            if let scan = store.scan {
+            if let status = store.scanOptionsStatusText {
+                Button {
+                    store.rescan()
+                } label: {
+                    Label(status, systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else if let scan = store.scan {
                 Text("Scanned in \(StorageFormat.duration(from: scan.startedAt, to: scan.finishedAt))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -260,10 +268,10 @@ private struct FilterBarView: View {
             sortPicker
             .frame(width: 128)
 
-            Stepper("Old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
+            Stepper("Scan old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
                 .frame(width: 230)
 
-            Toggle("Hidden", isOn: $store.includeHiddenFiles)
+            Toggle("Scan hidden", isOn: $store.includeHiddenFiles)
 
             Spacer()
 
@@ -284,10 +292,10 @@ private struct FilterBarView: View {
             }
 
             HStack(spacing: 12) {
-                Stepper("Old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
+                Stepper("Scan old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
                     .frame(width: 230)
 
-                Toggle("Hidden", isOn: $store.includeHiddenFiles)
+                Toggle("Scan hidden", isOn: $store.includeHiddenFiles)
 
                 Spacer(minLength: 0)
 

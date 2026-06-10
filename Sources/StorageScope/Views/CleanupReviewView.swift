@@ -11,7 +11,7 @@ struct CleanupReviewView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Cleanup Review")
                             .font(.headline)
-                        Text("High-signal reclaim targets. StorageScope never deletes automatically.")
+                        Text("Verified duplicates can be batched. Review-suggested cleanup stays manual.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -27,10 +27,10 @@ struct CleanupReviewView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        Button("Select All") {
-                            store.selectAllCleanupCandidates()
+                        Button("Select Verified") {
+                            store.selectVerifiedCleanupCandidates()
                         }
-                        .disabled(store.cleanupCandidates.isEmpty)
+                        .disabled(store.verifiedCleanupCandidates.isEmpty)
 
                         Button("Clear") {
                             store.clearCleanupSelection()
@@ -44,6 +44,15 @@ struct CleanupReviewView: View {
                         }
                         .disabled(store.selectedCleanupCandidates.isEmpty)
                     }
+                }
+
+                if store.selectedCleanupBatchContainsReviewRisk {
+                    Label("Selection includes review-suggested items. Confirm each path before moving it to Trash.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 }
 
                 if store.cleanupCandidates.isEmpty {
