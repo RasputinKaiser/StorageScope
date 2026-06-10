@@ -59,7 +59,7 @@ enum FileActionService {
     ) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Move \(urls.count) Items to Trash?"
+        alert.messageText = "Move \(trashItemCountLabel(urls.count)) to Trash?"
         alert.informativeText = trashBatchMessage(
             urls: urls,
             containsReviewRisk: containsReviewRisk,
@@ -78,7 +78,7 @@ enum FileActionService {
         var sections: [String] = [
             containsReviewRisk
                 ? "This batch includes review-suggested cleanup items that are not content-verified duplicates. Confirm each path is safe before moving them to Trash."
-                : "The selected cleanup items are verified duplicate or explicitly selected cleanup targets."
+                : "This batch contains content-verified duplicate copies. Keep one copy of each duplicate group and confirm the paths before moving them to Trash."
         ]
 
         if let estimatedReclaimBytes {
@@ -97,5 +97,9 @@ enum FileActionService {
 
         sections.append("You can restore items from Finder if needed.")
         return sections.joined(separator: "\n\n")
+    }
+
+    private static func trashItemCountLabel(_ count: Int) -> String {
+        "\(count.formatted()) \(count == 1 ? "Item" : "Items")"
     }
 }
