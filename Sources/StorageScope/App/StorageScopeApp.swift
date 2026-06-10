@@ -142,7 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
 
         store.scanDeveloperFixturePath(
             path,
-            markResultsNeedRefreshWhenComplete: environment["STORAGESCOPE_DEVELOPER_MARK_RESULTS_STALE"] == "1"
+            markResultsNeedRefreshWhenComplete: environment["STORAGESCOPE_DEVELOPER_MARK_RESULTS_STALE"] == "1",
+            selectedViewWhenComplete: environment["STORAGESCOPE_DEVELOPER_SELECTED_VIEW"].flatMap(SmartView.init(rawValue:))
         )
     }
 

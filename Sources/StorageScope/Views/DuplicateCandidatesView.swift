@@ -3,6 +3,7 @@ import SwiftUI
 
 struct DuplicateCandidatesView: View {
     @ObservedObject var store: ScanStore
+    @State private var expandedCandidateGroupIDs = Set<String>()
 
     var body: some View {
         ScrollView {
@@ -38,13 +39,27 @@ struct DuplicateCandidatesView: View {
                         if !store.duplicateGroups.isEmpty {
                             SectionHeader(title: "Same-Size Candidates", subtitle: "Same byte size, not content verified")
                             ForEach(store.duplicateGroups) { group in
-                                DuplicateGroupCard(group: group, store: store)
+                                DuplicateGroupCard(
+                                    group: group,
+                                    isExpanded: expandedCandidateGroupIDs.contains(group.id),
+                                    store: store
+                                ) {
+                                    toggleCandidateGroup(group)
+                                }
                             }
                         }
                     }
                 }
             }
             .padding(20)
+        }
+    }
+
+    private func toggleCandidateGroup(_ group: DuplicateSizeGroup) {
+        if expandedCandidateGroupIDs.contains(group.id) {
+            expandedCandidateGroupIDs.remove(group.id)
+        } else {
+            expandedCandidateGroupIDs.insert(group.id)
         }
     }
 }
@@ -101,14 +116,12 @@ private struct VerifiedDuplicateGroupCard: View {
 
 private struct DuplicateGroupCard: View {
     let group: DuplicateSizeGroup
+    let isExpanded: Bool
     @ObservedObject var store: ScanStore
+    let toggleExpanded: () -> Void
 
-    private var previewItems: [StorageItem] {
-        Array(group.items.prefix(8))
-    }
-
-    private var hiddenItemCount: Int {
-        max(0, group.items.count - previewItems.count)
+    private var visibleItems: [StorageItem] {
+        isExpanded ? group.items : Array(group.items.prefix(8))
     }
 
     var body: some View {
@@ -116,6 +129,21 @@ private struct DuplicateGroupCard: View {
             HStack {
                 Label("\(group.count) files at \(StorageFormat.bytes(group.byteSize)) each", systemImage: "doc.on.doc")
                     .font(.headline)
+
+                if group.items.count > 8 {
+                    Button {
+                        toggleExpanded()
+                    } label: {
+                        Label(
+                            isExpanded ? "Show first 8" : "Show all \(group.count.formatted())",
+                            systemImage: isExpanded ? "chevron.up.circle" : "ellipsis.circle"
+                        )
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .foregroundStyle(.secondary)
+                    .help(isExpanded ? "Collapse this same-size group" : "Show every file in this same-size group")
+                }
 
                 Spacer()
 
@@ -128,13 +156,7 @@ private struct DuplicateGroupCard: View {
                 }
             }
 
-            DuplicateItemList(items: previewItems, store: store)
-
-            if hiddenItemCount > 0 {
-                Label("\(hiddenItemCount.formatted()) more same-size files are hidden in this preview.", systemImage: "ellipsis.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            DuplicateItemList(items: visibleItems, store: store)
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))

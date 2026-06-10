@@ -2,7 +2,12 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-FIXTURE_STALE_MODE="${2:-}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+FIXTURE_MARK_STALE="0"
+FIXTURE_WITH_DUPLICATES="0"
+FIXTURE_SELECTED_VIEW=""
 APP_NAME="StorageScope"
 BUNDLE_ID="com.rasputinkaiser.StorageScope"
 MIN_SYSTEM_VERSION="14.0"
@@ -25,6 +30,31 @@ SKIP_SIGNING="${STORAGESCOPE_SKIP_SIGNING:-0}"
 FIXTURE_ROOT="${STORAGESCOPE_FIXTURE_ROOT:-$DEFAULT_FIXTURE_ROOT}"
 
 cd "$ROOT_DIR"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mark-stale)
+      FIXTURE_MARK_STALE="1"
+      shift
+      ;;
+    --duplicates)
+      FIXTURE_WITH_DUPLICATES="1"
+      shift
+      ;;
+    --view)
+      if [[ $# -lt 2 ]]; then
+        echo "--view requires a SmartView raw value" >&2
+        exit 2
+      fi
+      FIXTURE_SELECTED_VIEW="$2"
+      shift 2
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
@@ -127,6 +157,14 @@ write_sized_file() {
   /usr/bin/truncate -s "$size" "$path"
 }
 
+write_unique_sized_file() {
+  local path="$1"
+  local size="$2"
+  local seed="$3"
+  /usr/bin/printf "%s" "$seed" >"$path"
+  /usr/bin/truncate -s "$size" "$path"
+}
+
 prepare_fixture_scan_root() {
   rm -rf "$FIXTURE_ROOT"
   mkdir -p "$FIXTURE_ROOT/Media Projects" "$FIXTURE_ROOT/Caches/BuildCache" "$FIXTURE_ROOT/Downloads" "$FIXTURE_ROOT/Archives" "$FIXTURE_ROOT/Duplicates"
@@ -138,6 +176,12 @@ prepare_fixture_scan_root() {
   write_sized_file "$FIXTURE_ROOT/Archives/release-backup.zip" 180000000
   write_sized_file "$FIXTURE_ROOT/Duplicates/copy-a.bin" 125000000
   cp "$FIXTURE_ROOT/Duplicates/copy-a.bin" "$FIXTURE_ROOT/Duplicates/copy-b.bin"
+  if [[ "$FIXTURE_WITH_DUPLICATES" == "1" ]]; then
+    mkdir -p "$FIXTURE_ROOT/Same Size Leads"
+    for index in {1..10}; do
+      write_unique_sized_file "$FIXTURE_ROOT/Same Size Leads/review-lead-$index.bin" 126000000 "review-lead-$index"
+    done
+  fi
   touch -t 202401010101 "$FIXTURE_ROOT/Media Projects/interview-master.mov"
 
   echo "$FIXTURE_ROOT"
@@ -161,8 +205,11 @@ case "$MODE" in
   --fixture-scan|fixture-scan)
     fixture_path="$(prepare_fixture_scan_root)"
     open_args=(--env "STORAGESCOPE_ENABLE_DEVELOPER_SCAN=1" --env "STORAGESCOPE_DEVELOPER_SCAN_PATH=$fixture_path")
-    if [[ "$FIXTURE_STALE_MODE" == "--mark-stale" ]]; then
+    if [[ "$FIXTURE_MARK_STALE" == "1" ]]; then
       open_args+=(--env "STORAGESCOPE_DEVELOPER_MARK_RESULTS_STALE=1")
+    fi
+    if [[ -n "$FIXTURE_SELECTED_VIEW" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_SELECTED_VIEW=$FIXTURE_SELECTED_VIEW")
     fi
     open_app "${open_args[@]}"
     echo "$fixture_path"
@@ -179,7 +226,7 @@ case "$MODE" in
     echo "$APP_BUNDLE"
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale]|--verify|--build-only]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale] [--duplicates] [--view smartView]|--verify|--build-only]" >&2
     exit 2
     ;;
 esac
