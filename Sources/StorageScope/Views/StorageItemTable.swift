@@ -32,11 +32,15 @@ struct StorageItemTable: View {
                 Divider()
 
                 if items.isEmpty {
-                    ContentUnavailableView(
-                        "No Items",
+                    FilterRecoveryView(
+                        title: "No Items",
                         systemImage: "magnifyingglass",
-                        description: Text("Try changing the search or size filter.")
-                    )
+                        description: store.hasActiveDisplayFilters ? "No items match the active display filters." : "No items are available in this view.",
+                        filters: store.activeDisplayFilterDescriptions,
+                        clearTitle: "Clear Filters"
+                    ) {
+                        store.resetDisplayFilters()
+                    }
                     .frame(minHeight: 220)
                 } else {
                     ScrollView {

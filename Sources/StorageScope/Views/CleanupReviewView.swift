@@ -58,11 +58,15 @@ struct CleanupReviewView: View {
                 }
 
                 if store.cleanupCandidates.isEmpty {
-                    ContentUnavailableView(
-                        "No Review Targets",
+                    FilterRecoveryView(
+                        title: "No Review Targets",
                         systemImage: "checklist",
-                        description: Text("Try a broader scan, lower the size filter, or enable hidden files.")
-                    )
+                        description: store.hasActiveCleanupFilters ? "No cleanup targets match the active review filters." : "Try a broader scan or enable hidden files.",
+                        filters: store.activeCleanupFilterDescriptions,
+                        clearTitle: "Clear Review Filters"
+                    ) {
+                        store.resetCleanupFilters()
+                    }
                     .frame(minHeight: 340)
                 } else {
                     LazyVStack(spacing: 10) {

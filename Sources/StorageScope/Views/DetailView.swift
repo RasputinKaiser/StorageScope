@@ -12,6 +12,9 @@ struct DetailView: View {
                 VStack(spacing: 0) {
                     ScanHeaderView(store: store)
                     FilterBarView(store: store)
+                    if store.hasActiveDisplayFilters {
+                        ActiveDisplayFiltersView(store: store)
+                    }
                     Divider()
                     viewContent
                 }
@@ -330,6 +333,40 @@ private struct ControlGroupLabel: View {
             .foregroundStyle(.secondary)
             .labelStyle(.titleAndIcon)
             .lineLimit(1)
+    }
+}
+
+private struct ActiveDisplayFiltersView: View {
+    @ObservedObject var store: ScanStore
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label("Filtering", systemImage: "line.3.horizontal.decrease.circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            ForEach(store.activeDisplayFilterDescriptions, id: \.self) { filter in
+                Text(filter)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.quaternary, in: Capsule())
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                store.resetDisplayFilters()
+            } label: {
+                Label("Clear", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
     }
 }
 

@@ -16,11 +16,15 @@ struct DuplicateCandidatesView: View {
                 }
 
                 if store.verifiedDuplicateGroups.isEmpty && store.duplicateGroups.isEmpty {
-                    ContentUnavailableView(
-                        "No Duplicate Leads",
+                    FilterRecoveryView(
+                        title: "No Duplicate Leads",
                         systemImage: "checkmark.seal",
-                        description: Text("Try lowering the size filter or scanning a broader folder.")
-                    )
+                        description: store.hasActiveDisplayFilters ? "No duplicate leads match the active display filters." : "Try scanning a broader folder.",
+                        filters: store.activeDisplayFilterDescriptions,
+                        clearTitle: "Clear Filters"
+                    ) {
+                        store.resetDisplayFilters()
+                    }
                     .frame(minHeight: 320)
                 } else {
                     LazyVStack(spacing: 12) {

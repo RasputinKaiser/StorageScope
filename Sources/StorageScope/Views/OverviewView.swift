@@ -8,7 +8,12 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if store.scan != nil {
-                    ReclaimPlanView(plan: store.reclaimPlan) { action in
+                    ReclaimPlanView(
+                        plan: store.reclaimPlan,
+                        activeFilters: store.activeCleanupFilterDescriptions
+                    ) {
+                        store.resetCleanupFilters()
+                    } perform: { action in
                         perform(action)
                     }
 
@@ -67,6 +72,8 @@ struct OverviewView: View {
 
 private struct ReclaimPlanView: View {
     let plan: ReclaimPlan
+    let activeFilters: [String]
+    let clearFilters: () -> Void
     let perform: (ReclaimPlanAction) -> Void
 
     var body: some View {
@@ -92,16 +99,29 @@ private struct ReclaimPlanView: View {
             }
 
             if plan.sections.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text("No reclaim actions match the current filters.")
-                        .foregroundStyle(.secondary)
+                if activeFilters.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("No reclaim actions found for this scan.")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                } else {
+                    FilterRecoveryView(
+                        title: "No Reclaim Actions",
+                        systemImage: "checkmark.circle",
+                        description: "No reclaim actions match the active filters.",
+                        filters: activeFilters,
+                        clearTitle: "Clear Reclaim Filters",
+                        clearAction: clearFilters
+                    )
+                    .frame(minHeight: 130)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                 }
-                .font(.subheadline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             } else {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {

@@ -87,6 +87,34 @@ final class ScanStore: ObservableObject {
         return "Rescan to apply scan options"
     }
 
+    var activeDisplayFilterDescriptions: [String] {
+        var descriptions: [String] = []
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty {
+            descriptions.append("Search: \(trimmedQuery)")
+        }
+        if sizeFilter != .all {
+            descriptions.append("Size: \(sizeFilter.title)")
+        }
+        return descriptions
+    }
+
+    var activeCleanupFilterDescriptions: [String] {
+        var descriptions = activeDisplayFilterDescriptions
+        if cleanupLaneFilter != .all {
+            descriptions.append("Lane: \(cleanupLaneFilter.title)")
+        }
+        return descriptions
+    }
+
+    var hasActiveDisplayFilters: Bool {
+        !activeDisplayFilterDescriptions.isEmpty
+    }
+
+    var hasActiveCleanupFilters: Bool {
+        !activeCleanupFilterDescriptions.isEmpty
+    }
+
     func chooseFolderAndScan(startingAt directoryURL: URL? = nil) {
         guard let url = FileActionService.chooseFolder(startingAt: directoryURL) else {
             return
@@ -425,6 +453,16 @@ final class ScanStore: ObservableObject {
 
     func clearCleanupSelection() {
         selectedCleanupCandidateIDs.removeAll()
+    }
+
+    func resetDisplayFilters() {
+        query = ""
+        sizeFilter = .all
+    }
+
+    func resetCleanupFilters() {
+        resetDisplayFilters()
+        cleanupLaneFilter = .all
     }
 
     func ignoreCleanupCandidate(_ candidate: CleanupCandidate) {
