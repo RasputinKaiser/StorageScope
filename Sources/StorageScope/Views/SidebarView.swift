@@ -45,6 +45,11 @@ struct SidebarView: View {
                                 SidebarPathButton(path: path, systemImage: "clock.arrow.circlepath") {
                                     store.scanRecentPath(path)
                                 }
+                                .contextMenu {
+                                    Button("Forget Recent Scan") {
+                                        store.forgetRecentScanPath(path)
+                                    }
+                                }
                             }
                         }
                     }

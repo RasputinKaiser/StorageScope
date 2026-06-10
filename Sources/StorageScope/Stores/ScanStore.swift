@@ -159,6 +159,11 @@ final class ScanStore: ObservableObject {
         chooseFolderAndScan(startingAt: url)
     }
 
+    func forgetRecentScanPath(_ path: String) {
+        recentScanPaths.removeAll { $0 == path }
+        UserDefaults.standard.set(recentScanPaths, forKey: Self.recentScanPathsKey)
+    }
+
     var mountedVolumes: [URL] {
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsInternalKey]
         return FileManager.default.mountedVolumeURLs(
