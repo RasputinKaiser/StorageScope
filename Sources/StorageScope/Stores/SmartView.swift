@@ -135,3 +135,33 @@ enum ItemSortOption: String, CaseIterable, Identifiable {
         }
     }
 }
+
+enum CleanupLaneFilter: String, CaseIterable, Identifiable {
+    case all
+    case verified
+    case suggestions
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            return "All"
+        case .verified:
+            return "Verified"
+        case .suggestions:
+            return "Suggestions"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .all:
+            return "All reclaim leads"
+        case .verified:
+            return "Content-matched duplicates"
+        case .suggestions:
+            return "Needs manual review"
+        }
+    }
+}

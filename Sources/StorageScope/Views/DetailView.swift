@@ -58,7 +58,7 @@ private struct WelcomeView: View {
                     .font(.largeTitle.weight(.semibold))
                     .multilineTextAlignment(.center)
 
-                Text("Choose a folder, home directory, or volume to grant access, rank the biggest storage consumers, and inspect them safely.")
+                Text("Map a folder locally, review verified duplicates separately from suggestions, and reclaim space through macOS Trash when you are ready.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -84,19 +84,19 @@ private struct WelcomeView: View {
 
             HStack(spacing: 14) {
                 WelcomeCapabilityCard(
-                    title: "Big Folders",
-                    detail: "Rank folders and packages by real disk footprint.",
+                    title: "Map",
+                    detail: "Rank folders, packages, files, and type-heavy storage locally.",
                     systemImage: "folder.fill.badge.gearshape"
                 )
                 WelcomeCapabilityCard(
-                    title: "Old Bulk",
-                    detail: "Surface large files that have gone stale.",
-                    systemImage: "clock.badge.exclamationmark"
+                    title: "Review",
+                    detail: "Separate verified duplicates from suggestions that need judgment.",
+                    systemImage: "checkmark.seal.fill"
                 )
                 WelcomeCapabilityCard(
-                    title: "Type Mix",
-                    detail: "See which extensions dominate the scan.",
-                    systemImage: "chart.pie.fill"
+                    title: "Reclaim",
+                    detail: "Preview paths, confirm risk, and move selected items to Trash.",
+                    systemImage: "trash"
                 )
             }
             .frame(maxWidth: 760)
@@ -261,17 +261,28 @@ private struct FilterBarView: View {
     }
 
     private var wideControls: some View {
-        HStack(spacing: 12) {
-            sizePicker
-            .frame(maxWidth: 430)
+        HStack(alignment: .center, spacing: 16) {
+            HStack(spacing: 10) {
+                ControlGroupLabel(title: "Display", systemImage: "line.3.horizontal.decrease.circle")
 
-            sortPicker
-            .frame(width: 128)
+                sizePicker
+                    .frame(maxWidth: 430)
 
-            Stepper("Scan old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
-                .frame(width: 230)
+                sortPicker
+                    .frame(width: 128)
+            }
 
-            Toggle("Scan hidden", isOn: $store.includeHiddenFiles)
+            Divider()
+                .frame(height: 28)
+
+            HStack(spacing: 10) {
+                ControlGroupLabel(title: "Scan Options", systemImage: "slider.horizontal.3")
+
+                Stepper("Old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
+                    .frame(width: 190)
+
+                Toggle("Hidden", isOn: $store.includeHiddenFiles)
+            }
 
             Spacer()
 
@@ -281,6 +292,8 @@ private struct FilterBarView: View {
 
     private var compactControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            ControlGroupLabel(title: "Display", systemImage: "line.3.horizontal.decrease.circle")
+
             HStack(spacing: 12) {
                 sizePicker
                     .frame(maxWidth: 430)
@@ -291,17 +304,32 @@ private struct FilterBarView: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: 12) {
-                Stepper("Scan old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
-                    .frame(width: 230)
+            ControlGroupLabel(title: "Scan Options", systemImage: "slider.horizontal.3")
 
-                Toggle("Scan hidden", isOn: $store.includeHiddenFiles)
+            HStack(spacing: 12) {
+                Stepper("Old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
+                    .frame(width: 190)
+
+                Toggle("Hidden", isOn: $store.includeHiddenFiles)
 
                 Spacer(minLength: 0)
 
                 scanDurationLabel
             }
         }
+    }
+}
+
+private struct ControlGroupLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .labelStyle(.titleAndIcon)
+            .lineLimit(1)
     }
 }
 

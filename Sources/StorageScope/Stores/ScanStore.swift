@@ -19,6 +19,7 @@ final class ScanStore: ObservableObject {
     @Published var query = ""
     @Published var sizeFilter: SizeFilter = .all
     @Published var sortOption: ItemSortOption = .sizeDescending
+    @Published var cleanupLaneFilter: CleanupLaneFilter = .all
     @Published var includeHiddenFiles = false
     @Published var oldFileAgeDays = 180
     @Published var errorMessage: String?
@@ -361,12 +362,13 @@ final class ScanStore: ObservableObject {
 
             let item = candidate.item
             let passesSize = candidate.reclaimableBytes >= sizeFilter.threshold || item.displaySize >= sizeFilter.threshold
+            let passesLane = cleanupCandidate(candidate, passes: cleanupLaneFilter)
             let passesQuery = trimmedQuery.isEmpty ||
                 item.name.localizedCaseInsensitiveContains(trimmedQuery) ||
                 item.url.path.localizedCaseInsensitiveContains(trimmedQuery) ||
                 candidate.reason.localizedCaseInsensitiveContains(trimmedQuery) ||
                 candidate.kind.displayName.localizedCaseInsensitiveContains(trimmedQuery)
-            return passesSize && passesQuery
+            return passesSize && passesLane && passesQuery
         }
     }
 
@@ -376,6 +378,13 @@ final class ScanStore: ObservableObject {
 
     var selectedCleanupCandidates: [CleanupCandidate] {
         cleanupCandidates.filter { selectedCleanupCandidateIDs.contains($0.id) }
+    }
+
+    var selectedCleanupCandidate: CleanupCandidate? {
+        guard let scan, let selectedItemID else {
+            return nil
+        }
+        return scan.cleanupCandidates.first { $0.item.id == selectedItemID }
     }
 
     var selectedCleanupBatchCandidates: [CleanupCandidate] {
@@ -545,6 +554,17 @@ final class ScanStore: ObservableObject {
         }
     }
 
+    private func cleanupCandidate(_ candidate: CleanupCandidate, passes lane: CleanupLaneFilter) -> Bool {
+        switch lane {
+        case .all:
+            return true
+        case .verified:
+            return candidate.kind == .verifiedDuplicate && candidate.confidence == .high
+        case .suggestions:
+            return !(candidate.kind == .verifiedDuplicate && candidate.confidence == .high)
+        }
+    }
+
     private func abandonActiveScan() {
         cancellation?.cancel()
         scanTask?.cancel()
@@ -613,28 +633,5 @@ private extension StorageScan {
         }
 
         return cleanupCandidates.first { $0.item.id == id }?.item
-    }
-}
-
-private extension CleanupCandidate.Kind {
-    var displayName: String {
-        switch self {
-        case .verifiedDuplicate:
-            return "Verified Duplicate"
-        case .oldLargeFile:
-            return "Old Large File"
-        case .archive:
-            return "Archive"
-        case .installer:
-            return "Installer"
-        case .diskImage:
-            return "Disk Image"
-        case .cacheFolder:
-            return "Cache Folder"
-        case .buildArtifact:
-            return "Build Artifact"
-        case .temporary:
-            return "Temporary"
-        }
     }
 }

@@ -1,3 +1,4 @@
+import StorageScopeCore
 import SwiftUI
 
 struct InspectorView: View {
@@ -40,6 +41,12 @@ struct InspectorView: View {
                         InspectorMetric(title: "Modified", value: StorageFormat.date(item.modifiedAt))
                         InspectorMetric(title: "Children", value: "\(item.immediateChildCount.formatted()) direct, \(item.descendantCount.formatted()) nested")
                         InspectorMetric(title: "Readable", value: item.isReadable ? "Yes" : "No")
+
+                        if let candidate = store.selectedCleanupCandidate {
+                            Divider()
+
+                            CleanupContextSection(candidate: candidate)
+                        }
 
                         Divider()
 
@@ -87,6 +94,50 @@ struct InspectorView: View {
             }
         }
         .background(.bar)
+    }
+}
+
+private struct CleanupContextSection: View {
+    let candidate: CleanupCandidate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Cleanup Context", systemImage: candidate.kind.systemImage)
+                .font(.headline)
+                .foregroundStyle(candidate.confidence.tint)
+
+            HStack(spacing: 8) {
+                CleanupBadge(candidate.kind.displayName, tint: candidate.confidence.tint)
+                CleanupBadge(candidate.confidence.displayName, tint: candidate.confidence.tint)
+            }
+
+            InspectorMetric(title: "Reclaimable", value: StorageFormat.bytes(candidate.reclaimableBytes))
+            InspectorMetric(title: "Why it appears", value: candidate.reason)
+
+            Text(candidate.confidence == .high ? "Content-verified duplicate candidates are the safest batch-review lane." : "This is a suggestion, not proof. Review the path and contents before moving it to Trash.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct CleanupBadge: View {
+    let title: String
+    let tint: Color
+
+    init(_ title: String, tint: Color) {
+        self.title = title
+        self.tint = tint
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.14), in: Capsule())
     }
 }
 

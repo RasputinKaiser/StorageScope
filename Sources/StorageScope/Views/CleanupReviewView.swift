@@ -11,7 +11,7 @@ struct CleanupReviewView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Cleanup Review")
                             .font(.headline)
-                        Text("Verified duplicates can be batched. Review-suggested cleanup stays manual.")
+                        Text("Filter reclaim leads by confidence before selecting anything destructive.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -46,6 +46,8 @@ struct CleanupReviewView: View {
                     }
                 }
 
+                CleanupLaneControl(store: store)
+
                 if store.selectedCleanupBatchContainsReviewRisk {
                     Label("Selection includes review-suggested items. Confirm each path before moving it to Trash.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -72,6 +74,94 @@ struct CleanupReviewView: View {
             }
             .padding(20)
         }
+    }
+}
+
+private struct CleanupLaneControl: View {
+    @ObservedObject var store: ScanStore
+
+    private var verifiedCount: Int {
+        store.cleanupCandidates.filter { $0.kind == .verifiedDuplicate && $0.confidence == .high }.count
+    }
+
+    private var suggestionCount: Int {
+        store.cleanupCandidates.count - verifiedCount
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Cleanup lane", selection: $store.cleanupLaneFilter) {
+                ForEach(CleanupLaneFilter.allCases) { lane in
+                    Text(lane.title).tag(lane)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 360)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    CleanupLaneStat(
+                        title: "Visible Verified",
+                        value: verifiedCount.formatted(),
+                        detail: "safe batch review",
+                        tint: .green
+                    )
+                    CleanupLaneStat(
+                        title: "Visible Suggestions",
+                        value: suggestionCount.formatted(),
+                        detail: "manual decisions",
+                        tint: .orange
+                    )
+                    CleanupLaneStat(
+                        title: "Visible Reclaim",
+                        value: StorageFormat.bytes(store.potentialReclaimableBytes),
+                        detail: store.cleanupLaneFilter.detail,
+                        tint: .blue
+                    )
+                }
+
+                VStack(spacing: 10) {
+                    CleanupLaneStat(
+                        title: "Visible Reclaim",
+                        value: StorageFormat.bytes(store.potentialReclaimableBytes),
+                        detail: store.cleanupLaneFilter.detail,
+                        tint: .blue
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct CleanupLaneStat: View {
+    let title: String
+    let value: String
+    let detail: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(tint)
+                .frame(width: 8, height: 8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.headline.monospacedDigit())
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -156,63 +246,6 @@ private struct CleanupCandidateRow: View {
                 store.selectedItemID = candidate.item.id
                 store.moveSelectedItemToTrash()
             }
-        }
-    }
-}
-
-private extension CleanupCandidate.Kind {
-    var displayName: String {
-        switch self {
-        case .verifiedDuplicate:
-            return "Verified Duplicate"
-        case .oldLargeFile:
-            return "Old Large File"
-        case .archive:
-            return "Archive"
-        case .installer:
-            return "Installer"
-        case .diskImage:
-            return "Disk Image"
-        case .cacheFolder:
-            return "Cache Folder"
-        case .buildArtifact:
-            return "Build Artifact"
-        case .temporary:
-            return "Temporary"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .verifiedDuplicate:
-            return "checkmark.seal.fill"
-        case .oldLargeFile:
-            return "clock.badge.exclamationmark"
-        case .archive:
-            return "archivebox.fill"
-        case .installer:
-            return "shippingbox.fill"
-        case .diskImage:
-            return "externaldrive.fill"
-        case .cacheFolder:
-            return "folder.badge.gearshape"
-        case .buildArtifact:
-            return "hammer.fill"
-        case .temporary:
-            return "timer"
-        }
-    }
-}
-
-private extension CleanupCandidate.Confidence {
-    var tint: Color {
-        switch self {
-        case .high:
-            return .green
-        case .medium:
-            return .orange
-        case .review:
-            return .blue
         }
     }
 }
