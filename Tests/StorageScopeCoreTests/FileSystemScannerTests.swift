@@ -336,6 +336,54 @@ struct FileSystemScannerTests {
         #expect(CleanupSelectionPlanner.containsReviewRisk([verifiedDuplicate, installer]))
     }
 
+    @Test("scan option policy keeps broad analysis thresholds independent from display filters")
+    func scanOptionPolicyIgnoresDisplayThresholds() {
+        let thresholds = ScanOptionPolicy.interactiveScanThresholds(displayThreshold: 10_000_000_000)
+
+        #expect(thresholds.largeFileThreshold == 1_000_000_000)
+        #expect(thresholds.duplicateCandidateThreshold == 100_000_000)
+    }
+
+    @Test("reclaim plan separates verified reclaim from review suggestions")
+    func reclaimPlanSeparatesConfidenceLanes() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let verifiedDuplicate = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("copy-a.mov"),
+            kind: .verifiedDuplicate,
+            bytes: 8_000,
+            confidence: .high
+        )
+        let installer = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("installer.pkg"),
+            kind: .installer,
+            bytes: 6_000,
+            confidence: .medium
+        )
+        let archive = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("archive.zip"),
+            kind: .archive,
+            bytes: 4_000,
+            confidence: .review
+        )
+        let scan = storageScan(
+            rootURL: temporaryRoot,
+            scannedItemCount: 24,
+            inaccessibleItemCount: 2,
+            totalBytes: 100_000,
+            cleanupCandidates: [verifiedDuplicate, installer, archive]
+        )
+
+        let plan = ReclaimPlanBuilder.build(scan: scan, visibleCleanupCandidates: scan.cleanupCandidates)
+
+        #expect(plan.sections.map(\.kind) == [.verifiedDuplicates, .reviewSuggestions, .inaccessibleItems])
+        #expect(plan.primaryAction == .reviewVerifiedDuplicates)
+        #expect(plan.sections.first { $0.kind == .verifiedDuplicates }?.reclaimableBytes == 8_000)
+        #expect(plan.sections.first { $0.kind == .reviewSuggestions }?.reclaimableBytes == 10_000)
+        #expect(plan.sections.first { $0.kind == .inaccessibleItems }?.itemCount == 2)
+    }
+
     private func makeTemporaryRoot() throws -> URL {
         let temporaryRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("StorageScopeTests-\(UUID().uuidString)", isDirectory: true)
@@ -371,6 +419,42 @@ struct FileSystemScannerTests {
             reason: "Test cleanup target.",
             reclaimableBytes: bytes,
             confidence: confidence
+        )
+    }
+
+    private func storageScan(
+        rootURL: URL,
+        scannedItemCount: Int,
+        inaccessibleItemCount: Int,
+        totalBytes: Int64,
+        cleanupCandidates: [CleanupCandidate]
+    ) -> StorageScan {
+        let rootItem = StorageItem(
+            url: rootURL,
+            kind: .folder,
+            byteSize: totalBytes,
+            allocatedSize: totalBytes,
+            modifiedAt: nil,
+            immediateChildCount: 0,
+            descendantCount: max(0, scannedItemCount - 1),
+            isReadable: true
+        )
+        return StorageScan(
+            rootURL: rootURL,
+            startedAt: Date(),
+            finishedAt: Date(),
+            rootItem: rootItem,
+            allItems: [rootItem],
+            scannedItemCount: scannedItemCount,
+            inaccessibleItemCount: inaccessibleItemCount,
+            totalBytes: totalBytes,
+            largestFiles: [],
+            largestFolders: [],
+            oldLargeFiles: [],
+            typeBreakdown: [],
+            duplicateSizeGroups: [],
+            verifiedDuplicateGroups: [],
+            cleanupCandidates: cleanupCandidates
         )
     }
 

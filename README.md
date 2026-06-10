@@ -1,20 +1,23 @@
 # StorageScope
 
-StorageScope is an open-source Mac storage cleaner and disk space analyzer for finding the folders and files that are filling a Mac. It is a local-first macOS storage management app, built with SwiftUI/AppKit, for large-folder analysis, duplicate review, and safe cleanup planning.
+StorageScope is an open-source Mac storage map and reclaim planner for finding the folders and files that are filling a Mac. It is a local-first macOS storage management app, built with SwiftUI/AppKit, for large-folder analysis, duplicate review, and safer cleanup decisions.
 
 The app scans only folders the user grants through macOS folder selection or stored security-scoped bookmarks. It does not upload scan results, file names, paths, contents, analytics, or identifiers.
+
+The name is intentional: StorageScope is not a black-box cleaner. It scopes storage pressure, separates verified duplicates from review-only suggestions, and helps the user decide what to reclaim.
 
 ![StorageScope overview](docs/images/storagescope-overview.png)
 
 ## Highlights
 
 - Mac storage management views for disk usage, file cleanup, old large files, duplicate candidates, and type-heavy storage.
+- Reclaim Plan overview that separates verified duplicate reclaim, review-suggested cleanup, and access gaps.
 - Ranked storage views for largest folders, largest files, stale large files, and file type usage.
 - Folder tree browsing with size bars and an inspector for selected items.
 - Duplicate review that starts from same-size candidates and verifies matches with SHA-256 within a bounded work budget.
 - Cleanup review for verified duplicate copies, cache folders, build artifacts, installers, archives, disk images, and temporary-looking files.
 - Confirmed file actions for Reveal in Finder, Open, Copy Path, and Move to Trash.
-- Transactional cleanup batches that collapse nested selections, use macOS Trash APIs, and roll back earlier moves if a later move fails.
+- Transactional cleanup batches that collapse nested selections, disclose mixed-confidence risk, use macOS Trash APIs, and roll back earlier moves if a later move fails.
 - Broad-scan memory controls that retain a bounded UI tree while preserving full-scan summary results.
 
 ## Use Cases
@@ -23,7 +26,7 @@ StorageScope is designed for people looking for a transparent alternative to bla
 
 - Find what is taking up disk space on macOS.
 - Review large folders, old large files, installers, archives, disk images, and build artifacts.
-- Inspect duplicate file candidates before removing anything.
+- Inspect verified duplicate files separately from review-suggested cleanup.
 - Plan Mac storage cleanup locally without uploading file names, paths, hashes, or scan results.
 - Explore disk usage with an open-source Swift macOS app instead of a closed cleanup tool.
 
@@ -58,7 +61,7 @@ Verify build, signature, and launch:
 swift test
 ```
 
-The test suite covers scanner ranking, duplicate grouping and verification, bounded duplicate hashing, hidden-file behavior, cleanup candidates, transactional Trash rollback, sandbox-aware Trash invocation, nested cleanup selection collapse, and broad-scan retention behavior.
+The test suite covers scanner ranking, duplicate grouping and verification, bounded duplicate hashing, hidden-file behavior, cleanup candidates, reclaim-plan lanes, transactional Trash rollback, sandbox-aware Trash invocation, nested cleanup selection collapse, and broad-scan retention behavior.
 
 ## Public Upload Audit
 

@@ -52,16 +52,50 @@ enum FileActionService {
     }
 
     @MainActor
-    static func confirmTrash(urls: [URL], containsReviewRisk: Bool = false) -> Bool {
+    static func confirmTrash(
+        urls: [URL],
+        containsReviewRisk: Bool = false,
+        estimatedReclaimBytes: Int64? = nil
+    ) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Move \(urls.count) Items to Trash?"
-        alert.informativeText = containsReviewRisk
-            ? "This batch includes review-suggested cleanup items that are not content-verified duplicates. Confirm each path is safe before moving them to Trash. You can restore items from Finder if needed."
-            : "The selected cleanup items will be moved to Trash. You can restore them from Finder if needed."
+        alert.informativeText = trashBatchMessage(
+            urls: urls,
+            containsReviewRisk: containsReviewRisk,
+            estimatedReclaimBytes: estimatedReclaimBytes
+        )
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+    private static func trashBatchMessage(
+        urls: [URL],
+        containsReviewRisk: Bool,
+        estimatedReclaimBytes: Int64?
+    ) -> String {
+        var sections: [String] = [
+            containsReviewRisk
+                ? "This batch includes review-suggested cleanup items that are not content-verified duplicates. Confirm each path is safe before moving them to Trash."
+                : "The selected cleanup items are verified duplicate or explicitly selected cleanup targets."
+        ]
+
+        if let estimatedReclaimBytes {
+            sections.append("Estimated reclaim: \(StorageFormat.bytes(estimatedReclaimBytes)).")
+        }
+
+        let previewPaths = urls.prefix(5).map(\.path)
+        if !previewPaths.isEmpty {
+            var preview = "Paths:\n" + previewPaths.joined(separator: "\n")
+            let remainingCount = urls.count - previewPaths.count
+            if remainingCount > 0 {
+                preview += "\n+\(remainingCount.formatted()) more"
+            }
+            sections.append(preview)
+        }
+
+        sections.append("You can restore items from Finder if needed.")
+        return sections.joined(separator: "\n\n")
+    }
 }

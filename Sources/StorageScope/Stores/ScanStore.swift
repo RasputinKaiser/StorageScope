@@ -206,11 +206,12 @@ final class ScanStore: ObservableObject {
         progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: url.path)
 
         let scanID = UUID()
+        let thresholds = ScanOptionPolicy.interactiveScanThresholds(displayThreshold: sizeFilter.threshold)
         let options = ScanOptions(
             includeHidden: includeHiddenFiles,
             oldFileAgeDays: oldFileAgeDays,
-            largeFileThreshold: max(sizeFilter.threshold, 1_000_000_000),
-            duplicateCandidateThreshold: max(sizeFilter.threshold, 100_000_000),
+            largeFileThreshold: thresholds.largeFileThreshold,
+            duplicateCandidateThreshold: thresholds.duplicateCandidateThreshold,
             maxRankedResults: 800
         )
         let optionsSnapshot = currentScanOptions
@@ -389,6 +390,13 @@ final class ScanStore: ObservableObject {
         CleanupSelectionPlanner.containsReviewRisk(selectedCleanupBatchCandidates)
     }
 
+    var reclaimPlan: ReclaimPlan {
+        guard let scan else {
+            return ReclaimPlan(sections: [], primaryAction: nil)
+        }
+        return ReclaimPlanBuilder.build(scan: scan, visibleCleanupCandidates: cleanupCandidates)
+    }
+
     var selectedReclaimableBytes: Int64 {
         selectedCleanupBatchCandidates.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
     }
@@ -426,7 +434,13 @@ final class ScanStore: ObservableObject {
         }
 
         let urls = candidates.map(\.item.url)
-        guard FileActionService.confirmTrash(urls: urls, containsReviewRisk: selectedCleanupBatchContainsReviewRisk) else {
+        let containsReviewRisk = CleanupSelectionPlanner.containsReviewRisk(candidates)
+        let reclaimableBytes = candidates.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+        guard FileActionService.confirmTrash(
+            urls: urls,
+            containsReviewRisk: containsReviewRisk,
+            estimatedReclaimBytes: reclaimableBytes
+        ) else {
             return
         }
 

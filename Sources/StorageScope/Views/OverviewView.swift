@@ -8,6 +8,10 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if store.scan != nil {
+                    ReclaimPlanView(plan: store.reclaimPlan) { action in
+                        perform(action)
+                    }
+
                     SizeDistributionView(store: store)
 
                     let overviewItems = Array(store.items(for: .overview).prefix(12))
@@ -43,6 +47,126 @@ struct OverviewView: View {
             }
             .padding(20)
         }
+    }
+
+    private func perform(_ action: ReclaimPlanAction) {
+        switch action {
+        case .reviewVerifiedDuplicates:
+            store.selectVerifiedCleanupCandidates()
+            store.selectedView = .cleanupReview
+        case .reviewCleanupSuggestions:
+            store.clearCleanupSelection()
+            store.selectedView = .cleanupReview
+        case .inspectInaccessibleItems:
+            store.selectedView = .tree
+        }
+    }
+}
+
+private struct ReclaimPlanView: View {
+    let plan: ReclaimPlan
+    let perform: (ReclaimPlanAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Reclaim Plan")
+                        .font(.headline)
+                    Text("Separate verified duplicate reclaim from review-only suggestions")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if let primaryAction = plan.primaryAction {
+                    Button {
+                        perform(primaryAction)
+                    } label: {
+                        Label(primaryAction.title, systemImage: primaryAction.systemImage)
+                    }
+                }
+            }
+
+            if plan.sections.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("No reclaim actions match the current filters.")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        ForEach(plan.sections) { section in
+                            ReclaimPlanSectionCard(section: section, perform: perform)
+                        }
+                    }
+
+                    VStack(spacing: 12) {
+                        ForEach(plan.sections) { section in
+                            ReclaimPlanSectionCard(section: section, perform: perform)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ReclaimPlanSectionCard: View {
+    let section: ReclaimPlanSection
+    let perform: (ReclaimPlanAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: section.kind.systemImage)
+                    .font(.title3)
+                    .foregroundStyle(section.kind.tint)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(section.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(section.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(section.kind == .inaccessibleItems ? "\(section.itemCount.formatted())" : StorageFormat.bytes(section.reclaimableBytes))
+                        .font(.system(.title3, design: .rounded).weight(.semibold).monospacedDigit())
+                    Text(section.kind == .inaccessibleItems ? "access gaps" : "\(section.itemCount.formatted()) items")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if let action = section.action {
+                    Button {
+                        perform(action)
+                    } label: {
+                        Label(action.shortTitle, systemImage: action.systemImage)
+                            .labelStyle(.iconOnly)
+                    }
+                    .help(action.title)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -137,5 +261,64 @@ private struct InsightCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private extension ReclaimPlanSection.Kind {
+    var systemImage: String {
+        switch self {
+        case .verifiedDuplicates:
+            return "checkmark.seal.fill"
+        case .reviewSuggestions:
+            return "exclamationmark.triangle.fill"
+        case .inaccessibleItems:
+            return "lock.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .verifiedDuplicates:
+            return .green
+        case .reviewSuggestions:
+            return .orange
+        case .inaccessibleItems:
+            return .red
+        }
+    }
+}
+
+private extension ReclaimPlanAction {
+    var title: String {
+        switch self {
+        case .reviewVerifiedDuplicates:
+            return "Review Verified Duplicates"
+        case .reviewCleanupSuggestions:
+            return "Review Suggestions"
+        case .inspectInaccessibleItems:
+            return "Inspect Access Gaps"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .reviewVerifiedDuplicates:
+            return "Review"
+        case .reviewCleanupSuggestions:
+            return "Review"
+        case .inspectInaccessibleItems:
+            return "Inspect"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .reviewVerifiedDuplicates:
+            return "arrow.right.circle"
+        case .reviewCleanupSuggestions:
+            return "list.bullet.clipboard"
+        case .inspectInaccessibleItems:
+            return "list.bullet.indent"
+        }
     }
 }
