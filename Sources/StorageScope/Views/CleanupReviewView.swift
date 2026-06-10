@@ -254,8 +254,7 @@ private struct CleanupCandidateRow: View {
             }
             Divider()
             Button("Move to Trash", role: .destructive) {
-                store.selectedItemID = candidate.item.id
-                store.moveSelectedItemToTrash()
+                store.moveCleanupCandidateToTrash(candidate)
             }
         }
     }

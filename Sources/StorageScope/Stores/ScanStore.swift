@@ -478,6 +478,12 @@ final class ScanStore: ObservableObject {
         selectedCleanupCandidateIDs.remove(candidate.id)
     }
 
+    func moveCleanupCandidateToTrash(_ candidate: CleanupCandidate) {
+        selectedCleanupCandidateIDs = [candidate.id]
+        selectedItemID = candidate.item.id
+        moveSelectedCleanupCandidatesToTrash()
+    }
+
     func moveSelectedCleanupCandidatesToTrash() {
         let candidates = selectedCleanupBatchCandidates
         guard !candidates.isEmpty else {
