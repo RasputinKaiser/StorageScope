@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="StorageScope"
-BUNDLE_ID="com.ianzvirbulis.StorageScope"
+BUNDLE_ID="com.rasputinkaiser.StorageScope"
 MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -99,7 +99,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleShortVersionString</key>
   <string>0.1.0</string>
   <key>NSHumanReadableCopyright</key>
-  <string>Copyright (c) 2026 Ian Zvirbulis. All rights reserved.</string>
+  <string>Copyright (c) 2026 RasputinKaiser. All rights reserved.</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.utilities</string>
   <key>LSMinimumSystemVersion</key>

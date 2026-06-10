@@ -1,5 +1,16 @@
 import Foundation
 
+enum SecurityScopedBookmarkError: LocalizedError {
+    case accessDenied(URL)
+
+    var errorDescription: String? {
+        switch self {
+        case .accessDenied(let url):
+            return "StorageScope could not access \(url.path). Choose the folder again or grant access in macOS privacy settings."
+        }
+    }
+}
+
 struct ResolvedSecurityScopedURL {
     let url: URL
     let access: SecurityScopedResourceAccess
@@ -10,9 +21,12 @@ final class SecurityScopedResourceAccess {
     let url: URL
     private var didStartAccess: Bool
 
-    init(url: URL) {
+    init(url: URL) throws {
         self.url = url
         didStartAccess = url.startAccessingSecurityScopedResource()
+        guard didStartAccess else {
+            throw SecurityScopedBookmarkError.accessDenied(url)
+        }
     }
 
     deinit {
@@ -64,7 +78,7 @@ struct SecurityScopedBookmarkStore {
 
         return ResolvedSecurityScopedURL(
             url: url,
-            access: SecurityScopedResourceAccess(url: url),
+            access: try SecurityScopedResourceAccess(url: url),
             bookmarkWasStale: bookmarkWasStale
         )
     }

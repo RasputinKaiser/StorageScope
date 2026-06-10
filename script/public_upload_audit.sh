@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+audit_scratch_path="${STORAGESCOPE_AUDIT_SCRATCH_PATH:-${TMPDIR:-/tmp}/StorageScope/public-upload-audit-spm}"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "public upload audit must run inside a git repository" >&2
@@ -47,6 +48,10 @@ done
 secret_hits="$(mktemp)"
 trap 'rm -f "$candidate_file" "$secret_hits"' EXIT
 sensitive_pattern='(secret|token|password|passwd|api[_-]?key|private[_-]?key|client[_-]?secret|bearer|authorization|oauth|stripe|paypal|gumroad|/Users/|@gmail|@icloud|ssh-rsa|BEGIN (RSA|OPENSSH|PRIVATE)|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9])'
+blocked_public_identity_patterns=(
+  "$(printf '%s%s%s' 'Ian' ' Zvir' 'bulis')"
+  "$(printf '%s%s' 'ianz' 'virbulis')"
+)
 
 while IFS= read -r candidate; do
   if [[ "$candidate" == "script/public_upload_audit.sh" ]]; then
@@ -55,6 +60,9 @@ while IFS= read -r candidate; do
 
   if [[ -f "$candidate" ]]; then
     rg -n -i "$sensitive_pattern" "$candidate" >>"$secret_hits" || true
+    for identity_pattern in "${blocked_public_identity_patterns[@]}"; do
+      rg -n -F "$identity_pattern" "$candidate" >>"$secret_hits" || true
+    done
   fi
 done <"$candidate_file"
 
@@ -64,7 +72,7 @@ if [[ -s "$secret_hits" ]]; then
   exit 1
 fi
 
-swift test >/dev/null
+swift test --scratch-path "$audit_scratch_path" >/dev/null
 plutil -lint Config/StorageScope.entitlements Resources/PrivacyInfo.xcprivacy >/dev/null
 bash -n script/build_and_run.sh script/export_dmg.sh script/package_app_store.sh script/public_upload_audit.sh
 

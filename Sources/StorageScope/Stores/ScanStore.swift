@@ -146,15 +146,21 @@ final class ScanStore: ObservableObject {
     }
 
     private func scanUserGrantedURL(_ url: URL, access: SecurityScopedResourceAccess? = nil) {
-        let scopedAccess = access ?? SecurityScopedResourceAccess(url: url)
-        replaceActiveRootAccess(with: scopedAccess)
-        bookmarkStore.remember(url)
-        scan(url)
+        abandonActiveScan()
+
+        do {
+            let scopedAccess = try access ?? SecurityScopedResourceAccess(url: url)
+            replaceActiveRootAccess(with: scopedAccess)
+            bookmarkStore.remember(url)
+            scan(url)
+        } catch {
+            isScanning = false
+            progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Access denied")
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func scan(_ url: URL) {
-        abandonActiveScan()
-
         rememberScanURL(url)
         lastScannedURL = url
         selectedItemID = nil
