@@ -8,6 +8,7 @@ MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_DIST_ROOT="${TMPDIR:-/tmp}/StorageScope"
+DEFAULT_FIXTURE_ROOT="$HOME/Library/Containers/$BUNDLE_ID/Data/tmp/StorageScope/fixture-scan"
 DIST_DIR="${STORAGESCOPE_DIST_DIR:-$DEFAULT_DIST_ROOT/dist}"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -20,6 +21,7 @@ SIGN_IDENTITY="${STORAGESCOPE_SIGN_IDENTITY:--}"
 CODESIGN_OPTIONS="${STORAGESCOPE_CODESIGN_OPTIONS:-runtime}"
 PROVISIONING_PROFILE="${STORAGESCOPE_PROVISIONING_PROFILE:-}"
 SKIP_SIGNING="${STORAGESCOPE_SKIP_SIGNING:-0}"
+FIXTURE_ROOT="${STORAGESCOPE_FIXTURE_ROOT:-$DEFAULT_FIXTURE_ROOT}"
 
 cd "$ROOT_DIR"
 
@@ -115,7 +117,29 @@ PLIST
 sign_bundle
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  /usr/bin/open -n -F "$@" "$APP_BUNDLE"
+}
+
+write_sized_file() {
+  local path="$1"
+  local size="$2"
+  /usr/bin/truncate -s "$size" "$path"
+}
+
+prepare_fixture_scan_root() {
+  rm -rf "$FIXTURE_ROOT"
+  mkdir -p "$FIXTURE_ROOT/Media Projects" "$FIXTURE_ROOT/Caches/BuildCache" "$FIXTURE_ROOT/Downloads" "$FIXTURE_ROOT/Archives" "$FIXTURE_ROOT/Duplicates"
+
+  write_sized_file "$FIXTURE_ROOT/Media Projects/interview-master.mov" 1450000000
+  write_sized_file "$FIXTURE_ROOT/Media Projects/render-preview.mov" 560000000
+  write_sized_file "$FIXTURE_ROOT/Caches/BuildCache/module-cache.bin" 240000000
+  write_sized_file "$FIXTURE_ROOT/Downloads/StorageScope-demo.dmg" 320000000
+  write_sized_file "$FIXTURE_ROOT/Archives/release-backup.zip" 180000000
+  write_sized_file "$FIXTURE_ROOT/Duplicates/copy-a.bin" 125000000
+  cp "$FIXTURE_ROOT/Duplicates/copy-a.bin" "$FIXTURE_ROOT/Duplicates/copy-b.bin"
+  touch -t 202401010101 "$FIXTURE_ROOT/Media Projects/interview-master.mov"
+
+  echo "$FIXTURE_ROOT"
 }
 
 case "$MODE" in
@@ -133,6 +157,11 @@ case "$MODE" in
     open_app
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
+  --fixture-scan|fixture-scan)
+    fixture_path="$(prepare_fixture_scan_root)"
+    open_app --env "STORAGESCOPE_ENABLE_DEVELOPER_SCAN=1" --env "STORAGESCOPE_DEVELOPER_SCAN_PATH=$fixture_path"
+    echo "$fixture_path"
+    ;;
   --verify|verify)
     if command -v codesign >/dev/null 2>&1; then
       codesign --verify --deep --strict "$APP_BUNDLE"
@@ -145,7 +174,7 @@ case "$MODE" in
     echo "$APP_BUNDLE"
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify|--build-only]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan|--verify|--build-only]" >&2
     exit 2
     ;;
 esac

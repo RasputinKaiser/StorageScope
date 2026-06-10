@@ -27,6 +27,7 @@ final class ScanStore: ObservableObject {
     @Published var ignoredCleanupCandidateIDs = Set<String>()
     @Published private(set) var recentScanPaths: [String]
     @Published private var appliedScanOptions: ScanOptionsSnapshot?
+    @Published private var resultsNeedRefresh = false
 
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
@@ -81,10 +82,13 @@ final class ScanStore: ObservableObject {
     }
 
     var scanOptionsStatusText: String? {
-        guard scanOptionsAreStale else {
-            return nil
+        if scanOptionsAreStale {
+            return "Rescan to apply scan options"
         }
-        return "Rescan to apply scan options"
+        if resultsNeedRefresh {
+            return "Rescan to refresh results"
+        }
+        return nil
     }
 
     var activeDisplayFilterDescriptions: [String] {
@@ -157,6 +161,11 @@ final class ScanStore: ObservableObject {
 
     func scanVolume(_ url: URL) {
         chooseFolderAndScan(startingAt: url)
+    }
+
+    func scanDeveloperFixturePath(_ path: String) {
+        let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        scan(url)
     }
 
     func forgetRecentScanPath(_ path: String) {
@@ -236,6 +245,7 @@ final class ScanStore: ObservableObject {
         selectedCleanupCandidateIDs.removeAll()
         ignoredCleanupCandidateIDs.removeAll()
         errorMessage = nil
+        resultsNeedRefresh = false
         isScanning = true
         progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: url.path)
 
@@ -512,9 +522,10 @@ final class ScanStore: ObservableObject {
 
         do {
             try FileActionService.moveToTrashTransactionally(urls)
+            ignoredCleanupCandidateIDs.formUnion(candidates.map(\.id))
             selectedCleanupCandidateIDs.removeAll()
             selectedItemID = nil
-            rescan()
+            markResultsNeedRefresh()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -570,7 +581,7 @@ final class ScanStore: ObservableObject {
         do {
             try FileActionService.moveToTrash(selectedItem.url)
             selectedItemID = nil
-            rescan()
+            markResultsNeedRefresh()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -624,6 +635,15 @@ final class ScanStore: ObservableObject {
         case .suggestions:
             return !(candidate.kind == .verifiedDuplicate && candidate.confidence == .high)
         }
+    }
+
+    private func markResultsNeedRefresh() {
+        resultsNeedRefresh = true
+        progress = ScanProgress(
+            scannedItemCount: scan?.scannedItemCount ?? progress.scannedItemCount,
+            totalBytes: scan?.totalBytes ?? progress.totalBytes,
+            currentPath: "Results changed; rescan when ready"
+        )
     }
 
     private func abandonActiveScan() {

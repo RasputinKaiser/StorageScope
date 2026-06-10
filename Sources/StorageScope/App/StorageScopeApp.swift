@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMainMenu()
         showMainWindow()
+        scanDeveloperFixtureIfRequested()
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -129,6 +130,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         toolbar.allowsUserCustomization = true
         toolbar.displayMode = .iconAndLabel
         return toolbar
+    }
+
+    private func scanDeveloperFixtureIfRequested() {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["STORAGESCOPE_ENABLE_DEVELOPER_SCAN"] == "1",
+              let path = environment["STORAGESCOPE_DEVELOPER_SCAN_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else {
+            return
+        }
+
+        store.scanDeveloperFixturePath(path)
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
