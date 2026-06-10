@@ -8,6 +8,7 @@ fi
 FIXTURE_MARK_STALE="0"
 FIXTURE_WITH_DUPLICATES="0"
 FIXTURE_SELECTED_VIEW=""
+FIXTURE_SELECT_VERIFIED_CLEANUP="0"
 APP_NAME="StorageScope"
 BUNDLE_ID="com.rasputinkaiser.StorageScope"
 MIN_SYSTEM_VERSION="14.0"
@@ -48,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       fi
       FIXTURE_SELECTED_VIEW="$2"
       shift 2
+      ;;
+    --select-verified-cleanup)
+      FIXTURE_SELECT_VERIFIED_CLEANUP="1"
+      shift
       ;;
     *)
       echo "unknown option: $1" >&2
@@ -211,6 +216,9 @@ case "$MODE" in
     if [[ -n "$FIXTURE_SELECTED_VIEW" ]]; then
       open_args+=(--env "STORAGESCOPE_DEVELOPER_SELECTED_VIEW=$FIXTURE_SELECTED_VIEW")
     fi
+    if [[ "$FIXTURE_SELECT_VERIFIED_CLEANUP" == "1" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_SELECT_VERIFIED_CLEANUP=1")
+    fi
     open_app "${open_args[@]}"
     echo "$fixture_path"
     ;;
@@ -226,7 +234,7 @@ case "$MODE" in
     echo "$APP_BUNDLE"
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale] [--duplicates] [--view smartView]|--verify|--build-only]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale] [--duplicates] [--view smartView] [--select-verified-cleanup]|--verify|--build-only]" >&2
     exit 2
     ;;
 esac

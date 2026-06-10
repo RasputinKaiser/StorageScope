@@ -30,6 +30,7 @@ final class ScanStore: ObservableObject {
     @Published private var resultsNeedRefresh = false
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?
+    private var selectVerifiedCleanupWhenCurrentScanCompletes = false
 
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
@@ -178,11 +179,13 @@ final class ScanStore: ObservableObject {
     func scanDeveloperFixturePath(
         _ path: String,
         markResultsNeedRefreshWhenComplete: Bool = false,
-        selectedViewWhenComplete: SmartView? = nil
+        selectedViewWhenComplete: SmartView? = nil,
+        selectVerifiedCleanupWhenComplete: Bool = false
     ) {
         let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
         markResultsNeedRefreshWhenCurrentScanCompletes = markResultsNeedRefreshWhenComplete
         selectedViewWhenCurrentScanCompletes = selectedViewWhenComplete
+        selectVerifiedCleanupWhenCurrentScanCompletes = selectVerifiedCleanupWhenComplete
         scan(url)
     }
 
@@ -321,6 +324,10 @@ final class ScanStore: ObservableObject {
                     resultsNeedRefresh = true
                     markResultsNeedRefreshWhenCurrentScanCompletes = false
                 }
+                if selectVerifiedCleanupWhenCurrentScanCompletes {
+                    selectVerifiedCleanupCandidates()
+                    selectVerifiedCleanupWhenCurrentScanCompletes = false
+                }
                 selectedView = selectedViewWhenCurrentScanCompletes ?? .overview
                 selectedViewWhenCurrentScanCompletes = nil
                 selectedItemID = result.rootItem.id
@@ -338,6 +345,7 @@ final class ScanStore: ObservableObject {
                 isScanning = false
                 markResultsNeedRefreshWhenCurrentScanCompletes = false
                 selectedViewWhenCurrentScanCompletes = nil
+                selectVerifiedCleanupWhenCurrentScanCompletes = false
                 progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Scan cancelled")
                 clearActiveScan(scanID, cancellation: scanCancellation)
             } catch {
@@ -347,6 +355,7 @@ final class ScanStore: ObservableObject {
                 isScanning = false
                 markResultsNeedRefreshWhenCurrentScanCompletes = false
                 selectedViewWhenCurrentScanCompletes = nil
+                selectVerifiedCleanupWhenCurrentScanCompletes = false
                 errorMessage = error.localizedDescription
                 clearActiveScan(scanID, cancellation: scanCancellation)
             }

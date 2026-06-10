@@ -27,26 +27,33 @@ struct CleanupReviewView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        Button("Select Verified") {
+                        Button("Verified") {
                             store.selectVerifiedCleanupCandidates()
                         }
+                        .help("Select verified duplicate cleanup items")
                         .disabled(store.verifiedCleanupCandidates.isEmpty)
 
                         Button("Clear") {
                             store.clearCleanupSelection()
                         }
+                        .help("Clear cleanup selection")
                         .disabled(store.selectedCleanupCandidates.isEmpty)
 
                         Button(role: .destructive) {
                             store.moveSelectedCleanupCandidatesToTrash()
                         } label: {
-                            Label("Move Selected", systemImage: "trash")
+                            Label("Move", systemImage: "trash")
                         }
+                        .help("Move selected cleanup items to Trash")
                         .disabled(store.selectedCleanupCandidates.isEmpty)
                     }
                 }
 
                 CleanupLaneControl(store: store)
+
+                if !store.cleanupCandidates.isEmpty {
+                    CleanupSelectionSummary(store: store)
+                }
 
                 if store.selectedCleanupBatchContainsReviewRisk {
                     Label("Selection includes review-suggested items. Confirm each path before moving it to Trash.", systemImage: "exclamationmark.triangle.fill")
@@ -78,6 +85,86 @@ struct CleanupReviewView: View {
             }
             .padding(20)
         }
+    }
+}
+
+private struct CleanupSelectionSummary: View {
+    @ObservedObject var store: ScanStore
+
+    private var selectedCandidates: [CleanupCandidate] {
+        store.selectedCleanupCandidates
+    }
+
+    private var batchCandidates: [CleanupCandidate] {
+        store.selectedCleanupBatchCandidates
+    }
+
+    private var selectedCountText: String {
+        if selectedCandidates.count == batchCandidates.count {
+            return "\(batchCandidates.count.formatted()) selected"
+        }
+        return "\(batchCandidates.count.formatted()) top-level of \(selectedCandidates.count.formatted()) selected"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: selectedCandidates.isEmpty ? "circle.dashed" : statusIcon)
+                .font(.title3)
+                .foregroundStyle(statusTint)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            if !selectedCandidates.isEmpty {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(StorageFormat.bytes(store.selectedReclaimableBytes))
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold).monospacedDigit())
+                    Text("selected reclaim")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(statusTint.opacity(selectedCandidates.isEmpty ? 0.08 : 0.12), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var title: String {
+        guard !selectedCandidates.isEmpty else {
+            return "No cleanup items selected"
+        }
+        return "\(selectedCountText) for Trash review"
+    }
+
+    private var detail: String {
+        guard !selectedCandidates.isEmpty else {
+            return "Use Select Verified for content-matched duplicates, or choose individual rows after checking their paths."
+        }
+        if store.selectedCleanupBatchContainsReviewRisk {
+            return "This batch includes review-suggested items. Confirm every path before moving it to Trash."
+        }
+        return "Verified duplicate batch only. StorageScope will still ask for confirmation before moving anything to Trash."
+    }
+
+    private var statusIcon: String {
+        store.selectedCleanupBatchContainsReviewRisk ? "exclamationmark.triangle.fill" : "checkmark.seal.fill"
+    }
+
+    private var statusTint: Color {
+        if selectedCandidates.isEmpty {
+            return .secondary
+        }
+        return store.selectedCleanupBatchContainsReviewRisk ? .orange : .green
     }
 }
 
