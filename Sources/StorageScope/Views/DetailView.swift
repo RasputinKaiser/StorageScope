@@ -268,6 +268,19 @@ private struct FilterBarView: View {
         }
     }
 
+    private var sortControl: some View {
+        HStack(spacing: 6) {
+            Text("Sort")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            sortPicker
+                .labelsHidden()
+                .frame(width: 128)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     private var wideControls: some View {
         HStack(alignment: .center, spacing: 16) {
             HStack(spacing: 10) {
@@ -276,8 +289,7 @@ private struct FilterBarView: View {
                 sizePicker
                     .frame(maxWidth: 430)
 
-                sortPicker
-                    .frame(width: 128)
+                sortControl
             }
 
             Divider()
@@ -306,8 +318,7 @@ private struct FilterBarView: View {
                 sizePicker
                     .frame(maxWidth: 430)
 
-                sortPicker
-                    .frame(width: 128)
+                sortControl
 
                 Spacer(minLength: 0)
             }
