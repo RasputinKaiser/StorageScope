@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "StorageScope",
             .applicationVersion: "0.1.0",
-            .credits: NSAttributedString(string: "A sandboxed local-first storage explorer for finding large folders, stale files, and verified duplicate candidates.")
+            .credits: NSAttributedString(string: "A local-first Mac storage map for reviewing large folders, verified duplicates, cleanup suggestions, and safer reclaim decisions.")
         ])
     }
 

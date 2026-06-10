@@ -57,11 +57,16 @@ private struct WelcomeView: View {
                 .foregroundStyle(.tint)
 
             VStack(spacing: 8) {
-                Text("Find the storage that actually matters")
+                Text("StorageScope")
                     .font(.largeTitle.weight(.semibold))
                     .multilineTextAlignment(.center)
 
-                Text("Map a folder locally, review verified duplicates separately from suggestions, and reclaim space through macOS Trash when you are ready.")
+                Text("Map. Review. Reclaim.")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Text("A local Mac storage map for finding large folders, separating verified duplicates from suggestions, and reclaiming space through macOS Trash when you are ready.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
