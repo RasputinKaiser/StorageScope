@@ -28,6 +28,7 @@ final class ScanStore: ObservableObject {
     @Published private(set) var recentScanPaths: [String]
     @Published private var appliedScanOptions: ScanOptionsSnapshot?
     @Published private var resultsNeedRefresh = false
+    private var markResultsNeedRefreshWhenCurrentScanCompletes = false
 
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
@@ -87,6 +88,16 @@ final class ScanStore: ObservableObject {
         }
         if resultsNeedRefresh {
             return "Rescan to refresh results"
+        }
+        return nil
+    }
+
+    var scanNoticeText: String? {
+        if scanOptionsAreStale {
+            return "Scan options changed. Current results still reflect the previous hidden-file and age settings."
+        }
+        if resultsNeedRefresh {
+            return "Results changed after moving items to Trash. Review can continue, or rescan when you are ready."
         }
         return nil
     }
@@ -163,8 +174,9 @@ final class ScanStore: ObservableObject {
         chooseFolderAndScan(startingAt: url)
     }
 
-    func scanDeveloperFixturePath(_ path: String) {
+    func scanDeveloperFixturePath(_ path: String, markResultsNeedRefreshWhenComplete: Bool = false) {
         let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        markResultsNeedRefreshWhenCurrentScanCompletes = markResultsNeedRefreshWhenComplete
         scan(url)
     }
 
@@ -299,6 +311,10 @@ final class ScanStore: ObservableObject {
 
                 scan = result
                 appliedScanOptions = optionsSnapshot
+                if markResultsNeedRefreshWhenCurrentScanCompletes {
+                    resultsNeedRefresh = true
+                    markResultsNeedRefreshWhenCurrentScanCompletes = false
+                }
                 selectedView = .overview
                 selectedItemID = result.rootItem.id
                 progress = ScanProgress(
@@ -313,6 +329,7 @@ final class ScanStore: ObservableObject {
                     return
                 }
                 isScanning = false
+                markResultsNeedRefreshWhenCurrentScanCompletes = false
                 progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Scan cancelled")
                 clearActiveScan(scanID, cancellation: scanCancellation)
             } catch {
@@ -320,6 +337,7 @@ final class ScanStore: ObservableObject {
                     return
                 }
                 isScanning = false
+                markResultsNeedRefreshWhenCurrentScanCompletes = false
                 errorMessage = error.localizedDescription
                 clearActiveScan(scanID, cancellation: scanCancellation)
             }

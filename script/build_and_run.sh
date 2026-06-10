@@ -2,6 +2,7 @@
 set -euo pipefail
 
 MODE="${1:-run}"
+FIXTURE_STALE_MODE="${2:-}"
 APP_NAME="StorageScope"
 BUNDLE_ID="com.rasputinkaiser.StorageScope"
 MIN_SYSTEM_VERSION="14.0"
@@ -159,7 +160,11 @@ case "$MODE" in
     ;;
   --fixture-scan|fixture-scan)
     fixture_path="$(prepare_fixture_scan_root)"
-    open_app --env "STORAGESCOPE_ENABLE_DEVELOPER_SCAN=1" --env "STORAGESCOPE_DEVELOPER_SCAN_PATH=$fixture_path"
+    open_args=(--env "STORAGESCOPE_ENABLE_DEVELOPER_SCAN=1" --env "STORAGESCOPE_DEVELOPER_SCAN_PATH=$fixture_path")
+    if [[ "$FIXTURE_STALE_MODE" == "--mark-stale" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_MARK_RESULTS_STALE=1")
+    fi
+    open_app "${open_args[@]}"
     echo "$fixture_path"
     ;;
   --verify|verify)
@@ -174,7 +179,7 @@ case "$MODE" in
     echo "$APP_BUNDLE"
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan|--verify|--build-only]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale]|--verify|--build-only]" >&2
     exit 2
     ;;
 esac

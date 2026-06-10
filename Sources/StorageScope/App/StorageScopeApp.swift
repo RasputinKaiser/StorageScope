@@ -140,7 +140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             return
         }
 
-        store.scanDeveloperFixturePath(path)
+        store.scanDeveloperFixturePath(
+            path,
+            markResultsNeedRefreshWhenComplete: environment["STORAGESCOPE_DEVELOPER_MARK_RESULTS_STALE"] == "1"
+        )
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

@@ -12,6 +12,11 @@ struct DetailView: View {
                 VStack(spacing: 0) {
                     ScanHeaderView(store: store)
                     FilterBarView(store: store)
+                    if let notice = store.scanNoticeText {
+                        ScanNoticeView(text: notice) {
+                            store.rescan()
+                        }
+                    }
                     if store.hasActiveDisplayFilters {
                         ActiveDisplayFiltersView(store: store)
                     }
@@ -217,6 +222,37 @@ private struct MetricCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct ScanNoticeView: View {
+    let text: String
+    let rescan: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                .foregroundStyle(.orange)
+
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 12)
+
+            Button {
+                rescan()
+            } label: {
+                Label("Rescan", systemImage: "arrow.clockwise")
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
     }
 }
 
