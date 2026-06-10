@@ -1,0 +1,26 @@
+.build/
+.swiftpm/
+.codex/
+dist/
+exports/
+DerivedData/
+*.xcuserdata/
+*.xcuserstate
+.DS_Store
+state.yaml
+
+# Local Apple signing and upload artifacts.
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+*.xcarchive
+*.ipa
+*.pkg
+
+# Local/private release and agent handoff notes.
+AGENT_REVIEW_ALERT.md
+APP_STORE_READINESS.md
+COMPLETION_AUDIT.md
+DIRECT_DISTRIBUTION_LOCAL.md

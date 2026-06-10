@@ -1,0 +1,568 @@
+import AppKit
+import Foundation
+import StorageScopeCore
+
+@MainActor
+final class ScanStore: ObservableObject {
+    private static let recentScanPathsKey = "StorageScope.recentScanPaths"
+
+    @Published var selectedView: SmartView? = .overview
+    @Published var selectedItemID: String?
+    @Published var scan: StorageScan?
+    @Published var isScanning = false
+    @Published var progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "")
+    @Published var query = ""
+    @Published var sizeFilter: SizeFilter = .all
+    @Published var sortOption: ItemSortOption = .sizeDescending
+    @Published var includeHiddenFiles = false
+    @Published var oldFileAgeDays = 180
+    @Published var errorMessage: String?
+    @Published var selectedCleanupCandidateIDs = Set<String>()
+    @Published var ignoredCleanupCandidateIDs = Set<String>()
+    @Published private(set) var recentScanPaths: [String]
+
+    private var activeScanID: UUID?
+    private var cancellation: ScanCancellation?
+    private var scanTask: Task<Void, Never>?
+    private var lastScannedURL: URL?
+    private let bookmarkStore = SecurityScopedBookmarkStore()
+    private var activeRootAccess: SecurityScopedResourceAccess?
+
+    init() {
+        recentScanPaths = UserDefaults.standard.stringArray(forKey: Self.recentScanPathsKey) ?? []
+    }
+
+    var activeView: SmartView {
+        selectedView ?? .overview
+    }
+
+    var selectedItem: StorageItem? {
+        guard let scan else {
+            return nil
+        }
+        guard let selectedItemID else {
+            return scan.rootItem
+        }
+
+        return scan.lookupItem(id: selectedItemID)
+    }
+
+    var canRescan: Bool {
+        lastScannedURL != nil && !isScanning
+    }
+
+    func chooseFolderAndScan(startingAt directoryURL: URL? = nil) {
+        guard let url = FileActionService.chooseFolder(startingAt: directoryURL) else {
+            return
+        }
+        scanUserGrantedURL(url)
+    }
+
+    func scanHome() {
+        chooseFolderAndScan(
+            startingAt: FileManager.default.homeDirectoryForCurrentUser
+        )
+    }
+
+    func scanDocuments() {
+        chooseFolderAndScan(
+            startingAt: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        )
+    }
+
+    func scanDownloads() {
+        chooseFolderAndScan(
+            startingAt: FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        )
+    }
+
+    func scanRecentPath(_ path: String) {
+        do {
+            guard let resolvedURL = try bookmarkStore.resolve(path: path) else {
+                errorMessage = "StorageScope needs you to choose this folder again before rescanning it in the sandbox."
+                chooseFolderAndScan(startingAt: URL(fileURLWithPath: path, isDirectory: true))
+                return
+            }
+
+            scanUserGrantedURL(resolvedURL.url, access: resolvedURL.access)
+        } catch {
+            errorMessage = "StorageScope could not reopen this folder bookmark. Choose it again to refresh access. \(error.localizedDescription)"
+            chooseFolderAndScan(startingAt: URL(fileURLWithPath: path, isDirectory: true))
+        }
+    }
+
+    func scanVolume(_ url: URL) {
+        chooseFolderAndScan(startingAt: url)
+    }
+
+    var mountedVolumes: [URL] {
+        let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsInternalKey]
+        return FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: keys,
+            options: [.skipHiddenVolumes]
+        )?
+        .filter { url in
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            return values?.volumeIsBrowsable ?? true
+        }
+        .sorted { lhs, rhs in
+            lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
+        } ?? []
+    }
+
+    func rescan() {
+        guard let lastScannedURL else {
+            chooseFolderAndScan()
+            return
+        }
+
+        do {
+            if let resolvedURL = try bookmarkStore.resolve(path: lastScannedURL.standardizedFileURL.path) {
+                scanUserGrantedURL(resolvedURL.url, access: resolvedURL.access)
+            } else {
+                chooseFolderAndScan(startingAt: lastScannedURL)
+            }
+        } catch {
+            errorMessage = "StorageScope needs refreshed access before rescanning. \(error.localizedDescription)"
+            chooseFolderAndScan(startingAt: lastScannedURL)
+        }
+    }
+
+    func cancelScan() {
+        guard let cancelledScanID = activeScanID else {
+            return
+        }
+
+        cancellation?.cancel()
+        scanTask?.cancel()
+
+        if activeScanID == cancelledScanID {
+            activeScanID = nil
+            cancellation = nil
+            scanTask = nil
+            isScanning = false
+            progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Scan cancelled")
+        }
+    }
+
+    private func scanUserGrantedURL(_ url: URL, access: SecurityScopedResourceAccess? = nil) {
+        let scopedAccess = access ?? SecurityScopedResourceAccess(url: url)
+        replaceActiveRootAccess(with: scopedAccess)
+        bookmarkStore.remember(url)
+        scan(url)
+    }
+
+    private func scan(_ url: URL) {
+        abandonActiveScan()
+
+        rememberScanURL(url)
+        lastScannedURL = url
+        selectedItemID = nil
+        selectedCleanupCandidateIDs.removeAll()
+        ignoredCleanupCandidateIDs.removeAll()
+        errorMessage = nil
+        isScanning = true
+        progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: url.path)
+
+        let scanID = UUID()
+        let options = ScanOptions(
+            includeHidden: includeHiddenFiles,
+            oldFileAgeDays: oldFileAgeDays,
+            largeFileThreshold: max(sizeFilter.threshold, 1_000_000_000),
+            duplicateCandidateThreshold: max(sizeFilter.threshold, 100_000_000),
+            maxRankedResults: 800
+        )
+        let scanCancellation = ScanCancellation()
+        activeScanID = scanID
+        cancellation = scanCancellation
+
+        scanTask = Task { [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<StorageScan, Error>) in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            let scanner = FileSystemScanner()
+                            let scan = try scanner.scan(
+                                root: url,
+                                options: options,
+                                cancellation: scanCancellation,
+                                progress: { progress in
+                                    Task { @MainActor [weak self, scanID, scanCancellation] in
+                                        guard let self, self.isCurrentScan(scanID, cancellation: scanCancellation) else {
+                                            return
+                                        }
+                                        self.progress = progress
+                                    }
+                                }
+                            )
+                            continuation.resume(returning: scan)
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
+
+                guard !Task.isCancelled, isCurrentScan(scanID, cancellation: scanCancellation) else {
+                    return
+                }
+
+                scan = result
+                selectedView = .overview
+                selectedItemID = result.rootItem.id
+                progress = ScanProgress(
+                    scannedItemCount: result.scannedItemCount,
+                    totalBytes: result.totalBytes,
+                    currentPath: "Scan complete"
+                )
+                isScanning = false
+                clearActiveScan(scanID, cancellation: scanCancellation)
+            } catch FileSystemScannerError.cancelled {
+                guard isCurrentScan(scanID, cancellation: scanCancellation) else {
+                    return
+                }
+                isScanning = false
+                progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Scan cancelled")
+                clearActiveScan(scanID, cancellation: scanCancellation)
+            } catch {
+                guard isCurrentScan(scanID, cancellation: scanCancellation) else {
+                    return
+                }
+                isScanning = false
+                errorMessage = error.localizedDescription
+                clearActiveScan(scanID, cancellation: scanCancellation)
+            }
+        }
+    }
+
+    func items(for view: SmartView) -> [StorageItem] {
+        guard let scan else {
+            return []
+        }
+
+        let baseItems: [StorageItem]
+        switch view {
+        case .overview:
+            baseItems = Array(scan.rootItem.children.prefix(100))
+        case .cleanupReview:
+            baseItems = cleanupCandidates.map(\.item)
+        case .tree:
+            baseItems = [scan.rootItem]
+        case .largestFolders:
+            baseItems = scan.largestFolders
+        case .largestFiles:
+            baseItems = scan.largestFiles
+        case .oldLargeFiles:
+            baseItems = oldLargeFiles
+        case .typeBreakdown:
+            baseItems = []
+        case .duplicateCandidates:
+            baseItems = duplicateGroups.flatMap(\.items)
+        }
+
+        return filtered(baseItems)
+    }
+
+    var oldLargeFiles: [StorageItem] {
+        guard let scan else {
+            return []
+        }
+        return filtered(scan.oldLargeFiles.filter { $0.displaySize >= max(sizeFilter.threshold, 100_000_000) })
+    }
+
+    var duplicateGroups: [DuplicateSizeGroup] {
+        guard let scan else {
+            return []
+        }
+        return DuplicateReviewPlanner.unverifiedSizeGroups(
+            sizeGroups: scan.duplicateSizeGroups,
+            verifiedGroups: scan.verifiedDuplicateGroups
+        )
+            .filter { $0.byteSize >= max(sizeFilter.threshold, 100_000_000) }
+            .map { group in
+                DuplicateSizeGroup(byteSize: group.byteSize, items: filtered(group.items))
+            }
+            .filter { $0.items.count > 1 }
+    }
+
+    var verifiedDuplicateGroups: [VerifiedDuplicateGroup] {
+        guard let scan else {
+            return []
+        }
+        return scan.verifiedDuplicateGroups
+            .filter { $0.byteSize >= sizeFilter.threshold }
+            .map { group in
+                VerifiedDuplicateGroup(
+                    checksum: group.checksum,
+                    byteSize: group.byteSize,
+                    items: filtered(group.items)
+                )
+            }
+            .filter { $0.items.count > 1 }
+    }
+
+    var cleanupCandidates: [CleanupCandidate] {
+        guard let scan else {
+            return []
+        }
+
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return scan.cleanupCandidates.filter { candidate in
+            guard !ignoredCleanupCandidateIDs.contains(candidate.id) else {
+                return false
+            }
+
+            let item = candidate.item
+            let passesSize = candidate.reclaimableBytes >= sizeFilter.threshold || item.displaySize >= sizeFilter.threshold
+            let passesQuery = trimmedQuery.isEmpty ||
+                item.name.localizedCaseInsensitiveContains(trimmedQuery) ||
+                item.url.path.localizedCaseInsensitiveContains(trimmedQuery) ||
+                candidate.reason.localizedCaseInsensitiveContains(trimmedQuery) ||
+                candidate.kind.displayName.localizedCaseInsensitiveContains(trimmedQuery)
+            return passesSize && passesQuery
+        }
+    }
+
+    var potentialReclaimableBytes: Int64 {
+        CleanupSelectionPlanner.topLevelCandidates(cleanupCandidates).reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+    }
+
+    var selectedCleanupCandidates: [CleanupCandidate] {
+        cleanupCandidates.filter { selectedCleanupCandidateIDs.contains($0.id) }
+    }
+
+    var selectedCleanupBatchCandidates: [CleanupCandidate] {
+        CleanupSelectionPlanner.topLevelCandidates(selectedCleanupCandidates)
+    }
+
+    var selectedReclaimableBytes: Int64 {
+        selectedCleanupBatchCandidates.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+    }
+
+    func toggleCleanupCandidate(_ candidate: CleanupCandidate) {
+        if selectedCleanupCandidateIDs.contains(candidate.id) {
+            selectedCleanupCandidateIDs.remove(candidate.id)
+        } else {
+            selectedCleanupCandidateIDs.insert(candidate.id)
+        }
+        selectedItemID = candidate.item.id
+    }
+
+    func selectAllCleanupCandidates() {
+        selectedCleanupCandidateIDs = Set(cleanupCandidates.map(\.id))
+    }
+
+    func clearCleanupSelection() {
+        selectedCleanupCandidateIDs.removeAll()
+    }
+
+    func ignoreCleanupCandidate(_ candidate: CleanupCandidate) {
+        ignoredCleanupCandidateIDs.insert(candidate.id)
+        selectedCleanupCandidateIDs.remove(candidate.id)
+    }
+
+    func moveSelectedCleanupCandidatesToTrash() {
+        let candidates = selectedCleanupBatchCandidates
+        guard !candidates.isEmpty else {
+            return
+        }
+
+        if candidates.count != selectedCleanupCandidates.count {
+            selectedCleanupCandidateIDs = Set(candidates.map(\.id))
+        }
+
+        let urls = candidates.map(\.item.url)
+        guard FileActionService.confirmTrash(urls: urls) else {
+            return
+        }
+
+        do {
+            try FileActionService.moveToTrashTransactionally(urls)
+            selectedCleanupCandidateIDs.removeAll()
+            selectedItemID = nil
+            rescan()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    var filteredTypeBreakdown: [FileTypeStat] {
+        guard let scan else {
+            return []
+        }
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return scan.typeBreakdown
+        }
+        return scan.typeBreakdown.filter {
+            $0.label.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    func revealSelectedItem() {
+        guard let selectedItem else {
+            return
+        }
+        FileActionService.reveal(selectedItem.url)
+    }
+
+    func openSelectedItem() {
+        guard let selectedItem else {
+            return
+        }
+        FileActionService.open(selectedItem.url)
+    }
+
+    func copySelectedPath() {
+        guard let selectedItem else {
+            return
+        }
+        FileActionService.copyPath(selectedItem.url)
+    }
+
+    func moveSelectedItemToTrash() {
+        guard let selectedItem else {
+            return
+        }
+
+        guard selectedItem.id != scan?.rootItem.id else {
+            errorMessage = "The scanned root cannot be moved to Trash from StorageScope."
+            return
+        }
+
+        guard FileActionService.confirmTrash(url: selectedItem.url) else {
+            return
+        }
+
+        do {
+            try FileActionService.moveToTrash(selectedItem.url)
+            selectedItemID = nil
+            rescan()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func filtered(_ items: [StorageItem]) -> [StorageItem] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return sorted(items.filter { item in
+            let passesSize = item.displaySize >= sizeFilter.threshold
+            let passesQuery = trimmedQuery.isEmpty ||
+                item.name.localizedCaseInsensitiveContains(trimmedQuery) ||
+                item.url.path.localizedCaseInsensitiveContains(trimmedQuery)
+            return passesSize && passesQuery
+        })
+    }
+
+    private func sorted(_ items: [StorageItem]) -> [StorageItem] {
+        items.sorted { lhs, rhs in
+            switch sortOption {
+            case .sizeDescending:
+                if lhs.displaySize == rhs.displaySize {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.displaySize > rhs.displaySize
+            case .nameAscending:
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            case .modifiedNewest:
+                return (lhs.modifiedAt ?? .distantPast) > (rhs.modifiedAt ?? .distantPast)
+            case .modifiedOldest:
+                return (lhs.modifiedAt ?? .distantFuture) < (rhs.modifiedAt ?? .distantFuture)
+            case .kind:
+                if lhs.kind == rhs.kind {
+                    return lhs.displaySize > rhs.displaySize
+                }
+                return StorageFormatless.kindLabel(lhs.kind) < StorageFormatless.kindLabel(rhs.kind)
+            }
+        }
+    }
+
+    private func abandonActiveScan() {
+        cancellation?.cancel()
+        scanTask?.cancel()
+        activeScanID = nil
+        cancellation = nil
+        scanTask = nil
+    }
+
+    private func rememberScanURL(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        recentScanPaths.removeAll { $0 == path }
+        recentScanPaths.insert(path, at: 0)
+        recentScanPaths = Array(recentScanPaths.prefix(8))
+        UserDefaults.standard.set(recentScanPaths, forKey: Self.recentScanPathsKey)
+    }
+
+    private func replaceActiveRootAccess(with access: SecurityScopedResourceAccess) {
+        activeRootAccess?.stop()
+        activeRootAccess = access
+    }
+
+    private func isCurrentScan(_ scanID: UUID, cancellation scanCancellation: ScanCancellation) -> Bool {
+        activeScanID == scanID && cancellation === scanCancellation
+    }
+
+    private func clearActiveScan(_ scanID: UUID, cancellation scanCancellation: ScanCancellation) {
+        guard isCurrentScan(scanID, cancellation: scanCancellation) else {
+            return
+        }
+
+        activeScanID = nil
+        cancellation = nil
+        scanTask = nil
+    }
+}
+
+private enum StorageFormatless {
+    static func kindLabel(_ kind: StorageItem.Kind) -> String {
+        kind.rawValue
+    }
+}
+
+private extension StorageScan {
+    func lookupItem(id: String) -> StorageItem? {
+        if let treeItem = allItems.first(where: { $0.id == id }) {
+            return treeItem
+        }
+
+        if let rankedItem = (largestFiles + largestFolders + oldLargeFiles).first(where: { $0.id == id }) {
+            return rankedItem
+        }
+
+        for group in duplicateSizeGroups where group.items.contains(where: { $0.id == id }) {
+            return group.items.first { $0.id == id }
+        }
+
+        for group in verifiedDuplicateGroups where group.items.contains(where: { $0.id == id }) {
+            return group.items.first { $0.id == id }
+        }
+
+        return cleanupCandidates.first { $0.item.id == id }?.item
+    }
+}
+
+private extension CleanupCandidate.Kind {
+    var displayName: String {
+        switch self {
+        case .verifiedDuplicate:
+            return "Verified Duplicate"
+        case .oldLargeFile:
+            return "Old Large File"
+        case .archive:
+            return "Archive"
+        case .installer:
+            return "Installer"
+        case .diskImage:
+            return "Disk Image"
+        case .cacheFolder:
+            return "Cache Folder"
+        case .buildArtifact:
+            return "Build Artifact"
+        case .temporary:
+            return "Temporary"
+        }
+    }
+}

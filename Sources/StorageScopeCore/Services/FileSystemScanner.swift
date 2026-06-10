@@ -1,0 +1,701 @@
+import CryptoKit
+import Foundation
+
+public enum FileSystemScannerError: LocalizedError {
+    case cancelled
+    case rootDoesNotExist(URL)
+
+    public var errorDescription: String? {
+        switch self {
+        case .cancelled:
+            return "The scan was cancelled."
+        case .rootDoesNotExist(let url):
+            return "The folder does not exist: \(url.path)"
+        }
+    }
+}
+
+public final class ScanCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    public init() {}
+
+    public func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    public func check() throws {
+        lock.lock()
+        let shouldCancel = cancelled
+        lock.unlock()
+
+        if shouldCancel {
+            throw FileSystemScannerError.cancelled
+        }
+    }
+}
+
+public final class FileSystemScanner {
+    public typealias ProgressHandler = (ScanProgress) -> Void
+
+    private let fileManager: FileManager
+    private let resourceKeys: Set<URLResourceKey> = [
+        .isDirectoryKey,
+        .isRegularFileKey,
+        .isPackageKey,
+        .isSymbolicLinkKey,
+        .isReadableKey,
+        .isHiddenKey,
+        .fileSizeKey,
+        .fileAllocatedSizeKey,
+        .totalFileAllocatedSizeKey,
+        .contentModificationDateKey
+    ]
+
+    public init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    public func scan(
+        root rootURL: URL,
+        options: ScanOptions = ScanOptions(),
+        cancellation: ScanCancellation? = nil,
+        progress: ProgressHandler? = nil
+    ) throws -> StorageScan {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory) else {
+            throw FileSystemScannerError.rootDoesNotExist(rootURL)
+        }
+
+        let startedAt = Date()
+        let accumulator = ScanAccumulator(options: options, progress: progress)
+        let rootItem = try scanItem(
+            at: rootURL,
+            options: options,
+            cancellation: cancellation,
+            accumulator: accumulator
+        )
+        let allItems = rootItem.flattened()
+        let duplicateSizeGroups = accumulator.duplicateSizeGroups
+        let verifiedDuplicateGroups = try verifiedDuplicateGroups(
+            from: duplicateSizeGroups,
+            options: options,
+            accumulator: accumulator,
+            cancellation: cancellation
+        )
+        let finishedAt = Date()
+
+        return StorageScan(
+            rootURL: rootURL,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            rootItem: rootItem,
+            allItems: allItems,
+            scannedItemCount: accumulator.scannedItemCount,
+            inaccessibleItemCount: accumulator.inaccessibleItemCount,
+            totalBytes: rootItem.displaySize,
+            largestFiles: accumulator.largestFiles,
+            largestFolders: accumulator.largestFolders(excluding: rootItem.id),
+            oldLargeFiles: accumulator.oldLargeFiles,
+            typeBreakdown: accumulator.typeBreakdown,
+            duplicateSizeGroups: duplicateSizeGroups,
+            verifiedDuplicateGroups: verifiedDuplicateGroups,
+            cleanupCandidates: accumulator.cleanupCandidates(
+                rootID: rootItem.id,
+                verifiedDuplicateGroups: verifiedDuplicateGroups,
+                limit: options.maxRankedResults
+            )
+        )
+    }
+
+    private func scanItem(
+        at url: URL,
+        options: ScanOptions,
+        cancellation: ScanCancellation?,
+        accumulator: ScanAccumulator
+    ) throws -> StorageItem {
+        try cancellation?.check()
+
+        let values = try? url.resourceValues(forKeys: resourceKeys)
+        let isHidden = values?.isHidden ?? false
+        if isHidden && !options.includeHidden {
+            return StorageItem(
+                url: url,
+                kind: .other,
+                byteSize: 0,
+                allocatedSize: 0,
+                modifiedAt: values?.contentModificationDate,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                isReadable: false,
+                fileExtension: nil
+            )
+        }
+
+        accumulator.recordVisit(path: url.path)
+
+        if values?.isSymbolicLink == true {
+            let size = Int64(values?.fileSize ?? 0)
+            accumulator.recordBytes(size)
+            let item = StorageItem(
+                url: url,
+                kind: .alias,
+                byteSize: size,
+                allocatedSize: size,
+                modifiedAt: values?.contentModificationDate,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                isReadable: values?.isReadable ?? true,
+                fileExtension: url.pathExtension.nonEmptyLowercased
+            )
+            accumulator.recordItem(item)
+            return item
+        }
+
+        let isDirectory = values?.isDirectory == true
+        let isPackage = values?.isPackage == true
+
+        guard isDirectory else {
+            let logicalSize = Int64(values?.fileSize ?? 0)
+            let allocatedSize = Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? values?.fileSize ?? 0)
+            accumulator.recordBytes(max(logicalSize, allocatedSize))
+
+            let item = StorageItem(
+                url: url,
+                kind: values?.isRegularFile == true ? .file : .other,
+                byteSize: logicalSize,
+                allocatedSize: allocatedSize,
+                modifiedAt: values?.contentModificationDate,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                isReadable: values?.isReadable ?? true,
+                fileExtension: url.pathExtension.nonEmptyLowercased
+            )
+            accumulator.recordItem(item)
+            return item
+        }
+
+        do {
+            let directoryOptions: FileManager.DirectoryEnumerationOptions = options.includeHidden ? [] : [.skipsHiddenFiles]
+            let childURLs = try fileManager.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: Array(resourceKeys),
+                options: directoryOptions
+            )
+
+            let scannedChildren = try childURLs
+                .map { childURL in
+                    try scanItem(
+                        at: childURL,
+                        options: options,
+                        cancellation: cancellation,
+                        accumulator: accumulator
+                    )
+                }
+                .filter { $0.kind != .other || $0.displaySize > 0 }
+                .sorted { lhs, rhs in
+                    if lhs.displaySize == rhs.displaySize {
+                        return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                    }
+                    return lhs.displaySize > rhs.displaySize
+                }
+
+            let logicalSize = scannedChildren.reduce(Int64(0)) { $0 + $1.byteSize }
+            let allocatedSize = scannedChildren.reduce(Int64(0)) { $0 + $1.allocatedSize }
+            let descendantCount = scannedChildren.reduce(scannedChildren.count) { $0 + $1.descendantCount }
+            let retainedChildren = accumulator.retainedChildren(from: scannedChildren)
+
+            let item = StorageItem(
+                url: url,
+                kind: isPackage ? .package : .folder,
+                byteSize: logicalSize,
+                allocatedSize: allocatedSize,
+                modifiedAt: values?.contentModificationDate,
+                immediateChildCount: scannedChildren.count,
+                descendantCount: descendantCount,
+                children: retainedChildren,
+                isReadable: values?.isReadable ?? true,
+                fileExtension: isPackage ? url.pathExtension.nonEmptyLowercased : nil
+            )
+            accumulator.recordItem(item)
+            return item
+        } catch FileSystemScannerError.cancelled {
+            throw FileSystemScannerError.cancelled
+        } catch {
+            accumulator.recordInaccessible(path: url.path)
+            let item = StorageItem(
+                url: url,
+                kind: .inaccessible,
+                byteSize: 0,
+                allocatedSize: 0,
+                modifiedAt: values?.contentModificationDate,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                isReadable: false,
+                fileExtension: nil
+            )
+            accumulator.recordItem(item)
+            return item
+        }
+    }
+
+    private func verifiedDuplicateGroups(
+        from sizeGroups: [DuplicateSizeGroup],
+        options: ScanOptions,
+        accumulator: ScanAccumulator,
+        cancellation: ScanCancellation?
+    ) throws -> [VerifiedDuplicateGroup] {
+        var verifiedGroups: [VerifiedDuplicateGroup] = []
+        let verificationGroups = duplicateGroupsWithinVerificationBudget(sizeGroups, options: options)
+
+        if verificationGroups.count < sizeGroups.count {
+            accumulator.recordPhase(
+                path: "Duplicate verification capped to \(verificationGroups.count) of \(sizeGroups.count) size groups"
+            )
+        }
+
+        for (groupIndex, sizeGroup) in verificationGroups.enumerated() {
+            try cancellation?.check()
+
+            var hashedItems: [HashedStorageItem] = []
+            for item in sizeGroup.items {
+                try cancellation?.check()
+                accumulator.recordPhase(
+                    path: "Verifying duplicates \(groupIndex + 1)/\(verificationGroups.count): \(item.name)"
+                )
+                guard let checksum = try? sha256Checksum(for: item.url, cancellation: cancellation) else {
+                    continue
+                }
+                hashedItems.append(HashedStorageItem(checksum: checksum, item: item))
+            }
+
+            let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
+            let verifiedForSize = groupedByHash.compactMap { checksum, hashedItems -> VerifiedDuplicateGroup? in
+                let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
+                return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: sizeGroup.byteSize, items: items) : nil
+            }
+
+            verifiedGroups.append(contentsOf: verifiedForSize)
+        }
+
+        return verifiedGroups.sorted { lhs, rhs in
+            if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                return lhs.byteSize > rhs.byteSize
+            }
+            return lhs.reclaimableBytes > rhs.reclaimableBytes
+        }
+    }
+
+    private func duplicateGroupsWithinVerificationBudget(
+        _ sizeGroups: [DuplicateSizeGroup],
+        options: ScanOptions
+    ) -> [DuplicateSizeGroup] {
+        guard options.duplicateVerificationByteLimit > 0, options.maxDuplicateVerificationFiles > 0 else {
+            return []
+        }
+
+        var plannedGroups: [DuplicateSizeGroup] = []
+        var plannedBytes: Int64 = 0
+        var plannedFiles = 0
+
+        for group in sizeGroups {
+            let nextBytes = plannedBytes + group.totalBytes
+            let nextFiles = plannedFiles + group.items.count
+            guard nextBytes <= options.duplicateVerificationByteLimit,
+                  nextFiles <= options.maxDuplicateVerificationFiles else {
+                continue
+            }
+
+            plannedGroups.append(group)
+            plannedBytes = nextBytes
+            plannedFiles = nextFiles
+        }
+
+        return plannedGroups
+    }
+
+    private func sha256Checksum(for url: URL, cancellation: ScanCancellation?) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        while true {
+            try cancellation?.check()
+            let data = try handle.read(upToCount: 1_048_576) ?? Data()
+            if data.isEmpty {
+                break
+            }
+            hasher.update(data: data)
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private struct HashedStorageItem {
+    let checksum: String
+    let item: StorageItem
+}
+
+private extension CleanupCandidate.Confidence {
+    var sortRank: Int {
+        switch self {
+        case .high:
+            return 0
+        case .medium:
+            return 1
+        case .review:
+            return 2
+        }
+    }
+}
+
+private final class ScanAccumulator {
+    private struct FileTypeAccumulator {
+        var fileCount = 0
+        var totalBytes: Int64 = 0
+    }
+
+    private let options: ScanOptions
+    private let progress: FileSystemScanner.ProgressHandler?
+    private var lastProgressDate = Date.distantPast
+    private let oldFileCutoff: Date
+    private var retainedItemCount: Int
+    private var largestFileItems: [StorageItem] = []
+    private var largestFolderItems: [StorageItem] = []
+    private var oldLargeFileItems: [StorageItem] = []
+    private var fileTypeStats: [String: FileTypeAccumulator] = [:]
+    private var duplicateCandidatesBySize: [Int64: [StorageItem]] = [:]
+    private var cleanupCandidatesByID: [String: CleanupCandidate] = [:]
+
+    var scannedItemCount = 0
+    var inaccessibleItemCount = 0
+    var totalBytes: Int64 = 0
+
+    init(options: ScanOptions, progress: FileSystemScanner.ProgressHandler?) {
+        self.options = options
+        self.progress = progress
+        self.retainedItemCount = 1
+        self.oldFileCutoff = Calendar.current.date(
+            byAdding: .day,
+            value: -options.oldFileAgeDays,
+            to: Date()
+        ) ?? Date()
+    }
+
+    func recordVisit(path: String) {
+        scannedItemCount += 1
+        emitProgress(path: path)
+    }
+
+    func recordBytes(_ bytes: Int64) {
+        totalBytes += bytes
+    }
+
+    func recordInaccessible(path: String) {
+        inaccessibleItemCount += 1
+        emitProgress(path: path)
+    }
+
+    func recordPhase(path: String) {
+        emitProgress(path: path, force: true)
+    }
+
+    func recordItem(_ item: StorageItem) {
+        switch item.kind {
+        case .file:
+            recordFile(item)
+        case .folder, .package:
+            largestFolderItems.append(item)
+            trimRankedItems(&largestFolderItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+        case .alias, .inaccessible, .other:
+            break
+        }
+
+        if let candidate = ruleBasedCleanupCandidate(for: item) {
+            insertCandidate(candidate, into: &cleanupCandidatesByID)
+        }
+    }
+
+    func retainedChildren(from children: [StorageItem]) -> [StorageItem] {
+        let perDirectoryLimit = max(0, options.maxChildrenPerDirectory)
+        let retainedLimit = max(1, options.maxRetainedItems)
+        guard perDirectoryLimit > 0, retainedItemCount < retainedLimit else {
+            return []
+        }
+
+        var retained: [StorageItem] = []
+        retained.reserveCapacity(min(children.count, perDirectoryLimit))
+
+        for child in children.prefix(perDirectoryLimit) {
+            guard retainedItemCount < retainedLimit else {
+                break
+            }
+
+            let fullCount = child.retainedItemCount
+            if retainedItemCount + fullCount <= retainedLimit {
+                retained.append(child)
+                retainedItemCount += fullCount
+            } else {
+                retained.append(child.pruningChildren())
+                retainedItemCount += 1
+            }
+        }
+
+        return retained
+    }
+
+    var largestFiles: [StorageItem] {
+        sortedRankedItems(largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+    }
+
+    func largestFolders(excluding rootID: String) -> [StorageItem] {
+        sortedRankedItems(largestFolderItems.filter { $0.id != rootID }, limit: options.maxRankedResults) {
+            $0.displaySize > $1.displaySize
+        }
+    }
+
+    var oldLargeFiles: [StorageItem] {
+        sortedRankedItems(oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+    }
+
+    var typeBreakdown: [FileTypeStat] {
+        fileTypeStats.map { label, stats in
+            FileTypeStat(label: label, fileCount: stats.fileCount, totalBytes: stats.totalBytes)
+        }
+        .sorted { lhs, rhs in
+            if lhs.totalBytes == rhs.totalBytes {
+                return lhs.label.localizedStandardCompare(rhs.label) == .orderedAscending
+            }
+            return lhs.totalBytes > rhs.totalBytes
+        }
+    }
+
+    var duplicateSizeGroups: [DuplicateSizeGroup] {
+        duplicateCandidatesBySize
+            .compactMap { byteSize, items in
+                items.count > 1 ? DuplicateSizeGroup(byteSize: byteSize, items: items.sorted { $0.url.path < $1.url.path }) : nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.totalBytes == rhs.totalBytes {
+                    return lhs.byteSize > rhs.byteSize
+                }
+                return lhs.totalBytes > rhs.totalBytes
+            }
+    }
+
+    func cleanupCandidates(
+        rootID: String,
+        verifiedDuplicateGroups: [VerifiedDuplicateGroup],
+        limit: Int
+    ) -> [CleanupCandidate] {
+        let duplicateItemIDs = Set(verifiedDuplicateGroups.flatMap { group in group.items.dropFirst().map(\.id) })
+        var candidatesByID = cleanupCandidatesByID.filter { id, _ in
+            id != rootID && !duplicateItemIDs.contains(id)
+        }
+
+        for group in verifiedDuplicateGroups {
+            for item in group.items.dropFirst() {
+                insertCandidate(
+                    CleanupCandidate(
+                        kind: .verifiedDuplicate,
+                        item: item,
+                        reason: "Verified SHA-256 duplicate. Keep one copy, review the rest.",
+                        reclaimableBytes: item.displaySize,
+                        confidence: .high
+                    ),
+                    into: &candidatesByID
+                )
+            }
+        }
+
+        return Array(candidatesByID.values)
+            .sorted { lhs, rhs in
+                if lhs.confidence != rhs.confidence {
+                    return lhs.confidence.sortRank < rhs.confidence.sortRank
+                }
+                if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                    return lhs.item.name.localizedStandardCompare(rhs.item.name) == .orderedAscending
+                }
+                return lhs.reclaimableBytes > rhs.reclaimableBytes
+            }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    private func emitProgress(path: String, force: Bool = false) {
+        guard let progress else {
+            return
+        }
+
+        let now = Date()
+        guard force || scannedItemCount == 1 || scannedItemCount.isMultiple(of: 25) || now.timeIntervalSince(lastProgressDate) > 0.35 else {
+            return
+        }
+
+        lastProgressDate = now
+        progress(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path))
+    }
+
+    private func recordFile(_ item: StorageItem) {
+        largestFileItems.append(item)
+        trimRankedItems(&largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+
+        if let modifiedAt = item.modifiedAt,
+           item.displaySize >= options.largeFileThreshold,
+           modifiedAt <= oldFileCutoff {
+            oldLargeFileItems.append(item)
+            trimRankedItems(&oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+        }
+
+        let typeLabel: String
+        if let fileExtension = item.fileExtension, !fileExtension.isEmpty {
+            typeLabel = ".\(fileExtension)"
+        } else {
+            typeLabel = "No Extension"
+        }
+
+        var typeStat = fileTypeStats[typeLabel] ?? FileTypeAccumulator()
+        typeStat.fileCount += 1
+        typeStat.totalBytes += item.displaySize
+        fileTypeStats[typeLabel] = typeStat
+
+        if item.byteSize >= options.duplicateCandidateThreshold {
+            duplicateCandidatesBySize[item.byteSize, default: []].append(item)
+        }
+    }
+
+    private func ruleBasedCleanupCandidate(for item: StorageItem) -> CleanupCandidate? {
+        let lowercasedName = item.name.lowercased()
+        let path = item.url.path.lowercased()
+        let fileExtension = item.fileExtension ?? ""
+
+        if item.kind == .folder || item.kind == .package {
+            if ["cache", "caches", ".cache"].contains(lowercasedName) {
+                return CleanupCandidate(
+                    kind: .cacheFolder,
+                    item: item,
+                    reason: "Cache folder. Review before deleting if an app is currently using it.",
+                    reclaimableBytes: item.displaySize,
+                    confidence: .medium
+                )
+            }
+
+            if ["deriveddata", "node_modules", ".build", "build", "dist", "target", ".gradle"].contains(lowercasedName) || path.contains("/deriveddata/") {
+                return CleanupCandidate(
+                    kind: .buildArtifact,
+                    item: item,
+                    reason: "Build or dependency artifact. Usually rebuildable, but project-specific.",
+                    reclaimableBytes: item.displaySize,
+                    confidence: .medium
+                )
+            }
+        }
+
+        guard item.kind == .file else {
+            return nil
+        }
+
+        if ["dmg", "iso", "toast", "sparsebundle", "sparseimage"].contains(fileExtension) {
+            return CleanupCandidate(
+                kind: .diskImage,
+                item: item,
+                reason: "Disk image. Often disposable after installation or extraction.",
+                reclaimableBytes: item.displaySize,
+                confidence: .medium
+            )
+        }
+
+        if ["pkg", "mpkg", "xip", "ipsw"].contains(fileExtension) {
+            return CleanupCandidate(
+                kind: .installer,
+                item: item,
+                reason: "Installer package. Usually removable after the install is complete.",
+                reclaimableBytes: item.displaySize,
+                confidence: .medium
+            )
+        }
+
+        if ["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].contains(fileExtension) {
+            return CleanupCandidate(
+                kind: .archive,
+                item: item,
+                reason: "Archive file. Review whether the extracted copy already exists.",
+                reclaimableBytes: item.displaySize,
+                confidence: .review
+            )
+        }
+
+        if ["tmp", "temp", "bak", "old"].contains(fileExtension) || lowercasedName.hasSuffix("~") {
+            return CleanupCandidate(
+                kind: .temporary,
+                item: item,
+                reason: "Temporary or backup-looking file.",
+                reclaimableBytes: item.displaySize,
+                confidence: .review
+            )
+        }
+
+        if let modifiedAt = item.modifiedAt, item.displaySize >= 1_000_000_000, modifiedAt <= oldFileCutoff {
+            return CleanupCandidate(
+                kind: .oldLargeFile,
+                item: item,
+                reason: "Large file not modified recently.",
+                reclaimableBytes: item.displaySize,
+                confidence: .review
+            )
+        }
+
+        return nil
+    }
+
+    private func insertCandidate(_ candidate: CleanupCandidate, into candidatesByID: inout [String: CleanupCandidate]) {
+        if let existing = candidatesByID[candidate.item.id] {
+            if candidate.confidence.sortRank < existing.confidence.sortRank ||
+                candidate.reclaimableBytes > existing.reclaimableBytes {
+                candidatesByID[candidate.item.id] = candidate
+            }
+        } else {
+            candidatesByID[candidate.item.id] = candidate
+        }
+    }
+
+    private func trimRankedItems(
+        _ items: inout [StorageItem],
+        limit: Int,
+        by areInIncreasingPriorityOrder: (StorageItem, StorageItem) -> Bool
+    ) {
+        let boundedLimit = max(0, limit)
+        guard boundedLimit > 0 else {
+            items.removeAll(keepingCapacity: false)
+            return
+        }
+
+        guard items.count > boundedLimit * 4 else {
+            return
+        }
+
+        items = sortedRankedItems(items, limit: boundedLimit, by: areInIncreasingPriorityOrder)
+    }
+
+    private func sortedRankedItems(
+        _ items: [StorageItem],
+        limit: Int,
+        by areInIncreasingPriorityOrder: (StorageItem, StorageItem) -> Bool
+    ) -> [StorageItem] {
+        Array(items.sorted(by: areInIncreasingPriorityOrder).prefix(max(0, limit)))
+    }
+}
+
+private extension String {
+    var nonEmptyLowercased: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed.lowercased()
+    }
+}

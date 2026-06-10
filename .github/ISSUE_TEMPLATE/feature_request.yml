@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an improvement for StorageScope.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow would this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should StorageScope do?
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy and safety considerations
+      description: Note any file access, cleanup, duplicate detection, or local data handling implications.
+    validations:
+      required: false

@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible StorageScope problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest scan scope or workflow that reproduces the issue.
+      placeholder: |
+        1. Open StorageScope
+        2. Scan ...
+        3. Select ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "14.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: Folder access
+      options:
+        - User-selected folder only
+        - Full Disk Access granted
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Do not include private file paths, personal document names, or scan output with sensitive local information.
