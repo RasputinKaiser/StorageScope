@@ -78,7 +78,7 @@ struct InspectorView: View {
                                 Label("Move to Trash", systemImage: "trash")
                                     .frame(maxWidth: .infinity)
                             }
-                            .disabled(item.id == store.scan?.rootItem.id)
+                            .disabled(!store.canMoveItemToTrash(item))
                         }
                         .buttonStyle(.bordered)
                     }

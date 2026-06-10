@@ -146,6 +146,7 @@ private struct StorageItemRow: View {
                 store.selectedItemID = item.id
                 store.moveSelectedItemToTrash()
             }
+            .disabled(!store.canMoveItemToTrash(item))
         }
     }
 }

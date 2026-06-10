@@ -67,10 +67,10 @@ final class ScanStore: ObservableObject {
     }
 
     var canMoveSelectedItemToTrash: Bool {
-        guard canUseSelectedItemActions, let selectedItem, let scan else {
+        guard canUseSelectedItemActions, let selectedItem else {
             return false
         }
-        return selectedItem.id != scan.rootItem.id
+        return canMoveItemToTrash(selectedItem)
     }
 
     var scanOptionsAreStale: Bool {
@@ -563,6 +563,10 @@ final class ScanStore: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func canMoveItemToTrash(_ item: StorageItem) -> Bool {
+        item.id != scan?.rootItem.id
     }
 
     private func filtered(_ items: [StorageItem]) -> [StorageItem] {
