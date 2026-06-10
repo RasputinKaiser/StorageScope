@@ -70,6 +70,16 @@ Before publishing or pushing a release-prep branch, run:
 
 The audit checks the exact Git upload candidate set for ignored local artifacts, signing/provisioning files, private distribution outputs, absolute local paths, and common credential patterns. It also runs `swift test`, plist linting, and script syntax checks.
 
+## Open Source Maintenance
+
+StorageScope is intended to be grant- and contributor-friendly:
+
+- MIT licensed for broad open-source use.
+- Public issue and pull request templates for reproducible maintenance work.
+- Local-first privacy posture with no telemetry or uploaded scan data.
+- Automated public-upload audit for credentials, local artifacts, and build sanity.
+- Swift tests covering scanner behavior, cleanup safety, duplicate review, and broad-scan memory retention.
+
 ## Distribution
 
 Create a local DMG:
