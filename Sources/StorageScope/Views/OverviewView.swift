@@ -20,10 +20,11 @@ struct OverviewView: View {
                     SizeDistributionView(store: store)
 
                     let overviewItems = Array(store.items(for: .overview).prefix(12))
+                    let isFiltered = store.hasActiveDisplayFilters
                     HStack(alignment: .top, spacing: 16) {
                         StorageItemTable(
-                            title: "Largest Children",
-                            subtitle: "Immediate storage pressure under the scanned root",
+                            title: isFiltered ? "Matching Children" : "Largest Children",
+                            subtitle: isFiltered ? "Immediate children matching the active filters" : "Immediate storage pressure under the scanned root",
                             items: overviewItems,
                             store: store,
                             compact: true
@@ -31,17 +32,17 @@ struct OverviewView: View {
 
                         VStack(spacing: 16) {
                             InsightCard(
-                                title: "Largest File",
+                                title: isFiltered ? "Largest Matching File" : "Largest File",
                                 item: store.items(for: .largestFiles).first,
                                 systemImage: "doc.fill"
                             )
                             InsightCard(
-                                title: "Largest Folder",
+                                title: isFiltered ? "Largest Matching Folder" : "Largest Folder",
                                 item: store.items(for: .largestFolders).first,
                                 systemImage: "folder.fill"
                             )
                             InsightCard(
-                                title: "Oldest Large File",
+                                title: isFiltered ? "Oldest Matching Large File" : "Oldest Large File",
                                 item: store.oldLargeFiles.first,
                                 systemImage: "clock.fill"
                             )
@@ -199,7 +200,7 @@ private struct SizeDistributionView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Storage Map")
                     .font(.headline)
-                Text("Top folders and packages inside the scanned root")
+                Text(store.hasActiveDisplayFilters ? "Filtered folders and packages inside the scanned root" : "Top folders and packages inside the scanned root")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -208,41 +209,55 @@ private struct SizeDistributionView: View {
                 let items = Array(store.items(for: .overview).prefix(10))
                 let maxSize = max(items.first?.displaySize ?? 1, 1)
 
-                VStack(spacing: 8) {
-                    ForEach(items) { item in
-                        Button {
-                            store.selectedItemID = item.id
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: StorageFormat.icon(for: item))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20)
+                if items.isEmpty {
+                    FilterRecoveryView(
+                        title: "No Storage Map Matches",
+                        systemImage: "magnifyingglass",
+                        description: store.hasActiveDisplayFilters ? "No root-level items match the active display filters." : "No root-level items are available for this scan.",
+                        filters: store.activeDisplayFilterDescriptions,
+                        clearTitle: "Clear Filters"
+                    ) {
+                        store.resetDisplayFilters()
+                    }
+                    .frame(minHeight: 180)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(items) { item in
+                            Button {
+                                store.selectedItemID = item.id
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: StorageFormat.icon(for: item))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 20)
 
-                                VStack(alignment: .leading, spacing: 5) {
-                                    HStack {
-                                        Text(item.name)
-                                            .lineLimit(1)
-                                        Spacer()
-                                        Text(StorageFormat.bytes(item.displaySize))
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        HStack {
+                                            Text(item.name)
+                                                .lineLimit(1)
+                                            Spacer()
+                                            Text(StorageFormat.bytes(item.displaySize))
+                                                .foregroundStyle(.secondary)
+                                        }
 
-                                    GeometryReader { geometry in
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(.quaternary)
-                                            .overlay(alignment: .leading) {
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(.tint.opacity(0.85))
-                                                    .frame(width: max(8, geometry.size.width * CGFloat(Double(item.displaySize) / Double(maxSize))))
-                                            }
+                                        GeometryReader { geometry in
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .fill(.quaternary)
+                                                .overlay(alignment: .leading) {
+                                                    RoundedRectangle(cornerRadius: 4)
+                                                        .fill(.tint.opacity(0.85))
+                                                        .frame(width: max(8, geometry.size.width * CGFloat(Double(item.displaySize) / Double(maxSize))))
+                                                }
+                                        }
+                                        .frame(height: 8)
                                     }
-                                    .frame(height: 8)
                                 }
+                                .padding(10)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                             }
-                            .padding(10)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
