@@ -53,14 +53,27 @@ public struct StorageScan: Sendable {
 }
 
 public struct FileTypeStat: Identifiable, Hashable, Sendable {
+    public enum Category: String, Hashable, Sendable {
+        case archive = "Archives"
+        case audio = "Audio"
+        case developer = "Developer"
+        case document = "Documents"
+        case image = "Images"
+        case installer = "Installers"
+        case video = "Video"
+        case other = "Other"
+    }
+
     public let id: String
     public let label: String
+    public let category: Category
     public let fileCount: Int
     public let totalBytes: Int64
 
-    public init(label: String, fileCount: Int, totalBytes: Int64) {
+    public init(label: String, category: Category = .other, fileCount: Int, totalBytes: Int64) {
         self.id = label
         self.label = label
+        self.category = category
         self.fileCount = fileCount
         self.totalBytes = totalBytes
     }

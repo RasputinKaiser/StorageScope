@@ -575,7 +575,8 @@ final class ScanStore: ObservableObject {
             return scan.typeBreakdown
         }
         return scan.typeBreakdown.filter {
-            $0.label.localizedCaseInsensitiveContains(query)
+            $0.label.localizedCaseInsensitiveContains(query) ||
+                $0.category.rawValue.localizedCaseInsensitiveContains(query)
         }
     }
 

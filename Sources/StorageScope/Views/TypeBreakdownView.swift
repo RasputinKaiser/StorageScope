@@ -37,6 +37,11 @@ struct TypeBreakdownView: View {
                                     .font(.system(.body, design: .rounded).weight(.semibold))
                                     .frame(width: 110, alignment: .leading)
 
+                                Text(stat.category.rawValue)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 86, alignment: .leading)
+
                                 GeometryReader { geometry in
                                     RoundedRectangle(cornerRadius: 4)
                                         .fill(.quaternary)

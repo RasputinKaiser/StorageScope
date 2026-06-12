@@ -56,7 +56,7 @@ struct CleanupReviewView: View {
                 }
 
                 if store.selectedCleanupBatchContainsReviewRisk {
-                    Label("Selection includes review-suggested items. Confirm each path before moving it to Trash.", systemImage: "exclamationmark.triangle.fill")
+                    Label("Selection includes review-suggested items. Confirm each path before moving it to Trash.", systemImage: "exclamationmark.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .padding(.horizontal, 10)
@@ -157,7 +157,7 @@ private struct CleanupSelectionSummary: View {
     }
 
     private var statusIcon: String {
-        store.selectedCleanupBatchContainsReviewRisk ? "exclamationmark.triangle.fill" : "checkmark.seal.fill"
+        store.selectedCleanupBatchContainsReviewRisk ? "exclamationmark.circle.fill" : "checkmark.seal.fill"
     }
 
     private var statusTint: Color {

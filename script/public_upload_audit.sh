@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 audit_scratch_path="${STORAGESCOPE_AUDIT_SCRATCH_PATH:-${TMPDIR:-/tmp}/StorageScope/public-upload-audit-spm}"
+identity_blocklist_path="${STORAGESCOPE_PUBLIC_BLOCKLIST_FILE:-.codex/public-identity-blocklist.txt}"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "public upload audit must run inside a git repository" >&2
@@ -59,18 +60,14 @@ while IFS= read -r candidate; do
   fi
 done <"$candidate_file"
 
-python3 - "$candidate_file" "$secret_hits" <<'PY'
-import hashlib
+python3 - "$candidate_file" "$secret_hits" "$identity_blocklist_path" <<'PY'
 import pathlib
 import re
 import sys
 
 candidate_file = pathlib.Path(sys.argv[1])
 secret_hits = pathlib.Path(sys.argv[2])
-blocked_identity_hashes = {
-    # SHA-256 of a private normalized alphanumeric identity string.
-    "b817248613f0cf4b0f4eb4e8abe657a388a5cc5b7af888a60a63e89f25bad262": 12,
-}
+identity_blocklist_path = pathlib.Path(sys.argv[3])
 text_suffixes = {
     "",
     ".c",
@@ -90,6 +87,21 @@ text_suffixes = {
 }
 max_identity_scan_bytes = 2_000_000
 
+if not identity_blocklist_path.is_file():
+    sys.exit(0)
+
+blocked_tokens = set()
+for raw_token in identity_blocklist_path.read_text().splitlines():
+    token = raw_token.strip()
+    if not token or token.startswith("#"):
+        continue
+    normalized_token = re.sub(r"[^a-z0-9]", "", token.lower())
+    if normalized_token:
+        blocked_tokens.add(normalized_token)
+
+if not blocked_tokens:
+    sys.exit(0)
+
 hits = []
 for raw_candidate in candidate_file.read_text().splitlines():
     candidate = pathlib.Path(raw_candidate)
@@ -106,12 +118,10 @@ for raw_candidate in candidate_file.read_text().splitlines():
         continue
 
     normalized = re.sub(r"[^a-z0-9]", "", text.lower())
-    for blocked_hash, width in blocked_identity_hashes.items():
-        for index in range(0, max(0, len(normalized) - width + 1)):
-            window = normalized[index:index + width]
-            if hashlib.sha256(window.encode()).hexdigest() == blocked_hash:
-                hits.append(f"{candidate}: private identity hash match")
-                break
+    for blocked_token in blocked_tokens:
+        if blocked_token in normalized:
+            hits.append(f"{candidate}: private identity blocklist match")
+            break
 
 if hits:
     with secret_hits.open("a") as handle:

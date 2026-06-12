@@ -24,7 +24,29 @@ struct FileSystemScannerTests {
         #expect(scan.largestFiles.first?.name == "video.mov")
         #expect(scan.largestFolders.first?.name == "Media")
         #expect(scan.typeBreakdown.first?.label == ".mov")
+        #expect(scan.typeBreakdown.first?.category == .video)
         #expect(scan.totalBytes >= 16_000)
+    }
+
+    @Test("categorizes file type breakdown for scan review")
+    func typeBreakdownIncludesStorageCategories() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        try writeFile(named: "movie.mp4", bytes: 5_000, in: temporaryRoot)
+        try writeFile(named: "installer.pkg", bytes: 4_000, in: temporaryRoot)
+        try writeFile(named: "source.swift", bytes: 3_000, in: temporaryRoot)
+        try writeFile(named: "bundle.zip", bytes: 2_000, in: temporaryRoot)
+        try writeFile(named: "notes.pdf", bytes: 1_000, in: temporaryRoot)
+
+        let scan = try FileSystemScanner().scan(root: temporaryRoot, options: ScanOptions(duplicateCandidateThreshold: 10_000))
+        let categoriesByLabel = Dictionary(uniqueKeysWithValues: scan.typeBreakdown.map { ($0.label, $0.category) })
+
+        #expect(categoriesByLabel[".mp4"] == .video)
+        #expect(categoriesByLabel[".pkg"] == .installer)
+        #expect(categoriesByLabel[".swift"] == .developer)
+        #expect(categoriesByLabel[".zip"] == .archive)
+        #expect(categoriesByLabel[".pdf"] == .document)
     }
 
     @Test("groups same-sized files as duplicate candidates")

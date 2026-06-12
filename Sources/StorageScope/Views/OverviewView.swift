@@ -325,7 +325,7 @@ private extension ReclaimPlanSection.Kind {
         case .verifiedDuplicates:
             return "checkmark.seal.fill"
         case .reviewSuggestions:
-            return "exclamationmark.triangle.fill"
+            return "exclamationmark.circle.fill"
         case .inaccessibleItems:
             return "lock.fill"
         }

@@ -397,6 +397,7 @@ private extension CleanupCandidate.Confidence {
 
 private final class ScanAccumulator {
     private struct FileTypeAccumulator {
+        var category: FileTypeStat.Category = .other
         var fileCount = 0
         var totalBytes: Int64 = 0
     }
@@ -507,7 +508,7 @@ private final class ScanAccumulator {
 
     var typeBreakdown: [FileTypeStat] {
         fileTypeStats.map { label, stats in
-            FileTypeStat(label: label, fileCount: stats.fileCount, totalBytes: stats.totalBytes)
+            FileTypeStat(label: label, category: stats.category, fileCount: stats.fileCount, totalBytes: stats.totalBytes)
         }
         .sorted { lhs, rhs in
             if lhs.totalBytes == rhs.totalBytes {
@@ -602,6 +603,7 @@ private final class ScanAccumulator {
         }
 
         var typeStat = fileTypeStats[typeLabel] ?? FileTypeAccumulator()
+        typeStat.category = FileTypeCategoryClassifier.category(forExtension: item.fileExtension)
         typeStat.fileCount += 1
         typeStat.totalBytes += item.displaySize
         fileTypeStats[typeLabel] = typeStat
@@ -732,6 +734,33 @@ private final class ScanAccumulator {
         by areInIncreasingPriorityOrder: (StorageItem, StorageItem) -> Bool
     ) -> [StorageItem] {
         Array(items.sorted(by: areInIncreasingPriorityOrder).prefix(max(0, limit)))
+    }
+}
+
+private enum FileTypeCategoryClassifier {
+    static func category(forExtension fileExtension: String?) -> FileTypeStat.Category {
+        guard let fileExtension, !fileExtension.isEmpty else {
+            return .other
+        }
+
+        switch fileExtension {
+        case "zip", "zipx", "rar", "7z", "tar", "tgz", "gz", "bz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "lz4":
+            return .archive
+        case "aif", "aiff", "flac", "m4a", "mp3", "wav":
+            return .audio
+        case "app", "bundle", "framework", "h", "json", "m", "mm", "pbxproj", "plist", "sh", "swift", "xcarchive", "xcodeproj", "xcworkspace", "yml", "yaml":
+            return .developer
+        case "csv", "doc", "docx", "key", "md", "numbers", "pages", "pdf", "ppt", "pptx", "rtf", "txt", "xls", "xlsx":
+            return .document
+        case "gif", "heic", "jpeg", "jpg", "png", "psd", "raw", "tif", "tiff", "webp":
+            return .image
+        case "dmg", "ipsw", "iso", "mpkg", "pkg", "sparsebundle", "sparseimage", "toast", "xip":
+            return .installer
+        case "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "wmv":
+            return .video
+        default:
+            return .other
+        }
     }
 }
 

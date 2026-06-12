@@ -231,7 +231,7 @@ private struct ScanNoticeView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+            Image(systemName: "arrow.clockwise.circle.fill")
                 .foregroundStyle(.orange)
 
             Text(text)
