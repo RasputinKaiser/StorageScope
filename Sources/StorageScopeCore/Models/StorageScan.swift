@@ -170,6 +170,7 @@ public struct ScanOptions: Sendable {
     public var duplicateCandidateThreshold: Int64
     public var duplicateVerificationByteLimit: Int64
     public var maxDuplicateVerificationFiles: Int
+    public var maxDuplicateCandidateItems: Int
     public var maxRankedResults: Int
     public var maxChildrenPerDirectory: Int
     public var maxRetainedItems: Int
@@ -181,6 +182,7 @@ public struct ScanOptions: Sendable {
         duplicateCandidateThreshold: Int64 = 100_000_000,
         duplicateVerificationByteLimit: Int64 = 20_000_000_000,
         maxDuplicateVerificationFiles: Int = 1_000,
+        maxDuplicateCandidateItems: Int = 5_000,
         maxRankedResults: Int = 500,
         maxChildrenPerDirectory: Int = 200,
         maxRetainedItems: Int = 25_000
@@ -191,6 +193,7 @@ public struct ScanOptions: Sendable {
         self.duplicateCandidateThreshold = duplicateCandidateThreshold
         self.duplicateVerificationByteLimit = duplicateVerificationByteLimit
         self.maxDuplicateVerificationFiles = maxDuplicateVerificationFiles
+        self.maxDuplicateCandidateItems = maxDuplicateCandidateItems
         self.maxRankedResults = maxRankedResults
         self.maxChildrenPerDirectory = maxChildrenPerDirectory
         self.maxRetainedItems = maxRetainedItems

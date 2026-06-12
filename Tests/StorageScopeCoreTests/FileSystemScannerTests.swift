@@ -89,7 +89,7 @@ struct FileSystemScannerTests {
         #expect(scan.verifiedDuplicateGroups.isEmpty)
     }
 
-    @Test("surfaces cleanup candidates for cache folders and installers")
+    @Test("surfaces cleanup candidates for cache folders, installers, and compressed archives")
     func cleanupCandidatesIncludeStorageReviewTargets() throws {
         let temporaryRoot = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: temporaryRoot) }
@@ -98,11 +98,15 @@ struct FileSystemScannerTests {
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
         try writeFile(named: "blob.bin", bytes: 2_048, in: cache)
         try writeFile(named: "installer.dmg", bytes: 3_072, in: temporaryRoot)
+        try writeFile(named: "source-drop.tgz", bytes: 1_536, in: temporaryRoot)
+        try writeFile(named: "container.tar.zst", bytes: 1_024, in: temporaryRoot)
 
         let scan = try FileSystemScanner().scan(root: temporaryRoot, options: ScanOptions(duplicateCandidateThreshold: 1))
 
         #expect(scan.cleanupCandidates.contains { $0.kind == .cacheFolder && $0.item.name == "Caches" })
         #expect(scan.cleanupCandidates.contains { $0.kind == .diskImage && $0.item.name == "installer.dmg" })
+        #expect(scan.cleanupCandidates.contains { $0.kind == .archive && $0.item.name == "source-drop.tgz" })
+        #expect(scan.cleanupCandidates.contains { $0.kind == .archive && $0.item.name == "container.tar.zst" })
     }
 
     @Test("skips hidden files by default")
@@ -147,6 +151,56 @@ struct FileSystemScannerTests {
         #expect(scan.largestFiles.count == 5)
         #expect(scan.largestFiles.first?.name == "sample-29.dat")
         #expect(scan.typeBreakdown.first?.fileCount == 30)
+    }
+
+    @Test("keeps directory child retention bounded during wide scans")
+    func wideDirectoryScanRetainsOnlyLargestChildren() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for index in 0..<120 {
+            try writeFile(named: String(format: "wide-%04d.dat", index), bytes: 8_192 * (index + 1), in: temporaryRoot)
+        }
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 10_000,
+                maxRankedResults: 8,
+                maxChildrenPerDirectory: 5,
+                maxRetainedItems: 6
+            )
+        )
+
+        #expect(scan.scannedItemCount == 121)
+        #expect(scan.rootItem.immediateChildCount == 120)
+        #expect(scan.rootItem.children.count == 5)
+        #expect(scan.allItems.count == 6)
+        #expect(scan.rootItem.children.first?.name == "wide-0119.dat")
+        #expect(Array(scan.largestFiles.map(\.name).prefix(3)) == ["wide-0119.dat", "wide-0118.dat", "wide-0117.dat"])
+    }
+
+    @Test("caps duplicate candidate retention for full-drive-sized scans")
+    func duplicateCandidateRetentionIsBounded() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for index in 0..<80 {
+            try writeFile(named: String(format: "duplicate-%03d.bin", index), bytes: 2_048, in: temporaryRoot)
+        }
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1_000,
+                duplicateVerificationByteLimit: 0,
+                maxDuplicateCandidateItems: 12
+            )
+        )
+
+        #expect(scan.scannedItemCount == 81)
+        #expect(scan.duplicateSizeGroups.count == 1)
+        #expect(scan.duplicateSizeGroups.first?.items.count == 12)
     }
 
     @Test("duplicate candidates include files pruned from retained tree")

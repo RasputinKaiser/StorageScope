@@ -9,6 +9,10 @@ FIXTURE_MARK_STALE="0"
 FIXTURE_WITH_DUPLICATES="0"
 FIXTURE_SELECTED_VIEW=""
 FIXTURE_SELECT_VERIFIED_CLEANUP="0"
+FIXTURE_SEARCH_QUERY=""
+FIXTURE_SIZE_FILTER=""
+FIXTURE_SORT_OPTION=""
+FIXTURE_CLEANUP_LANE=""
 APP_NAME="StorageScope"
 BUNDLE_ID="com.rasputinkaiser.StorageScope"
 MIN_SYSTEM_VERSION="14.0"
@@ -53,6 +57,38 @@ while [[ $# -gt 0 ]]; do
     --select-verified-cleanup)
       FIXTURE_SELECT_VERIFIED_CLEANUP="1"
       shift
+      ;;
+    --query)
+      if [[ $# -lt 2 ]]; then
+        echo "--query requires search text" >&2
+        exit 2
+      fi
+      FIXTURE_SEARCH_QUERY="$2"
+      shift 2
+      ;;
+    --size-filter)
+      if [[ $# -lt 2 ]]; then
+        echo "--size-filter requires all, 100mb, 1gb, or 10gb" >&2
+        exit 2
+      fi
+      FIXTURE_SIZE_FILTER="$2"
+      shift 2
+      ;;
+    --sort)
+      if [[ $# -lt 2 ]]; then
+        echo "--sort requires size, name, newest, oldest, or kind" >&2
+        exit 2
+      fi
+      FIXTURE_SORT_OPTION="$2"
+      shift 2
+      ;;
+    --cleanup-lane)
+      if [[ $# -lt 2 ]]; then
+        echo "--cleanup-lane requires all, verified, or suggestions" >&2
+        exit 2
+      fi
+      FIXTURE_CLEANUP_LANE="$2"
+      shift 2
       ;;
     *)
       echo "unknown option: $1" >&2
@@ -219,6 +255,18 @@ case "$MODE" in
     if [[ "$FIXTURE_SELECT_VERIFIED_CLEANUP" == "1" ]]; then
       open_args+=(--env "STORAGESCOPE_DEVELOPER_SELECT_VERIFIED_CLEANUP=1")
     fi
+    if [[ -n "$FIXTURE_SEARCH_QUERY" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_QUERY=$FIXTURE_SEARCH_QUERY")
+    fi
+    if [[ -n "$FIXTURE_SIZE_FILTER" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_SIZE_FILTER=$FIXTURE_SIZE_FILTER")
+    fi
+    if [[ -n "$FIXTURE_SORT_OPTION" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_SORT=$FIXTURE_SORT_OPTION")
+    fi
+    if [[ -n "$FIXTURE_CLEANUP_LANE" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_CLEANUP_LANE=$FIXTURE_CLEANUP_LANE")
+    fi
     open_app "${open_args[@]}"
     echo "$fixture_path"
     ;;
@@ -234,7 +282,7 @@ case "$MODE" in
     echo "$APP_BUNDLE"
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale] [--duplicates] [--view smartView] [--select-verified-cleanup]|--verify|--build-only]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale] [--duplicates] [--view smartView] [--select-verified-cleanup] [--query text] [--size-filter all|100mb|1gb|10gb] [--sort size|name|newest|oldest|kind] [--cleanup-lane all|verified|suggestions]|--verify|--build-only]" >&2
     exit 2
     ;;
 esac

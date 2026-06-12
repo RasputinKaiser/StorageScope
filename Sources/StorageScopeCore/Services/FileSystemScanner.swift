@@ -186,36 +186,32 @@ public final class FileSystemScanner {
                 options: directoryOptions
             )
 
-            let scannedChildren = try childURLs
-                .map { childURL in
-                    try scanItem(
-                        at: childURL,
-                        options: options,
-                        cancellation: cancellation,
-                        accumulator: accumulator
-                    )
-                }
-                .filter { $0.kind != .other || $0.displaySize > 0 }
-                .sorted { lhs, rhs in
-                    if lhs.displaySize == rhs.displaySize {
-                        return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-                    }
-                    return lhs.displaySize > rhs.displaySize
+            var summary = DirectoryScanSummary(retainedCandidateLimit: options.maxChildrenPerDirectory)
+            for childURL in childURLs {
+                let child = try scanItem(
+                    at: childURL,
+                    options: options,
+                    cancellation: cancellation,
+                    accumulator: accumulator
+                )
+
+                guard child.kind != .other || child.displaySize > 0 else {
+                    continue
                 }
 
-            let logicalSize = scannedChildren.reduce(Int64(0)) { $0 + $1.byteSize }
-            let allocatedSize = scannedChildren.reduce(Int64(0)) { $0 + $1.allocatedSize }
-            let descendantCount = scannedChildren.reduce(scannedChildren.count) { $0 + $1.descendantCount }
-            let retainedChildren = accumulator.retainedChildren(from: scannedChildren)
+                summary.record(child)
+            }
+
+            let retainedChildren = accumulator.retainedChildren(from: summary.retainedCandidates)
 
             let item = StorageItem(
                 url: url,
                 kind: isPackage ? .package : .folder,
-                byteSize: logicalSize,
-                allocatedSize: allocatedSize,
+                byteSize: summary.logicalSize,
+                allocatedSize: summary.allocatedSize,
                 modifiedAt: values?.contentModificationDate,
-                immediateChildCount: scannedChildren.count,
-                descendantCount: descendantCount,
+                immediateChildCount: summary.immediateChildCount,
+                descendantCount: summary.descendantCount,
                 children: retainedChildren,
                 isReadable: values?.isReadable ?? true,
                 fileExtension: isPackage ? url.pathExtension.nonEmptyLowercased : nil
@@ -340,6 +336,52 @@ private struct HashedStorageItem {
     let item: StorageItem
 }
 
+private struct DirectoryScanSummary {
+    private let retainedCandidateLimit: Int
+    private var retainedCandidateItems: [StorageItem] = []
+
+    var logicalSize: Int64 = 0
+    var allocatedSize: Int64 = 0
+    var immediateChildCount = 0
+    var descendantCount = 0
+
+    init(retainedCandidateLimit: Int) {
+        self.retainedCandidateLimit = max(0, retainedCandidateLimit)
+    }
+
+    mutating func record(_ child: StorageItem) {
+        logicalSize += child.byteSize
+        allocatedSize += child.allocatedSize
+        immediateChildCount += 1
+        descendantCount += 1 + child.descendantCount
+
+        guard retainedCandidateLimit > 0 else {
+            return
+        }
+
+        retainedCandidateItems.append(child)
+        if retainedCandidateItems.count > retainedCandidateLimit * 4 {
+            retainedCandidateItems = sortedRetainedCandidates(from: retainedCandidateItems)
+        }
+    }
+
+    var retainedCandidates: [StorageItem] {
+        sortedRetainedCandidates(from: retainedCandidateItems)
+    }
+
+    private func sortedRetainedCandidates(from items: [StorageItem]) -> [StorageItem] {
+        Array(
+            items.sorted { lhs, rhs in
+                if lhs.displaySize == rhs.displaySize {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.displaySize > rhs.displaySize
+            }
+            .prefix(retainedCandidateLimit)
+        )
+    }
+}
+
 private extension CleanupCandidate.Confidence {
     var sortRank: Int {
         switch self {
@@ -369,6 +411,7 @@ private final class ScanAccumulator {
     private var oldLargeFileItems: [StorageItem] = []
     private var fileTypeStats: [String: FileTypeAccumulator] = [:]
     private var duplicateCandidatesBySize: [Int64: [StorageItem]] = [:]
+    private var duplicateCandidateItemCount = 0
     private var cleanupCandidatesByID: [String: CleanupCandidate] = [:]
 
     var scannedItemCount = 0
@@ -563,8 +606,10 @@ private final class ScanAccumulator {
         typeStat.totalBytes += item.displaySize
         fileTypeStats[typeLabel] = typeStat
 
-        if item.byteSize >= options.duplicateCandidateThreshold {
+        if item.byteSize >= options.duplicateCandidateThreshold,
+           duplicateCandidateItemCount < max(0, options.maxDuplicateCandidateItems) {
             duplicateCandidatesBySize[item.byteSize, default: []].append(item)
+            duplicateCandidateItemCount += 1
         }
     }
 
@@ -619,7 +664,7 @@ private final class ScanAccumulator {
             )
         }
 
-        if ["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].contains(fileExtension) {
+        if ["zip", "zipx", "rar", "7z", "tar", "tgz", "gz", "bz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "lz4"].contains(fileExtension) {
             return CleanupCandidate(
                 kind: .archive,
                 item: item,

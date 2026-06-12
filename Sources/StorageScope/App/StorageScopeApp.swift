@@ -140,12 +140,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             return
         }
 
+        applyDeveloperFixtureFilters(environment)
+
         store.scanDeveloperFixturePath(
             path,
             markResultsNeedRefreshWhenComplete: environment["STORAGESCOPE_DEVELOPER_MARK_RESULTS_STALE"] == "1",
             selectedViewWhenComplete: environment["STORAGESCOPE_DEVELOPER_SELECTED_VIEW"].flatMap(SmartView.init(rawValue:)),
             selectVerifiedCleanupWhenComplete: environment["STORAGESCOPE_DEVELOPER_SELECT_VERIFIED_CLEANUP"] == "1"
         )
+    }
+
+    private func applyDeveloperFixtureFilters(_ environment: [String: String]) {
+        if let query = environment["STORAGESCOPE_DEVELOPER_QUERY"]?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            store.query = query
+        }
+        if let value = environment["STORAGESCOPE_DEVELOPER_SIZE_FILTER"],
+           let sizeFilter = SizeFilter(developerFixtureValue: value) {
+            store.sizeFilter = sizeFilter
+        }
+        if let value = environment["STORAGESCOPE_DEVELOPER_SORT"],
+           let sortOption = ItemSortOption(developerFixtureValue: value) {
+            store.sortOption = sortOption
+        }
+        if let value = environment["STORAGESCOPE_DEVELOPER_CLEANUP_LANE"],
+           let cleanupLane = CleanupLaneFilter(developerFixtureValue: value) {
+            store.cleanupLaneFilter = cleanupLane
+        }
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -311,4 +331,65 @@ private extension NSToolbarItem.Identifier {
     static let rescan = NSToolbarItem.Identifier("StorageScopeRescan")
     static let cancelScan = NSToolbarItem.Identifier("StorageScopeCancelScan")
     static let revealItem = NSToolbarItem.Identifier("StorageScopeRevealItem")
+}
+
+private extension SizeFilter {
+    init?(developerFixtureValue value: String) {
+        switch value.normalizedDeveloperFixtureValue {
+        case "all", "0":
+            self = .all
+        case "100mb", "over100mb", "over100m", "1e8":
+            self = .over100MB
+        case "1gb", "over1gb", "over1g", "1e9":
+            self = .over1GB
+        case "10gb", "over10gb", "over10g", "1e10":
+            self = .over10GB
+        default:
+            return nil
+        }
+    }
+}
+
+private extension ItemSortOption {
+    init?(developerFixtureValue value: String) {
+        switch value.normalizedDeveloperFixtureValue {
+        case "size", "sizedescending", "largest":
+            self = .sizeDescending
+        case "name", "nameascending", "az":
+            self = .nameAscending
+        case "newest", "modifiednewest":
+            self = .modifiedNewest
+        case "oldest", "modifiedoldest":
+            self = .modifiedOldest
+        case "kind", "type":
+            self = .kind
+        default:
+            return nil
+        }
+    }
+}
+
+private extension CleanupLaneFilter {
+    init?(developerFixtureValue value: String) {
+        switch value.normalizedDeveloperFixtureValue {
+        case "all":
+            self = .all
+        case "verified", "duplicates", "highconfidence":
+            self = .verified
+        case "suggestions", "review", "manual":
+            self = .suggestions
+        default:
+            return nil
+        }
+    }
+}
+
+private extension String {
+    var normalizedDeveloperFixtureValue: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: " ", with: "")
+    }
 }
