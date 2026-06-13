@@ -58,9 +58,14 @@ struct TypeBreakdownView: View {
                                         .font(.system(.body, design: .rounded).monospacedDigit())
                                         .frame(width: 100, alignment: .trailing)
 
-                                    Text(stat.extensionCountLabel)
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 86, alignment: .trailing)
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(stat.extensionCountLabel)
+                                        Text(stat.fileCountLabel)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 86, alignment: .trailing)
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 11)

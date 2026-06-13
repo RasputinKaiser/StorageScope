@@ -119,6 +119,10 @@ public struct FileCategoryStat: Identifiable, Hashable, Sendable {
     public var extensionCountLabel: String {
         "\(extensionCount.formatted()) \(extensionCount == 1 ? "type" : "types")"
     }
+
+    public var fileCountLabel: String {
+        "\(fileCount.formatted()) \(fileCount == 1 ? "file" : "files")"
+    }
 }
 
 public struct DuplicateSizeGroup: Identifiable, Hashable, Sendable {
