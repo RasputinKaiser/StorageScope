@@ -858,6 +858,8 @@ private enum FileTypeCategoryClassifier {
             return .installer
         case "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "wmv":
             return .video
+        case "qcow2", "vbox", "vdi", "vhd", "vhdx", "vmdk", "vmwarevm", "pvm":
+            return .virtualMachine
         default:
             return .other
         }

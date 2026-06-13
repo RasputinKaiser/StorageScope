@@ -78,6 +78,7 @@ public struct FileTypeStat: Identifiable, Hashable, Sendable {
         case image = "Images"
         case installer = "Installers"
         case video = "Video"
+        case virtualMachine = "Virtual Machines"
         case other = "Other"
     }
 

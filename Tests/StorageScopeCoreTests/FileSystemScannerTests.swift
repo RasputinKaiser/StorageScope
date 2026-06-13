@@ -42,6 +42,8 @@ struct FileSystemScannerTests {
         try writeFile(named: "catalog.db", bytes: 80_000, in: temporaryRoot)
         try writeFile(named: "display.woff2", bytes: 70_000, in: temporaryRoot)
         try writeFile(named: "headline.ttf", bytes: 60_000, in: temporaryRoot)
+        try writeFile(named: "linux.qcow2", bytes: 50_000, in: temporaryRoot)
+        try writeFile(named: "windows.vmdk", bytes: 40_000, in: temporaryRoot)
 
         let scan = try FileSystemScanner().scan(root: temporaryRoot, options: ScanOptions(duplicateCandidateThreshold: 10_000))
         let categoriesByLabel = Dictionary(uniqueKeysWithValues: scan.typeBreakdown.map { ($0.label, $0.category) })
@@ -56,13 +58,17 @@ struct FileSystemScannerTests {
         #expect(categoriesByLabel[".db"] == .database)
         #expect(categoriesByLabel[".woff2"] == .font)
         #expect(categoriesByLabel[".ttf"] == .font)
-        #expect(scan.categoryBreakdown.map(\.category) == [.video, .installer, .developer, .archive, .database, .font, .document])
+        #expect(categoriesByLabel[".qcow2"] == .virtualMachine)
+        #expect(categoriesByLabel[".vmdk"] == .virtualMachine)
+        #expect(scan.categoryBreakdown.map(\.category) == [.video, .installer, .developer, .archive, .database, .font, .document, .virtualMachine])
         #expect(scan.categoryBreakdown.first?.extensionCount == 1)
         #expect(categoryStatsByCategory[.database]?.extensionCount == 2)
         #expect(categoryStatsByCategory[.database]?.fileCount == 2)
         #expect(categoryStatsByCategory[.font]?.extensionCount == 2)
         #expect(categoryStatsByCategory[.font]?.fileCount == 2)
-        #expect(scan.categoryBreakdown.reduce(0) { $0 + $1.fileCount } == 9)
+        #expect(categoryStatsByCategory[.virtualMachine]?.extensionCount == 2)
+        #expect(categoryStatsByCategory[.virtualMachine]?.fileCount == 2)
+        #expect(scan.categoryBreakdown.reduce(0) { $0 + $1.fileCount } == 11)
     }
 
     @Test("groups same-sized files as duplicate candidates")
