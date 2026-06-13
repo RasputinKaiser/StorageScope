@@ -208,6 +208,33 @@ struct FileSystemScannerTests {
         #expect(scan.typeBreakdown.first?.fileCount == 30)
     }
 
+    @Test("flattened retained tree preserves preorder without changing counts")
+    func flattenedRetainedTreePreservesPreorder() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let leafA = storageItem(url: temporaryRoot.appendingPathComponent("A/a.mov"), name: "a.mov")
+        let leafB = storageItem(url: temporaryRoot.appendingPathComponent("A/b.mov"), name: "b.mov")
+        let folderA = storageItem(
+            url: temporaryRoot.appendingPathComponent("A", isDirectory: true),
+            name: "A",
+            kind: .folder,
+            children: [leafA, leafB]
+        )
+        let leafC = storageItem(url: temporaryRoot.appendingPathComponent("c.mov"), name: "c.mov")
+        let root = storageItem(
+            url: temporaryRoot,
+            name: "Root",
+            kind: .folder,
+            children: [folderA, leafC]
+        )
+
+        let flattened = root.flattened()
+
+        #expect(flattened.map(\.name) == ["Root", "A", "a.mov", "b.mov", "c.mov"])
+        #expect(flattened.count == root.retainedItemCount)
+    }
+
     @Test("keeps directory child retention bounded during wide scans")
     func wideDirectoryScanRetainsOnlyLargestChildren() throws {
         let temporaryRoot = try makeTemporaryRoot()
@@ -594,6 +621,27 @@ struct FileSystemScannerTests {
             reason: "Test cleanup target.",
             reclaimableBytes: bytes,
             confidence: confidence
+        )
+    }
+
+    private func storageItem(
+        url: URL,
+        name: String? = nil,
+        kind: StorageItem.Kind = .file,
+        children: [StorageItem] = []
+    ) -> StorageItem {
+        StorageItem(
+            url: url,
+            name: name,
+            kind: kind,
+            byteSize: children.reduce(Int64(1)) { $0 + $1.byteSize },
+            allocatedSize: children.reduce(Int64(1)) { $0 + $1.allocatedSize },
+            modifiedAt: nil,
+            immediateChildCount: children.count,
+            descendantCount: children.reduce(0) { $0 + 1 + $1.descendantCount },
+            children: children,
+            isReadable: true,
+            fileExtension: url.pathExtension.isEmpty ? nil : url.pathExtension
         )
     }
 

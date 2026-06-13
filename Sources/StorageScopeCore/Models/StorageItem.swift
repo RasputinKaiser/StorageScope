@@ -59,7 +59,10 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
     }
 
     public func flattened() -> [StorageItem] {
-        [self] + children.flatMap { $0.flattened() }
+        var items: [StorageItem] = []
+        items.reserveCapacity(retainedItemCount)
+        appendFlattened(to: &items)
+        return items
     }
 
     public var retainedItemCount: Int {
@@ -80,5 +83,12 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
             isReadable: isReadable,
             fileExtension: fileExtension
         )
+    }
+
+    private func appendFlattened(to items: inout [StorageItem]) {
+        items.append(self)
+        for child in children {
+            child.appendFlattened(to: &items)
+        }
     }
 }
