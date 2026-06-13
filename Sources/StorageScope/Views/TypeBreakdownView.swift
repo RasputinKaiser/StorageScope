@@ -15,7 +15,9 @@ struct TypeBreakdownView: View {
                 }
 
                 let stats = store.filteredTypeBreakdown
+                let categoryStats = store.filteredCategoryBreakdown
                 let maxBytes = max(stats.first?.totalBytes ?? 1, 1)
+                let maxCategoryBytes = max(categoryStats.first?.totalBytes ?? 1, 1)
 
                 if stats.isEmpty {
                     FilterRecoveryView(
@@ -30,6 +32,45 @@ struct TypeBreakdownView: View {
                     .frame(minHeight: 320)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                 } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Category Mix")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 0) {
+                            ForEach(categoryStats) { stat in
+                                HStack(spacing: 14) {
+                                    Text(stat.category.rawValue)
+                                        .font(.system(.body, design: .rounded).weight(.semibold))
+                                        .frame(width: 110, alignment: .leading)
+
+                                    GeometryReader { geometry in
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(.quaternary)
+                                            .overlay(alignment: .leading) {
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .fill(.teal.opacity(0.72))
+                                                    .frame(width: max(8, geometry.size.width * CGFloat(Double(stat.totalBytes) / Double(maxCategoryBytes))))
+                                            }
+                                    }
+                                    .frame(height: 10)
+
+                                    Text(StorageFormat.bytes(stat.totalBytes))
+                                        .font(.system(.body, design: .rounded).monospacedDigit())
+                                        .frame(width: 100, alignment: .trailing)
+
+                                    Text("\(stat.extensionCount.formatted()) types")
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 86, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 11)
+
+                                Divider()
+                            }
+                        }
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    }
+
                     VStack(spacing: 0) {
                         ForEach(stats) { stat in
                             HStack(spacing: 14) {

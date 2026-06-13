@@ -13,6 +13,7 @@ public struct StorageScan: Sendable {
     public let largestFolders: [StorageItem]
     public let oldLargeFiles: [StorageItem]
     public let typeBreakdown: [FileTypeStat]
+    public let categoryBreakdown: [FileCategoryStat]
     public let duplicateSizeGroups: [DuplicateSizeGroup]
     public let verifiedDuplicateGroups: [VerifiedDuplicateGroup]
     public let cleanupCandidates: [CleanupCandidate]
@@ -30,6 +31,7 @@ public struct StorageScan: Sendable {
         largestFolders: [StorageItem],
         oldLargeFiles: [StorageItem],
         typeBreakdown: [FileTypeStat],
+        categoryBreakdown: [FileCategoryStat] = [],
         duplicateSizeGroups: [DuplicateSizeGroup],
         verifiedDuplicateGroups: [VerifiedDuplicateGroup],
         cleanupCandidates: [CleanupCandidate]
@@ -46,6 +48,7 @@ public struct StorageScan: Sendable {
         self.largestFolders = largestFolders
         self.oldLargeFiles = oldLargeFiles
         self.typeBreakdown = typeBreakdown
+        self.categoryBreakdown = categoryBreakdown
         self.duplicateSizeGroups = duplicateSizeGroups
         self.verifiedDuplicateGroups = verifiedDuplicateGroups
         self.cleanupCandidates = cleanupCandidates
@@ -75,6 +78,22 @@ public struct FileTypeStat: Identifiable, Hashable, Sendable {
         self.label = label
         self.category = category
         self.fileCount = fileCount
+        self.totalBytes = totalBytes
+    }
+}
+
+public struct FileCategoryStat: Identifiable, Hashable, Sendable {
+    public let id: FileTypeStat.Category
+    public let category: FileTypeStat.Category
+    public let fileCount: Int
+    public let extensionCount: Int
+    public let totalBytes: Int64
+
+    public init(category: FileTypeStat.Category, fileCount: Int, extensionCount: Int, totalBytes: Int64) {
+        self.id = category
+        self.category = category
+        self.fileCount = fileCount
+        self.extensionCount = extensionCount
         self.totalBytes = totalBytes
     }
 }

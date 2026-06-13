@@ -580,6 +580,34 @@ final class ScanStore: ObservableObject {
         }
     }
 
+    var filteredCategoryBreakdown: [FileCategoryStat] {
+        let typeStats = filteredTypeBreakdown
+        var statsByCategory: [FileTypeStat.Category: (fileCount: Int, extensionCount: Int, totalBytes: Int64)] = [:]
+
+        for stat in typeStats {
+            var categoryStat = statsByCategory[stat.category] ?? (fileCount: 0, extensionCount: 0, totalBytes: 0)
+            categoryStat.fileCount += stat.fileCount
+            categoryStat.extensionCount += 1
+            categoryStat.totalBytes += stat.totalBytes
+            statsByCategory[stat.category] = categoryStat
+        }
+
+        return statsByCategory.map { category, stats in
+            FileCategoryStat(
+                category: category,
+                fileCount: stats.fileCount,
+                extensionCount: stats.extensionCount,
+                totalBytes: stats.totalBytes
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.totalBytes == rhs.totalBytes {
+                return lhs.category.rawValue.localizedStandardCompare(rhs.category.rawValue) == .orderedAscending
+            }
+            return lhs.totalBytes > rhs.totalBytes
+        }
+    }
+
     func revealSelectedItem() {
         guard let selectedItem else {
             return

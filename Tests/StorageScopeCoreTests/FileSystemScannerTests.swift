@@ -33,11 +33,11 @@ struct FileSystemScannerTests {
         let temporaryRoot = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: temporaryRoot) }
 
-        try writeFile(named: "movie.mp4", bytes: 5_000, in: temporaryRoot)
-        try writeFile(named: "installer.pkg", bytes: 4_000, in: temporaryRoot)
-        try writeFile(named: "source.swift", bytes: 3_000, in: temporaryRoot)
-        try writeFile(named: "bundle.zip", bytes: 2_000, in: temporaryRoot)
-        try writeFile(named: "notes.pdf", bytes: 1_000, in: temporaryRoot)
+        try writeFile(named: "movie.mp4", bytes: 500_000, in: temporaryRoot)
+        try writeFile(named: "installer.pkg", bytes: 400_000, in: temporaryRoot)
+        try writeFile(named: "source.swift", bytes: 300_000, in: temporaryRoot)
+        try writeFile(named: "bundle.zip", bytes: 200_000, in: temporaryRoot)
+        try writeFile(named: "notes.pdf", bytes: 100_000, in: temporaryRoot)
 
         let scan = try FileSystemScanner().scan(root: temporaryRoot, options: ScanOptions(duplicateCandidateThreshold: 10_000))
         let categoriesByLabel = Dictionary(uniqueKeysWithValues: scan.typeBreakdown.map { ($0.label, $0.category) })
@@ -47,6 +47,9 @@ struct FileSystemScannerTests {
         #expect(categoriesByLabel[".swift"] == .developer)
         #expect(categoriesByLabel[".zip"] == .archive)
         #expect(categoriesByLabel[".pdf"] == .document)
+        #expect(scan.categoryBreakdown.map(\.category) == [.video, .installer, .developer, .archive, .document])
+        #expect(scan.categoryBreakdown.first?.extensionCount == 1)
+        #expect(scan.categoryBreakdown.reduce(0) { $0 + $1.fileCount } == 5)
     }
 
     @Test("groups same-sized files as duplicate candidates")
