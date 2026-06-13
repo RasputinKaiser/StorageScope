@@ -581,6 +581,13 @@ final class ScanStore: ObservableObject {
     }
 
     var filteredCategoryBreakdown: [FileCategoryStat] {
+        guard let scan else {
+            return []
+        }
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return scan.categoryBreakdown
+        }
+
         let typeStats = filteredTypeBreakdown
         var statsByCategory: [FileTypeStat.Category: (fileCount: Int, extensionCount: Int, totalBytes: Int64)] = [:]
 
