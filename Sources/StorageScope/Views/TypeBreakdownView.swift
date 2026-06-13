@@ -58,7 +58,7 @@ struct TypeBreakdownView: View {
                                         .font(.system(.body, design: .rounded).monospacedDigit())
                                         .frame(width: 100, alignment: .trailing)
 
-                                    Text("\(stat.extensionCount.formatted()) types")
+                                    Text(stat.extensionCountLabel)
                                         .foregroundStyle(.secondary)
                                         .frame(width: 86, alignment: .trailing)
                                 }
