@@ -67,6 +67,7 @@ struct FileSystemScannerTests {
         #expect(scan.duplicateSizeGroups.first?.items.map(\.name).sorted() == ["a.dat", "b.dat"])
         #expect(scan.duplicateCandidateItemLimit == 5_000)
         #expect(scan.duplicateCandidateItemsRetained == 3)
+        #expect(scan.duplicateCandidateItemsConsidered == 3)
         #expect(!scan.duplicateCandidateLimitReached)
     }
 
@@ -231,6 +232,7 @@ struct FileSystemScannerTests {
         #expect(scan.duplicateSizeGroups.first?.items.count == 12)
         #expect(scan.duplicateCandidateItemLimit == 12)
         #expect(scan.duplicateCandidateItemsRetained == 12)
+        #expect(scan.duplicateCandidateItemsConsidered == 80)
         #expect(scan.duplicateCandidateLimitReached)
     }
 
@@ -261,6 +263,7 @@ struct FileSystemScannerTests {
         #expect(largeGroup?.items.map(\.name).sorted() == ["large-a.bin", "large-b.bin"])
         #expect(scan.duplicateCandidateItemLimit == 12)
         #expect(scan.duplicateCandidateItemsRetained == 12)
+        #expect(scan.duplicateCandidateItemsConsidered == 14)
         #expect(scan.duplicateCandidateLimitReached)
     }
 
@@ -291,6 +294,7 @@ struct FileSystemScannerTests {
         #expect(!scan.duplicateSizeGroups.contains { $0.byteSize == 2_048 })
         #expect(scan.duplicateCandidateItemLimit == 12)
         #expect(scan.duplicateCandidateItemsRetained == 12)
+        #expect(scan.duplicateCandidateItemsConsidered == 14)
         #expect(scan.duplicateCandidateLimitReached)
     }
 

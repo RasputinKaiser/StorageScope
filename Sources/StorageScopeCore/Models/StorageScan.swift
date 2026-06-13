@@ -18,6 +18,7 @@ public struct StorageScan: Sendable {
     public let verifiedDuplicateGroups: [VerifiedDuplicateGroup]
     public let duplicateCandidateItemLimit: Int
     public let duplicateCandidateItemsRetained: Int
+    public let duplicateCandidateItemsConsidered: Int
     public let duplicateCandidateLimitReached: Bool
     public let cleanupCandidates: [CleanupCandidate]
 
@@ -39,6 +40,7 @@ public struct StorageScan: Sendable {
         verifiedDuplicateGroups: [VerifiedDuplicateGroup],
         duplicateCandidateItemLimit: Int = 0,
         duplicateCandidateItemsRetained: Int = 0,
+        duplicateCandidateItemsConsidered: Int = 0,
         duplicateCandidateLimitReached: Bool = false,
         cleanupCandidates: [CleanupCandidate]
     ) {
@@ -59,6 +61,7 @@ public struct StorageScan: Sendable {
         self.verifiedDuplicateGroups = verifiedDuplicateGroups
         self.duplicateCandidateItemLimit = duplicateCandidateItemLimit
         self.duplicateCandidateItemsRetained = duplicateCandidateItemsRetained
+        self.duplicateCandidateItemsConsidered = duplicateCandidateItemsConsidered
         self.duplicateCandidateLimitReached = duplicateCandidateLimitReached
         self.cleanupCandidates = cleanupCandidates
     }

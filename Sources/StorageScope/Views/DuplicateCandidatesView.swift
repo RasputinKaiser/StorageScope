@@ -73,7 +73,7 @@ private struct DuplicateCandidateLimitNotice: View {
 
     var body: some View {
         Label {
-            Text("Showing largest retained same-size leads: \(scan.duplicateCandidateItemsRetained.formatted()) of \(scan.duplicateCandidateItemLimit.formatted()) candidate files kept for review.")
+            Text("Showing largest retained same-size leads: \(scan.duplicateCandidateItemsRetained.formatted()) of \(scan.duplicateCandidateItemsConsidered.formatted()) candidate files kept for review.")
         } icon: {
             Image(systemName: "line.3.horizontal.decrease.circle")
         }

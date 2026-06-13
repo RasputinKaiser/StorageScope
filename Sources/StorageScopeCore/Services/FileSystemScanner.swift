@@ -106,6 +106,7 @@ public final class FileSystemScanner {
             verifiedDuplicateGroups: verifiedDuplicateGroups,
             duplicateCandidateItemLimit: accumulator.duplicateCandidateItemLimit,
             duplicateCandidateItemsRetained: accumulator.duplicateCandidateItemsRetained,
+            duplicateCandidateItemsConsidered: accumulator.duplicateCandidateItemsConsidered,
             duplicateCandidateLimitReached: accumulator.duplicateCandidateLimitReached,
             cleanupCandidates: accumulator.cleanupCandidates(
                 rootID: rootItem.id,
@@ -417,6 +418,7 @@ private final class ScanAccumulator {
     private var fileTypeStats: [String: FileTypeAccumulator] = [:]
     private var duplicateCandidatesBySize: [Int64: [StorageItem]] = [:]
     private var duplicateCandidateItemCount = 0
+    private var duplicateCandidateConsideredCount = 0
     private var smallestDuplicateCandidateByteSize: Int64?
     private(set) var duplicateCandidateLimitReached = false
     private var cleanupCandidatesByID: [String: CleanupCandidate] = [:]
@@ -572,6 +574,10 @@ private final class ScanAccumulator {
         duplicateCandidateItemCount
     }
 
+    var duplicateCandidateItemsConsidered: Int {
+        duplicateCandidateConsideredCount
+    }
+
     func cleanupCandidates(
         rootID: String,
         verifiedDuplicateGroups: [VerifiedDuplicateGroup],
@@ -655,8 +661,10 @@ private final class ScanAccumulator {
     }
 
     private func recordDuplicateCandidate(_ item: StorageItem) {
+        duplicateCandidateConsideredCount += 1
         let candidateLimit = max(0, options.maxDuplicateCandidateItems)
         guard candidateLimit > 0 else {
+            duplicateCandidateLimitReached = true
             return
         }
 
