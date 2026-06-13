@@ -69,6 +69,24 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
         1 + children.reduce(0) { $0 + $1.retainedItemCount }
     }
 
+    public func matchesSearchQuery(_ query: String) -> Bool {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return true
+        }
+
+        return matchesTrimmedSearchQuery(trimmedQuery)
+    }
+
+    public func retainedTreeContainsSearchMatch(_ query: String) -> Bool {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            return true
+        }
+
+        return retainedTreeContainsTrimmedSearchMatch(trimmedQuery)
+    }
+
     public func pruningChildren() -> StorageItem {
         StorageItem(
             url: url,
@@ -83,6 +101,16 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
             isReadable: isReadable,
             fileExtension: fileExtension
         )
+    }
+
+    private func matchesTrimmedSearchQuery(_ query: String) -> Bool {
+        name.localizedCaseInsensitiveContains(query) ||
+            url.path.localizedCaseInsensitiveContains(query)
+    }
+
+    private func retainedTreeContainsTrimmedSearchMatch(_ query: String) -> Bool {
+        matchesTrimmedSearchQuery(query) ||
+            children.contains { $0.retainedTreeContainsTrimmedSearchMatch(query) }
     }
 
     private func appendFlattened(to items: inout [StorageItem]) {

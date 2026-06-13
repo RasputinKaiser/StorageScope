@@ -235,6 +235,36 @@ struct FileSystemScannerTests {
         #expect(flattened.count == root.retainedItemCount)
     }
 
+    @Test("retained tree search matches direct paths and descendants")
+    func retainedTreeSearchMatchesPathsAndDescendants() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let nestedMatch = storageItem(
+            url: temporaryRoot.appendingPathComponent("Media/Exports/final-cut.mov"),
+            name: "final-cut.mov"
+        )
+        let exports = storageItem(
+            url: temporaryRoot.appendingPathComponent("Media/Exports", isDirectory: true),
+            name: "Exports",
+            kind: .folder,
+            children: [nestedMatch]
+        )
+        let media = storageItem(
+            url: temporaryRoot.appendingPathComponent("Media", isDirectory: true),
+            name: "Media",
+            kind: .folder,
+            children: [exports]
+        )
+        let notes = storageItem(url: temporaryRoot.appendingPathComponent("notes.txt"), name: "notes.txt")
+
+        #expect(nestedMatch.matchesSearchQuery("FINAL-CUT"))
+        #expect(nestedMatch.matchesSearchQuery("Exports/final-cut.mov"))
+        #expect(media.retainedTreeContainsSearchMatch("final-cut"))
+        #expect(!notes.retainedTreeContainsSearchMatch("final-cut"))
+        #expect(media.retainedTreeContainsSearchMatch("   "))
+    }
+
     @Test("keeps directory child retention bounded during wide scans")
     func wideDirectoryScanRetainsOnlyLargestChildren() throws {
         let temporaryRoot = try makeTemporaryRoot()
