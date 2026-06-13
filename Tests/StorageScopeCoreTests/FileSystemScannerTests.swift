@@ -34,6 +34,7 @@ struct FileSystemScannerTests {
         defer { try? FileManager.default.removeItem(at: temporaryRoot) }
 
         try writeFile(named: "movie.mp4", bytes: 500_000, in: temporaryRoot)
+        try writeFile(named: "clip.mp4", bytes: 10_000, in: temporaryRoot)
         try writeFile(named: "installer.pkg", bytes: 400_000, in: temporaryRoot)
         try writeFile(named: "source.swift", bytes: 300_000, in: temporaryRoot)
         try writeFile(named: "bundle.zip", bytes: 200_000, in: temporaryRoot)
@@ -61,6 +62,8 @@ struct FileSystemScannerTests {
         #expect(categoriesByLabel[".qcow2"] == .virtualMachine)
         #expect(categoriesByLabel[".vmdk"] == .virtualMachine)
         #expect(scan.categoryBreakdown.map(\.category) == [.video, .installer, .developer, .archive, .database, .font, .document, .virtualMachine])
+        #expect(scan.typeBreakdown.first { $0.label == ".mp4" }?.fileCountLabel == "2 files")
+        #expect(scan.typeBreakdown.first { $0.label == ".pkg" }?.fileCountLabel == "1 file")
         #expect(scan.categoryBreakdown.first?.extensionCount == 1)
         #expect(scan.categoryBreakdown.first?.extensionCountLabel == "1 type")
         #expect(categoryStatsByCategory[.database]?.extensionCount == 2)
@@ -70,7 +73,7 @@ struct FileSystemScannerTests {
         #expect(categoryStatsByCategory[.font]?.fileCount == 2)
         #expect(categoryStatsByCategory[.virtualMachine]?.extensionCount == 2)
         #expect(categoryStatsByCategory[.virtualMachine]?.fileCount == 2)
-        #expect(scan.categoryBreakdown.reduce(0) { $0 + $1.fileCount } == 11)
+        #expect(scan.categoryBreakdown.reduce(0) { $0 + $1.fileCount } == 12)
     }
 
     @Test("groups same-sized files as duplicate candidates")

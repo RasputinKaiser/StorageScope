@@ -98,7 +98,7 @@ struct TypeBreakdownView: View {
                                     .font(.system(.body, design: .rounded).monospacedDigit())
                                     .frame(width: 100, alignment: .trailing)
 
-                                Text("\(stat.fileCount.formatted()) files")
+                                Text(stat.fileCountLabel)
                                     .foregroundStyle(.secondary)
                                     .frame(width: 86, alignment: .trailing)
                             }

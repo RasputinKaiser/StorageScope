@@ -95,6 +95,10 @@ public struct FileTypeStat: Identifiable, Hashable, Sendable {
         self.fileCount = fileCount
         self.totalBytes = totalBytes
     }
+
+    public var fileCountLabel: String {
+        "\(fileCount.formatted()) \(fileCount == 1 ? "file" : "files")"
+    }
 }
 
 public struct FileCategoryStat: Identifiable, Hashable, Sendable {
