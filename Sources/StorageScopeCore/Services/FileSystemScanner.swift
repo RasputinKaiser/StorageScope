@@ -636,10 +636,44 @@ private final class ScanAccumulator {
         typeStat.totalBytes += item.displaySize
         fileTypeStats[typeLabel] = typeStat
 
-        if item.byteSize >= options.duplicateCandidateThreshold,
-           duplicateCandidateItemCount < max(0, options.maxDuplicateCandidateItems) {
-            duplicateCandidatesBySize[item.byteSize, default: []].append(item)
-            duplicateCandidateItemCount += 1
+        if item.byteSize >= options.duplicateCandidateThreshold {
+            recordDuplicateCandidate(item)
+        }
+    }
+
+    private func recordDuplicateCandidate(_ item: StorageItem) {
+        let candidateLimit = max(0, options.maxDuplicateCandidateItems)
+        guard candidateLimit > 0 else {
+            return
+        }
+
+        duplicateCandidatesBySize[item.byteSize, default: []].append(item)
+        duplicateCandidateItemCount += 1
+
+        guard duplicateCandidateItemCount > candidateLimit else {
+            return
+        }
+
+        removeSmallestDuplicateCandidate()
+    }
+
+    private func removeSmallestDuplicateCandidate() {
+        guard let smallestByteSize = duplicateCandidatesBySize.keys.min(),
+              var items = duplicateCandidatesBySize[smallestByteSize],
+              !items.isEmpty else {
+            return
+        }
+
+        let removalIndex = items.indices.max { lhs, rhs in
+            items[lhs].url.path.localizedStandardCompare(items[rhs].url.path) == .orderedAscending
+        } ?? items.startIndex
+        items.remove(at: removalIndex)
+        duplicateCandidateItemCount -= 1
+
+        if items.isEmpty {
+            duplicateCandidatesBySize.removeValue(forKey: smallestByteSize)
+        } else {
+            duplicateCandidatesBySize[smallestByteSize] = items
         }
     }
 
