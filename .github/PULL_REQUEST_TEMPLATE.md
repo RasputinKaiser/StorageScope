@@ -6,7 +6,7 @@
 
 - [ ] `swift test`
 - [ ] `./script/public_upload_audit.sh`
-- [ ] `./script/build_and_run.sh --verify`
+- [ ] `bash ./script/build_and_run.sh --verify`
 
 ## Privacy And Safety
 

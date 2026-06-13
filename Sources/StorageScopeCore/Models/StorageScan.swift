@@ -73,6 +73,8 @@ public struct FileTypeStat: Identifiable, Hashable, Sendable {
         case audio = "Audio"
         case developer = "Developer"
         case document = "Documents"
+        case database = "Databases"
+        case font = "Fonts"
         case image = "Images"
         case installer = "Installers"
         case video = "Video"

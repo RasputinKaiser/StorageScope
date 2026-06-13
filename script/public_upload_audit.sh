@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,6 +26,7 @@ blocked_patterns=(
   '^dist/'
   '^exports/'
   '^DerivedData/'
+  '^\.storagescope-'
   '^state\.yaml$'
   '(^|/)\.DS_Store$'
   '\.p12$'
@@ -56,7 +57,7 @@ while IFS= read -r candidate; do
   fi
 
   if [[ -f "$candidate" ]]; then
-    rg -n -i "$sensitive_pattern" "$candidate" >>"$secret_hits" || true
+    rg -I -n -i "$sensitive_pattern" "$candidate" >>"$secret_hits" || true
   fi
 done <"$candidate_file"
 

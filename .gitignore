@@ -4,6 +4,7 @@
 dist/
 exports/
 DerivedData/
+.storagescope-*/
 *.xcuserdata/
 *.xcuserstate
 .DS_Store

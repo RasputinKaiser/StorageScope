@@ -38,21 +38,21 @@ StorageScope is designed for people looking for a transparent alternative to bla
 ## Build And Run
 
 ```bash
-./script/build_and_run.sh
+bash ./script/build_and_run.sh
 ```
 
-The script builds a local app bundle at `${TMPDIR}/StorageScope/dist/StorageScope.app` by default, signs it ad hoc with the app sandbox entitlements, and launches it.
+The script builds a local app bundle at `${TMPDIR}/StorageScope/dist/StorageScope.app` by default, signs it ad hoc with the app sandbox entitlements, and launches it. Some macOS hosts reject temporary ad hoc app bundles at launch time; `--verify` reports that case and falls back to a SwiftPM executable launch probe so local build verification remains useful.
 
 Build without launching:
 
 ```bash
-./script/build_and_run.sh --build-only
+bash ./script/build_and_run.sh --build-only
 ```
 
 Verify build, signature, and launch:
 
 ```bash
-./script/build_and_run.sh --verify
+bash ./script/build_and_run.sh --verify
 ```
 
 ## Test

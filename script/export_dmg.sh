@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 APP_NAME="StorageScope"
@@ -24,7 +24,7 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR" "$EXPORT_DIR"
 
 export STORAGESCOPE_DIST_DIR="$DIST_DIR"
-"$ROOT_DIR/script/build_and_run.sh" --build-only >/dev/null
+bash "$ROOT_DIR/script/build_and_run.sh" --build-only >/dev/null
 
 codesign --verify --deep --strict "$APP_BUNDLE"
 test -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns"

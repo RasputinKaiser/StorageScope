@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 APP_NAME="StorageScope"
@@ -28,7 +28,7 @@ fi
 mkdir -p "$DIST_DIR" "$PACKAGE_DIR"
 
 export STORAGESCOPE_DIST_DIR="$DIST_DIR"
-"$ROOT_DIR/script/build_and_run.sh" --build-only >/dev/null
+bash "$ROOT_DIR/script/build_and_run.sh" --build-only >/dev/null
 
 codesign --verify --deep --strict "$APP_BUNDLE"
 codesign --display --entitlements :- "$APP_BUNDLE" >/dev/null

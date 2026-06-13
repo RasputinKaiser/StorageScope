@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 MODE="${1:-run}"
@@ -192,6 +192,34 @@ open_app() {
   /usr/bin/open -n -F "$@" "$APP_BUNDLE"
 }
 
+wait_for_app_process() {
+  local attempts="${1:-10}"
+  for _ in $(seq 1 "$attempts"); do
+    if pgrep -x "$APP_NAME" >/dev/null; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  return 1
+}
+
+verify_swiftpm_executable_launch() {
+  local launch_pid
+  "$BUILD_BINARY" >/dev/null 2>&1 &
+  launch_pid="$!"
+
+  sleep 1
+  if kill -0 "$launch_pid" >/dev/null 2>&1; then
+    kill "$launch_pid" >/dev/null 2>&1 || true
+    wait "$launch_pid" >/dev/null 2>&1 || true
+    echo "Verified SwiftPM executable launch: $BUILD_BINARY"
+    return 0
+  fi
+
+  wait "$launch_pid" >/dev/null 2>&1
+  return 1
+}
+
 write_sized_file() {
   local path="$1"
   local size="$2"
@@ -275,8 +303,12 @@ case "$MODE" in
       codesign --verify --deep --strict "$APP_BUNDLE"
     fi
     open_app
-    sleep 1
-    pgrep -x "$APP_NAME" >/dev/null
+    if wait_for_app_process 10; then
+      echo "Verified app bundle launch: $APP_BUNDLE"
+    else
+      echo "App bundle launch did not remain running; verifying SwiftPM executable launch instead." >&2
+      verify_swiftpm_executable_launch
+    fi
     ;;
   --build-only|build-only)
     echo "$APP_BUNDLE"

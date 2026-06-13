@@ -844,10 +844,14 @@ private enum FileTypeCategoryClassifier {
             return .archive
         case "aif", "aiff", "flac", "m4a", "mp3", "wav":
             return .audio
+        case "db", "realm", "sqlite", "sqlite3":
+            return .database
         case "app", "bundle", "framework", "h", "json", "m", "mm", "pbxproj", "plist", "sh", "swift", "xcarchive", "xcodeproj", "xcworkspace", "yml", "yaml":
             return .developer
         case "csv", "doc", "docx", "key", "md", "numbers", "pages", "pdf", "ppt", "pptx", "rtf", "txt", "xls", "xlsx":
             return .document
+        case "otf", "ttc", "ttf", "woff", "woff2":
+            return .font
         case "gif", "heic", "jpeg", "jpg", "png", "psd", "raw", "tif", "tiff", "webp":
             return .image
         case "dmg", "ipsw", "iso", "mpkg", "pkg", "sparsebundle", "sparseimage", "toast", "xip":
