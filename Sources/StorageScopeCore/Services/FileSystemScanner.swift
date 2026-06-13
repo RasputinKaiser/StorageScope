@@ -414,6 +414,7 @@ private final class ScanAccumulator {
     private var fileTypeStats: [String: FileTypeAccumulator] = [:]
     private var duplicateCandidatesBySize: [Int64: [StorageItem]] = [:]
     private var duplicateCandidateItemCount = 0
+    private var smallestDuplicateCandidateByteSize: Int64?
     private var cleanupCandidatesByID: [String: CleanupCandidate] = [:]
 
     var scannedItemCount = 0
@@ -647,8 +648,17 @@ private final class ScanAccumulator {
             return
         }
 
+        if duplicateCandidateItemCount >= candidateLimit,
+           let smallestDuplicateCandidateByteSize,
+           item.byteSize < smallestDuplicateCandidateByteSize {
+            return
+        }
+
         duplicateCandidatesBySize[item.byteSize, default: []].append(item)
         duplicateCandidateItemCount += 1
+        if smallestDuplicateCandidateByteSize.map({ item.byteSize < $0 }) ?? true {
+            smallestDuplicateCandidateByteSize = item.byteSize
+        }
 
         guard duplicateCandidateItemCount > candidateLimit else {
             return
@@ -658,9 +668,10 @@ private final class ScanAccumulator {
     }
 
     private func removeSmallestDuplicateCandidate() {
-        guard let smallestByteSize = duplicateCandidatesBySize.keys.min(),
+        guard let smallestByteSize = smallestDuplicateCandidateByteSize ?? duplicateCandidatesBySize.keys.min(),
               var items = duplicateCandidatesBySize[smallestByteSize],
               !items.isEmpty else {
+            smallestDuplicateCandidateByteSize = duplicateCandidatesBySize.keys.min()
             return
         }
 
@@ -672,6 +683,7 @@ private final class ScanAccumulator {
 
         if items.isEmpty {
             duplicateCandidatesBySize.removeValue(forKey: smallestByteSize)
+            smallestDuplicateCandidateByteSize = duplicateCandidatesBySize.keys.min()
         } else {
             duplicateCandidatesBySize[smallestByteSize] = items
         }

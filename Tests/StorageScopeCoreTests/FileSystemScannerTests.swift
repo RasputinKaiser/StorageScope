@@ -255,6 +255,33 @@ struct FileSystemScannerTests {
         #expect(largeGroup?.items.map(\.name).sorted() == ["large-a.bin", "large-b.bin"])
     }
 
+    @Test("duplicate candidate cap skips later smaller files")
+    func duplicateCandidateCapSkipsLaterSmallerFiles() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for index in 0..<12 {
+            try writeFile(named: String(format: "large-%03d.bin", index), bytes: 8_192, in: temporaryRoot)
+        }
+        try writeFile(named: "small-a.bin", bytes: 2_048, in: temporaryRoot)
+        try writeFile(named: "small-b.bin", bytes: 2_048, in: temporaryRoot)
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1_000,
+                duplicateVerificationByteLimit: 0,
+                maxDuplicateCandidateItems: 12
+            )
+        )
+
+        let retainedCandidateCount = scan.duplicateSizeGroups.reduce(0) { $0 + $1.items.count }
+
+        #expect(retainedCandidateCount == 12)
+        #expect(scan.duplicateSizeGroups.contains { $0.byteSize == 8_192 && $0.items.count == 12 })
+        #expect(!scan.duplicateSizeGroups.contains { $0.byteSize == 2_048 })
+    }
+
     @Test("duplicate candidates include files pruned from retained tree")
     func duplicateCandidatesSurviveRetainedTreePruning() throws {
         let temporaryRoot = try makeTemporaryRoot()
