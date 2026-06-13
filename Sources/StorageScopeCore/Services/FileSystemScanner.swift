@@ -520,18 +520,14 @@ private final class ScanAccumulator {
     }
 
     var categoryBreakdown: [FileCategoryStat] {
-        Self.categoryBreakdown(from: typeBreakdown)
-    }
-
-    static func categoryBreakdown(from typeStats: [FileTypeStat]) -> [FileCategoryStat] {
         var statsByCategory: [FileTypeStat.Category: (fileCount: Int, extensionCount: Int, totalBytes: Int64)] = [:]
 
-        for stat in typeStats {
-            var categoryStat = statsByCategory[stat.category] ?? (fileCount: 0, extensionCount: 0, totalBytes: 0)
-            categoryStat.fileCount += stat.fileCount
+        for stats in fileTypeStats.values {
+            var categoryStat = statsByCategory[stats.category] ?? (fileCount: 0, extensionCount: 0, totalBytes: 0)
+            categoryStat.fileCount += stats.fileCount
             categoryStat.extensionCount += 1
-            categoryStat.totalBytes += stat.totalBytes
-            statsByCategory[stat.category] = categoryStat
+            categoryStat.totalBytes += stats.totalBytes
+            statsByCategory[stats.category] = categoryStat
         }
 
         return statsByCategory.map { category, stats in
