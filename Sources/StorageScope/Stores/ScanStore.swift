@@ -443,8 +443,7 @@ final class ScanStore: ObservableObject {
             let passesSize = candidate.reclaimableBytes >= sizeFilter.threshold || item.displaySize >= sizeFilter.threshold
             let passesLane = cleanupCandidate(candidate, passes: cleanupLaneFilter)
             let passesQuery = trimmedQuery.isEmpty ||
-                item.name.localizedCaseInsensitiveContains(trimmedQuery) ||
-                item.url.path.localizedCaseInsensitiveContains(trimmedQuery) ||
+                item.matchesNormalizedSearchQuery(trimmedQuery) ||
                 candidate.reason.localizedCaseInsensitiveContains(trimmedQuery) ||
                 candidate.kind.displayName.localizedCaseInsensitiveContains(trimmedQuery)
             return passesSize && passesLane && passesQuery
@@ -571,12 +570,13 @@ final class ScanStore: ObservableObject {
         guard let scan else {
             return []
         }
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
             return scan.typeBreakdown
         }
         return scan.typeBreakdown.filter {
-            $0.label.localizedCaseInsensitiveContains(query) ||
-                $0.category.rawValue.localizedCaseInsensitiveContains(query)
+            $0.label.localizedCaseInsensitiveContains(trimmedQuery) ||
+                $0.category.rawValue.localizedCaseInsensitiveContains(trimmedQuery)
         }
     }
 
@@ -668,9 +668,7 @@ final class ScanStore: ObservableObject {
 
         return sorted(items.filter { item in
             let passesSize = item.displaySize >= sizeFilter.threshold
-            let passesQuery = trimmedQuery.isEmpty ||
-                item.name.localizedCaseInsensitiveContains(trimmedQuery) ||
-                item.url.path.localizedCaseInsensitiveContains(trimmedQuery)
+            let passesQuery = item.matchesNormalizedSearchQuery(trimmedQuery)
             return passesSize && passesQuery
         })
     }

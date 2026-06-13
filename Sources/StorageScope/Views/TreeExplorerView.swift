@@ -71,7 +71,7 @@ private struct TreeNodeRow: View {
         let trimmedQuery = store.query.trimmingCharacters(in: .whitespacesAndNewlines)
         return item.children.filter { child in
             child.displaySize >= store.sizeFilter.threshold &&
-                (trimmedQuery.isEmpty || child.retainedTreeContainsSearchMatch(trimmedQuery))
+                child.retainedTreeContainsNormalizedSearchMatch(trimmedQuery)
         }
     }
 

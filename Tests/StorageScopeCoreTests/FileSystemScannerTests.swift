@@ -259,8 +259,11 @@ struct FileSystemScannerTests {
         let notes = storageItem(url: temporaryRoot.appendingPathComponent("notes.txt"), name: "notes.txt")
 
         #expect(nestedMatch.matchesSearchQuery("FINAL-CUT"))
+        #expect(nestedMatch.matchesSearchQuery("  final-cut  "))
+        #expect(nestedMatch.matchesNormalizedSearchQuery("FINAL-CUT"))
         #expect(nestedMatch.matchesSearchQuery("Exports/final-cut.mov"))
         #expect(media.retainedTreeContainsSearchMatch("final-cut"))
+        #expect(media.retainedTreeContainsNormalizedSearchMatch("final-cut"))
         #expect(!notes.retainedTreeContainsSearchMatch("final-cut"))
         #expect(media.retainedTreeContainsSearchMatch("   "))
     }
