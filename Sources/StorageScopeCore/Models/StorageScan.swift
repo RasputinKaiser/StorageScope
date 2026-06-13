@@ -16,6 +16,9 @@ public struct StorageScan: Sendable {
     public let categoryBreakdown: [FileCategoryStat]
     public let duplicateSizeGroups: [DuplicateSizeGroup]
     public let verifiedDuplicateGroups: [VerifiedDuplicateGroup]
+    public let duplicateCandidateItemLimit: Int
+    public let duplicateCandidateItemsRetained: Int
+    public let duplicateCandidateLimitReached: Bool
     public let cleanupCandidates: [CleanupCandidate]
 
     public init(
@@ -34,6 +37,9 @@ public struct StorageScan: Sendable {
         categoryBreakdown: [FileCategoryStat] = [],
         duplicateSizeGroups: [DuplicateSizeGroup],
         verifiedDuplicateGroups: [VerifiedDuplicateGroup],
+        duplicateCandidateItemLimit: Int = 0,
+        duplicateCandidateItemsRetained: Int = 0,
+        duplicateCandidateLimitReached: Bool = false,
         cleanupCandidates: [CleanupCandidate]
     ) {
         self.rootURL = rootURL
@@ -51,6 +57,9 @@ public struct StorageScan: Sendable {
         self.categoryBreakdown = categoryBreakdown
         self.duplicateSizeGroups = duplicateSizeGroups
         self.verifiedDuplicateGroups = verifiedDuplicateGroups
+        self.duplicateCandidateItemLimit = duplicateCandidateItemLimit
+        self.duplicateCandidateItemsRetained = duplicateCandidateItemsRetained
+        self.duplicateCandidateLimitReached = duplicateCandidateLimitReached
         self.cleanupCandidates = cleanupCandidates
     }
 }

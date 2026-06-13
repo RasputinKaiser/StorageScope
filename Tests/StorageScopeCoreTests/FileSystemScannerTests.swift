@@ -65,6 +65,9 @@ struct FileSystemScannerTests {
 
         #expect(scan.duplicateSizeGroups.count == 1)
         #expect(scan.duplicateSizeGroups.first?.items.map(\.name).sorted() == ["a.dat", "b.dat"])
+        #expect(scan.duplicateCandidateItemLimit == 5_000)
+        #expect(scan.duplicateCandidateItemsRetained == 3)
+        #expect(!scan.duplicateCandidateLimitReached)
     }
 
     @Test("verifies duplicate files by content hash")
@@ -226,6 +229,9 @@ struct FileSystemScannerTests {
         #expect(scan.scannedItemCount == 81)
         #expect(scan.duplicateSizeGroups.count == 1)
         #expect(scan.duplicateSizeGroups.first?.items.count == 12)
+        #expect(scan.duplicateCandidateItemLimit == 12)
+        #expect(scan.duplicateCandidateItemsRetained == 12)
+        #expect(scan.duplicateCandidateLimitReached)
     }
 
     @Test("duplicate candidate cap keeps later larger files")
@@ -253,6 +259,9 @@ struct FileSystemScannerTests {
 
         #expect(retainedCandidateCount == 12)
         #expect(largeGroup?.items.map(\.name).sorted() == ["large-a.bin", "large-b.bin"])
+        #expect(scan.duplicateCandidateItemLimit == 12)
+        #expect(scan.duplicateCandidateItemsRetained == 12)
+        #expect(scan.duplicateCandidateLimitReached)
     }
 
     @Test("duplicate candidate cap skips later smaller files")
@@ -280,6 +289,9 @@ struct FileSystemScannerTests {
         #expect(retainedCandidateCount == 12)
         #expect(scan.duplicateSizeGroups.contains { $0.byteSize == 8_192 && $0.items.count == 12 })
         #expect(!scan.duplicateSizeGroups.contains { $0.byteSize == 2_048 })
+        #expect(scan.duplicateCandidateItemLimit == 12)
+        #expect(scan.duplicateCandidateItemsRetained == 12)
+        #expect(scan.duplicateCandidateLimitReached)
     }
 
     @Test("duplicate candidates include files pruned from retained tree")

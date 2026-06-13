@@ -16,6 +16,10 @@ struct DuplicateCandidatesView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                if let scan = store.scan, scan.duplicateCandidateLimitReached {
+                    DuplicateCandidateLimitNotice(scan: scan)
+                }
+
                 if store.verifiedDuplicateGroups.isEmpty && store.duplicateGroups.isEmpty {
                     FilterRecoveryView(
                         title: "No Duplicate Leads",
@@ -61,6 +65,23 @@ struct DuplicateCandidatesView: View {
         } else {
             expandedCandidateGroupIDs.insert(group.id)
         }
+    }
+}
+
+private struct DuplicateCandidateLimitNotice: View {
+    let scan: StorageScan
+
+    var body: some View {
+        Label {
+            Text("Showing largest retained same-size leads: \(scan.duplicateCandidateItemsRetained.formatted()) of \(scan.duplicateCandidateItemLimit.formatted()) candidate files kept for review.")
+        } icon: {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
