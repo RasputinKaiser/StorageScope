@@ -20,8 +20,8 @@ let package = Package(
             dependencies: [
                 "StorageScopeCore"
             ],
-            resources: [
-                .process("Resources")
+            exclude: [
+                "Resources"
             ]
         ),
         .testTarget(

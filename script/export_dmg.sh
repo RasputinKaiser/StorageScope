@@ -24,6 +24,7 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR" "$EXPORT_DIR"
 
 export STORAGESCOPE_DIST_DIR="$DIST_DIR"
+export STORAGESCOPE_BUILD_CONFIGURATION="${STORAGESCOPE_BUILD_CONFIGURATION:-release}"
 bash "$ROOT_DIR/script/build_and_run.sh" --build-only >/dev/null
 
 codesign --verify --deep --strict "$APP_BUNDLE"

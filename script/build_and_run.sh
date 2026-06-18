@@ -33,6 +33,7 @@ CODESIGN_OPTIONS="${STORAGESCOPE_CODESIGN_OPTIONS:-runtime}"
 PROVISIONING_PROFILE="${STORAGESCOPE_PROVISIONING_PROFILE:-}"
 SKIP_SIGNING="${STORAGESCOPE_SKIP_SIGNING:-0}"
 FIXTURE_ROOT="${STORAGESCOPE_FIXTURE_ROOT:-$DEFAULT_FIXTURE_ROOT}"
+BUILD_CONFIGURATION="${STORAGESCOPE_BUILD_CONFIGURATION:-debug}"
 
 cd "$ROOT_DIR"
 
@@ -136,18 +137,26 @@ sign_bundle() {
   fi
 }
 
-swift build
-BUILD_DIR="$(swift build --show-bin-path)"
+SWIFT_BUILD_ARGS=()
+if [[ "$BUILD_CONFIGURATION" != "debug" ]]; then
+  SWIFT_BUILD_ARGS=(-c "$BUILD_CONFIGURATION")
+fi
+
+swift build "${SWIFT_BUILD_ARGS[@]}"
+BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
-RESOURCE_BUNDLE="$BUILD_DIR/${APP_NAME}_${APP_NAME}.bundle"
+LOCALIZED_RESOURCES="$ROOT_DIR/Sources/$APP_NAME/Resources"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
-if [[ -d "$RESOURCE_BUNDLE" ]]; then
-  cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/"
+if [[ -d "$LOCALIZED_RESOURCES" ]]; then
+  cp -R "$LOCALIZED_RESOURCES/"* "$APP_RESOURCES/"
 fi
 chmod +x "$APP_BINARY"
+if [[ "$BUILD_CONFIGURATION" == "release" ]] && command -v strip >/dev/null 2>&1; then
+  strip -S -x "$APP_BINARY"
+fi
 cp "$ROOT_DIR/Resources/PrivacyInfo.xcprivacy" "$APP_RESOURCES/PrivacyInfo.xcprivacy"
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
 if [[ -n "$PROVISIONING_PROFILE" ]]; then
