@@ -11,7 +11,8 @@ public struct ScanThresholds: Equatable, Sendable {
 }
 
 public enum ScanOptionPolicy {
-    public static func interactiveScanThresholds(displayThreshold: Int64 = 0) -> ScanThresholds {
+    public static func interactiveScanThresholds() -> ScanThresholds {
+        // Display-size filtering belongs in ScanStore.sizeFilter; scanner inclusion thresholds stay fixed.
         ScanThresholds(
             largeFileThreshold: 1_000_000_000,
             duplicateCandidateThreshold: 100_000_000

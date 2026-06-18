@@ -23,14 +23,14 @@ public final class ScanCancellation: @unchecked Sendable {
 
     public func cancel() {
         lock.lock()
+        defer { lock.unlock() }
         cancelled = true
-        lock.unlock()
     }
 
     public func check() throws {
         lock.lock()
+        defer { lock.unlock() }
         let shouldCancel = cancelled
-        lock.unlock()
 
         if shouldCancel {
             throw FileSystemScannerError.cancelled
@@ -78,7 +78,7 @@ public final class FileSystemScanner {
             cancellation: cancellation,
             accumulator: accumulator
         )
-        let allItems = rootItem.flattened()
+        let retainedItems = rootItem.flattened()
         let duplicateSizeGroups = accumulator.duplicateSizeGroups
         let verifiedDuplicateGroups = try verifiedDuplicateGroups(
             from: duplicateSizeGroups,
@@ -93,7 +93,7 @@ public final class FileSystemScanner {
             startedAt: startedAt,
             finishedAt: finishedAt,
             rootItem: rootItem,
-            allItems: allItems,
+            retainedItems: retainedItems,
             scannedItemCount: accumulator.scannedItemCount,
             inaccessibleItemCount: accumulator.inaccessibleItemCount,
             totalBytes: rootItem.displaySize,
@@ -258,28 +258,38 @@ public final class FileSystemScanner {
             )
         }
 
-        for (groupIndex, sizeGroup) in verificationGroups.enumerated() {
-            try cancellation?.check()
+        accumulator.recordPhase(
+            path: "Verifying duplicates across \(verificationGroups.count) size groups"
+        )
 
-            var hashedItems: [HashedStorageItem] = []
-            for item in sizeGroup.items {
+        let verifiedGroupsLock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: verificationGroups.count) { groupIndex in
+            do {
                 try cancellation?.check()
-                accumulator.recordPhase(
-                    path: "Verifying duplicates \(groupIndex + 1)/\(verificationGroups.count): \(item.name)"
-                )
-                guard let checksum = try? sha256Checksum(for: item.url, cancellation: cancellation) else {
-                    continue
+                let sizeGroup = verificationGroups[groupIndex]
+
+                let hashedItems = sizeGroup.items.compactMap { item -> HashedStorageItem? in
+                    guard let checksum = try? sha256Checksum(for: item.url, cancellation: cancellation) else {
+                        return nil
+                    }
+                    return HashedStorageItem(checksum: checksum, item: item)
                 }
-                hashedItems.append(HashedStorageItem(checksum: checksum, item: item))
-            }
 
-            let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
-            let verifiedForSize = groupedByHash.compactMap { checksum, hashedItems -> VerifiedDuplicateGroup? in
-                let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
-                return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: sizeGroup.byteSize, items: items) : nil
-            }
+                let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
+                let verifiedForSize = groupedByHash.compactMap { checksum, hashedItems -> VerifiedDuplicateGroup? in
+                    let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
+                    return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: sizeGroup.byteSize, items: items) : nil
+                }
 
-            verifiedGroups.append(contentsOf: verifiedForSize)
+                guard !verifiedForSize.isEmpty else {
+                    return
+                }
+                verifiedGroupsLock.lock()
+                defer { verifiedGroupsLock.unlock() }
+                verifiedGroups.append(contentsOf: verifiedForSize)
+            } catch {
+                return
+            }
         }
 
         return verifiedGroups.sorted { lhs, rhs in
@@ -302,7 +312,14 @@ public final class FileSystemScanner {
         var plannedBytes: Int64 = 0
         var plannedFiles = 0
 
-        for group in sizeGroups {
+        let budgetOrderedGroups = sizeGroups.sorted { lhs, rhs in
+            if lhs.totalBytes == rhs.totalBytes {
+                return lhs.byteSize < rhs.byteSize
+            }
+            return lhs.totalBytes < rhs.totalBytes
+        }
+
+        for group in budgetOrderedGroups {
             let nextBytes = plannedBytes + group.totalBytes
             let nextFiles = plannedFiles + group.items.count
             guard nextBytes <= options.duplicateVerificationByteLimit,

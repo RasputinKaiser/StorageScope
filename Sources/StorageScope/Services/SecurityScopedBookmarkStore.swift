@@ -44,6 +44,15 @@ final class SecurityScopedResourceAccess {
 
 struct SecurityScopedBookmarkStore {
     private static let bookmarkDataByPathKey = "StorageScope.securityScopedBookmarksByPath"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    var storedBookmarkPaths: [String] {
+        bookmarkDataByPath().keys.sorted()
+    }
 
     func remember(_ url: URL) {
         guard let bookmarkData = try? url.bookmarkData(
@@ -56,7 +65,13 @@ struct SecurityScopedBookmarkStore {
 
         var bookmarks = bookmarkDataByPath()
         bookmarks[url.standardizedFileURL.path] = bookmarkData
-        UserDefaults.standard.set(bookmarks, forKey: Self.bookmarkDataByPathKey)
+        defaults.set(bookmarks, forKey: Self.bookmarkDataByPathKey)
+    }
+
+    func storeBookmarkData(_ data: Data, for path: String) {
+        var bookmarks = bookmarkDataByPath()
+        bookmarks[path] = data
+        defaults.set(bookmarks, forKey: Self.bookmarkDataByPathKey)
     }
 
     func resolve(path: String) throws -> ResolvedSecurityScopedURL? {
@@ -65,25 +80,56 @@ struct SecurityScopedBookmarkStore {
         }
 
         var bookmarkWasStale = false
-        let url = try URL(
-            resolvingBookmarkData: bookmarkData,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &bookmarkWasStale
-        )
+        let url: URL
+        do {
+            url = try URL(
+                resolvingBookmarkData: bookmarkData,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &bookmarkWasStale
+            )
+        } catch {
+            remove(path: path)
+            throw error
+        }
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            remove(path: path)
+            return nil
+        }
 
         if bookmarkWasStale {
             remember(url)
         }
 
+        let access: SecurityScopedResourceAccess
+        do {
+            access = try SecurityScopedResourceAccess(url: url)
+        } catch {
+            remove(path: path)
+            throw error
+        }
+
         return ResolvedSecurityScopedURL(
             url: url,
-            access: try SecurityScopedResourceAccess(url: url),
+            access: access,
             bookmarkWasStale: bookmarkWasStale
         )
     }
 
+    func prune() {
+        for path in bookmarkDataByPath().keys {
+            _ = try? resolve(path: path)
+        }
+    }
+
+    private func remove(path: String) {
+        var bookmarks = bookmarkDataByPath()
+        bookmarks.removeValue(forKey: path)
+        defaults.set(bookmarks, forKey: Self.bookmarkDataByPathKey)
+    }
+
     private func bookmarkDataByPath() -> [String: Data] {
-        UserDefaults.standard.object(forKey: Self.bookmarkDataByPathKey) as? [String: Data] ?? [:]
+        defaults.object(forKey: Self.bookmarkDataByPathKey) as? [String: Data] ?? [:]
     }
 }

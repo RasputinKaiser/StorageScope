@@ -19,12 +19,21 @@ let package = Package(
             name: "StorageScope",
             dependencies: [
                 "StorageScopeCore"
+            ],
+            resources: [
+                .process("Resources")
             ]
         ),
         .testTarget(
             name: "StorageScopeCoreTests",
             dependencies: [
                 "StorageScopeCore"
+            ]
+        ),
+        .testTarget(
+            name: "StorageScopeTests",
+            dependencies: [
+                "StorageScope"
             ]
         )
     ]

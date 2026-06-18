@@ -3,6 +3,7 @@ import SwiftUI
 
 struct InspectorView: View {
     @ObservedObject var store: ScanStore
+    @FocusState private var focusedAction: InspectorAction?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -57,6 +58,7 @@ struct InspectorView: View {
                                 Label("Reveal in Finder", systemImage: "folder")
                                     .frame(maxWidth: .infinity)
                             }
+                            .focused($focusedAction, equals: .reveal)
 
                             Button {
                                 store.openSelectedItem()
@@ -64,6 +66,7 @@ struct InspectorView: View {
                                 Label("Open", systemImage: "arrow.up.right.square")
                                     .frame(maxWidth: .infinity)
                             }
+                            .focused($focusedAction, equals: .open)
 
                             Button {
                                 store.copySelectedPath()
@@ -71,6 +74,7 @@ struct InspectorView: View {
                                 Label("Copy Path", systemImage: "doc.on.clipboard")
                                     .frame(maxWidth: .infinity)
                             }
+                            .focused($focusedAction, equals: .copyPath)
 
                             Button(role: .destructive) {
                                 store.moveSelectedItemToTrash()
@@ -79,22 +83,36 @@ struct InspectorView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .disabled(!store.canMoveItemToTrash(item))
+                            .focused($focusedAction, equals: .moveToTrash)
                         }
                         .buttonStyle(.bordered)
                     }
                     .padding(16)
                 }
+                .onAppear {
+                    focusedAction = .reveal
+                }
+                .onChange(of: item.id) { _, _ in
+                    focusedAction = .reveal
+                }
             } else {
                 ContentUnavailableView(
                     "No Selection",
                     systemImage: "sidebar.right",
-                    description: Text("Select an item to inspect actions and metadata.")
+                    description: Text(L10n.string("Select an item to inspect actions and metadata."))
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(.bar)
     }
+}
+
+private enum InspectorAction: Hashable {
+    case reveal
+    case open
+    case copyPath
+    case moveToTrash
 }
 
 private struct CleanupContextSection: View {

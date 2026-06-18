@@ -190,7 +190,7 @@ private struct DuplicateItemList: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(items) { item in
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 Button {
                     store.selectedItemID = item.id
                 } label: {
@@ -210,8 +210,12 @@ private struct DuplicateItemList: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))")
+                .accessibilityValue(store.selectedItemID == item.id ? "Selected" : "Not selected")
+                .accessibilityHint("Selects this duplicate candidate")
 
-                if item.id != items.last?.id {
+                if index < items.index(before: items.endIndex) {
                     Divider()
                 }
             }

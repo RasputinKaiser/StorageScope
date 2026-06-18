@@ -199,10 +199,13 @@ private struct ScanStatusFooter: View {
                 Text("Scanning \(store.progress.scannedItemCount.formatted()) items")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Scan progress")
+                    .accessibilityValue("Scanning \(store.progress.scannedItemCount.formatted()) items")
                 Text(store.progress.currentPath)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(2)
+                    .accessibilityLabel("Current scan path")
             } else if let scan = store.scan {
                 Label(StorageFormat.bytes(scan.totalBytes), systemImage: "internaldrive.fill")
                     .font(.headline)

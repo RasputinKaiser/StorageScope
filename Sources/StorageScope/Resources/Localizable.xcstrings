@@ -1,0 +1,45 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Cancel" : {
+
+    },
+    "Choose Folder" : {
+
+    },
+    "Cleanup Review" : {
+
+    },
+    "Duplicate Review" : {
+
+    },
+    "Estimated reclaim: %@. This batch contains verified duplicate cleanup items." : {
+
+    },
+    "Estimated reclaim: %@. This batch includes review-suggested items." : {
+
+    },
+    "File Type Breakdown" : {
+
+    },
+    "Items can usually be restored from Finder Trash." : {
+
+    },
+    "Move to Trash" : {
+
+    },
+    "Review Before Moving" : {
+
+    },
+    "Select an item to inspect actions and metadata." : {
+
+    },
+    "StorageScope" : {
+
+    },
+    "Verified Duplicates" : {
+
+    }
+  },
+  "version" : "1.0"
+}

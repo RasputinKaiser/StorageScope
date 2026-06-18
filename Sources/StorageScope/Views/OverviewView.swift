@@ -206,13 +206,13 @@ private struct SizeDistributionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            let allItems = store.items(for: .overview)
-            let items = Array(allItems.prefix(10))
+            let overviewItems = store.items(for: .overview)
+            let items = Array(overviewItems.prefix(10))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Storage Map")
                     .font(.headline)
-                Text(storageMapSubtitle(visible: items.count, total: allItems.count))
+                Text(storageMapSubtitle(visible: items.count, total: overviewItems.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -303,7 +303,7 @@ private struct InsightCard: View {
                     .lineLimit(2)
                 Text(StorageFormat.bytes(item.displaySize))
                     .font(.title3.weight(.semibold))
-                Text(item.url.path)
+                Text(item.url.deletingLastPathComponent().path)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

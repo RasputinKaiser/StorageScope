@@ -129,6 +129,10 @@ private struct StorageItemRow: View {
             .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityHint("Selects this storage item")
         .contextMenu {
             Button("Reveal in Finder") {
                 store.selectedItemID = item.id

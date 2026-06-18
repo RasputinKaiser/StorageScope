@@ -6,28 +6,39 @@ import StorageScopeCore
 final class ScanStore: ObservableObject {
     private static let recentScanPathsKey = "StorageScope.recentScanPaths"
 
-    private struct ScanOptionsSnapshot: Equatable {
+    struct ScanOptionsSnapshot: Equatable {
         let includeHiddenFiles: Bool
         let oldFileAgeDays: Int
     }
 
-    @Published var selectedView: SmartView? = .overview
-    @Published var selectedItemID: String?
-    @Published var scan: StorageScan?
-    @Published var isScanning = false
-    @Published var progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "")
-    @Published var query = ""
-    @Published var sizeFilter: SizeFilter = .all
-    @Published var sortOption: ItemSortOption = .sizeDescending
-    @Published var cleanupLaneFilter: CleanupLaneFilter = .all
-    @Published var includeHiddenFiles = false
-    @Published var oldFileAgeDays = 180
+    private struct DerivedCacheKey: Equatable {
+        let scanFinishedAt: Date
+        let query: String
+        let sizeFilter: SizeFilter
+        let sortOption: ItemSortOption
+        let cleanupLaneFilter: CleanupLaneFilter
+        let ignoredCleanupCandidateIDs: Set<String>
+    }
+
+    private struct ItemsCacheKey: Equatable {
+        let scanFinishedAt: Date
+        let view: SmartView
+        let query: String
+        let sizeFilter: SizeFilter
+        let sortOption: ItemSortOption
+        let cleanupLaneFilter: CleanupLaneFilter
+        let ignoredCleanupCandidateIDs: Set<String>
+    }
+
+    @Published var selectedView: SmartView? = .overview {
+        didSet { invalidateItemsCache() }
+    }
+    @Published private var session = ScanSession()
+    @Published private var filter = ScanFilter()
+    @Published private var selection = ScanSelection()
     @Published var errorMessage: String?
-    @Published var selectedCleanupCandidateIDs = Set<String>()
-    @Published var ignoredCleanupCandidateIDs = Set<String>()
+    @Published var pendingTrashReviewPlan: TrashReviewPlan?
     @Published private(set) var recentScanPaths: [String]
-    @Published private var appliedScanOptions: ScanOptionsSnapshot?
-    @Published private var resultsNeedRefresh = false
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?
     private var selectVerifiedCleanupWhenCurrentScanCompletes = false
@@ -35,9 +46,16 @@ final class ScanStore: ObservableObject {
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
     private var scanTask: Task<Void, Never>?
-    private var lastScannedURL: URL?
     private let bookmarkStore = SecurityScopedBookmarkStore()
     private var activeRootAccess: SecurityScopedResourceAccess?
+    private var cachedCleanupCandidatesKey: DerivedCacheKey?
+    private var cachedCleanupCandidates: [CleanupCandidate] = []
+    private var cachedPotentialReclaimableBytesKey: DerivedCacheKey?
+    private var cachedPotentialReclaimableBytes: Int64 = 0
+    private var cachedReclaimPlanKey: DerivedCacheKey?
+    private var cachedReclaimPlan = ReclaimPlan(sections: [], primaryAction: nil)
+    private var cachedItemsKey: ItemsCacheKey?
+    private var cachedItems: [StorageItem] = []
 
     init() {
         recentScanPaths = UserDefaults.standard.stringArray(forKey: Self.recentScanPathsKey) ?? []
@@ -45,6 +63,89 @@ final class ScanStore: ObservableObject {
 
     var activeView: SmartView {
         selectedView ?? .overview
+    }
+
+    var selectedItemID: String? {
+        get { selection.selectedItemID }
+        set { selection.selectedItemID = newValue }
+    }
+
+    var scan: StorageScan? {
+        get { session.scan }
+        set {
+            session.scan = newValue
+            invalidateDerivedCaches()
+        }
+    }
+
+    var isScanning: Bool {
+        get { session.isScanning }
+        set { session.isScanning = newValue }
+    }
+
+    var progress: ScanProgress {
+        get { session.progress }
+        set { session.progress = newValue }
+    }
+
+    var query: String {
+        get { filter.query }
+        set {
+            filter.query = newValue
+            invalidateDerivedCaches()
+        }
+    }
+
+    var sizeFilter: SizeFilter {
+        get { filter.sizeFilter }
+        set {
+            filter.sizeFilter = newValue
+            invalidateDerivedCaches()
+        }
+    }
+
+    var sortOption: ItemSortOption {
+        get { filter.sortOption }
+        set {
+            filter.sortOption = newValue
+            invalidateDerivedCaches()
+        }
+    }
+
+    var cleanupLaneFilter: CleanupLaneFilter {
+        get { filter.cleanupLaneFilter }
+        set {
+            filter.cleanupLaneFilter = newValue
+            invalidateDerivedCaches()
+        }
+    }
+
+    var includeHiddenFiles: Bool {
+        get { filter.includeHiddenFiles }
+        set { filter.includeHiddenFiles = newValue }
+    }
+
+    var oldFileAgeDays: Int {
+        get { filter.oldFileAgeDays }
+        set { filter.oldFileAgeDays = newValue }
+    }
+
+    var selectedCleanupCandidateIDs: Set<String> {
+        get { selection.selectedCleanupCandidateIDs }
+        set { selection.selectedCleanupCandidateIDs = newValue }
+    }
+
+    var ignoredCleanupCandidateIDs: Set<String> {
+        get { selection.ignoredCleanupCandidateIDs }
+        set {
+            selection.ignoredCleanupCandidateIDs = newValue
+            invalidateDerivedCaches()
+        }
+    }
+
+    var treeExpandedIDs: Set<String> {
+        get { selection.treeExpandedIDs }
+        set { selection.treeExpandedIDs = newValue }
     }
 
     var selectedItem: StorageItem? {
@@ -59,11 +160,11 @@ final class ScanStore: ObservableObject {
     }
 
     var canRescan: Bool {
-        lastScannedURL != nil && !isScanning
+        session.canRescan
     }
 
     var canCancelScan: Bool {
-        isScanning
+        session.canCancelScan
     }
 
     var canUseSelectedItemActions: Bool {
@@ -78,7 +179,7 @@ final class ScanStore: ObservableObject {
     }
 
     var scanOptionsAreStale: Bool {
-        guard scan != nil, !isScanning, let appliedScanOptions else {
+        guard scan != nil, !isScanning, let appliedScanOptions = session.appliedOptions else {
             return false
         }
         return appliedScanOptions != currentScanOptions
@@ -88,7 +189,7 @@ final class ScanStore: ObservableObject {
         if scanOptionsAreStale {
             return "Rescan to apply scan options"
         }
-        if resultsNeedRefresh {
+        if session.resultsNeedRefresh {
             return "Rescan to refresh results"
         }
         return nil
@@ -98,7 +199,7 @@ final class ScanStore: ObservableObject {
         if scanOptionsAreStale {
             return "Scan options changed. Current results still reflect the previous hidden-file and age settings."
         }
-        if resultsNeedRefresh {
+        if session.resultsNeedRefresh {
             return "Results changed after moving items to Trash. Review can continue, or rescan when you are ready."
         }
         return nil
@@ -210,7 +311,7 @@ final class ScanStore: ObservableObject {
     }
 
     func rescan() {
-        guard let lastScannedURL else {
+        guard let lastScannedURL = session.lastScannedURL else {
             chooseFolderAndScan()
             return
         }
@@ -261,17 +362,16 @@ final class ScanStore: ObservableObject {
 
     private func scan(_ url: URL) {
         rememberScanURL(url)
-        lastScannedURL = url
-        selectedItemID = nil
-        selectedCleanupCandidateIDs.removeAll()
-        ignoredCleanupCandidateIDs.removeAll()
+        session.lastScannedURL = url
+        selection.resetForNewScan()
+        invalidateDerivedCaches()
         errorMessage = nil
-        resultsNeedRefresh = false
+        session.resultsNeedRefresh = false
         isScanning = true
         progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: url.path)
 
         let scanID = UUID()
-        let thresholds = ScanOptionPolicy.interactiveScanThresholds(displayThreshold: sizeFilter.threshold)
+        let thresholds = ScanOptionPolicy.interactiveScanThresholds()
         let options = ScanOptions(
             includeHidden: includeHiddenFiles,
             oldFileAgeDays: oldFileAgeDays,
@@ -319,9 +419,10 @@ final class ScanStore: ObservableObject {
                 }
 
                 scan = result
-                appliedScanOptions = optionsSnapshot
+                treeExpandedIDs = [result.rootItem.id]
+                session.appliedOptions = optionsSnapshot
                 if markResultsNeedRefreshWhenCurrentScanCompletes {
-                    resultsNeedRefresh = true
+                    session.resultsNeedRefresh = true
                     markResultsNeedRefreshWhenCurrentScanCompletes = false
                 }
                 if selectVerifiedCleanupWhenCurrentScanCompletes {
@@ -367,6 +468,19 @@ final class ScanStore: ObservableObject {
             return []
         }
 
+        let key = ItemsCacheKey(
+            scanFinishedAt: scan.finishedAt,
+            view: view,
+            query: query,
+            sizeFilter: sizeFilter,
+            sortOption: sortOption,
+            cleanupLaneFilter: cleanupLaneFilter,
+            ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
+        )
+        if cachedItemsKey == key {
+            return cachedItems
+        }
+
         let baseItems: [StorageItem]
         switch view {
         case .overview:
@@ -387,7 +501,10 @@ final class ScanStore: ObservableObject {
             baseItems = duplicateGroups.flatMap(\.items)
         }
 
-        return filtered(baseItems)
+        let items = filtered(baseItems)
+        cachedItemsKey = key
+        cachedItems = items
+        return items
     }
 
     var oldLargeFiles: [StorageItem] {
@@ -433,8 +550,20 @@ final class ScanStore: ObservableObject {
             return []
         }
 
+        let key = DerivedCacheKey(
+            scanFinishedAt: scan.finishedAt,
+            query: query,
+            sizeFilter: sizeFilter,
+            sortOption: sortOption,
+            cleanupLaneFilter: cleanupLaneFilter,
+            ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
+        )
+        if cachedCleanupCandidatesKey == key {
+            return cachedCleanupCandidates
+        }
+
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return scan.cleanupCandidates.filter { candidate in
+        let candidates = scan.cleanupCandidates.filter { candidate in
             guard !ignoredCleanupCandidateIDs.contains(candidate.id) else {
                 return false
             }
@@ -448,10 +577,22 @@ final class ScanStore: ObservableObject {
                 candidate.kind.displayName.localizedCaseInsensitiveContains(trimmedQuery)
             return passesSize && passesLane && passesQuery
         }
+        cachedCleanupCandidatesKey = key
+        cachedCleanupCandidates = candidates
+        return candidates
     }
 
     var potentialReclaimableBytes: Int64 {
-        CleanupSelectionPlanner.topLevelCandidates(cleanupCandidates).reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+        guard let key = currentDerivedCacheKey else {
+            return 0
+        }
+        if cachedPotentialReclaimableBytesKey == key {
+            return cachedPotentialReclaimableBytes
+        }
+        let bytes = CleanupSelectionPlanner.topLevelCandidates(cleanupCandidates).reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+        cachedPotentialReclaimableBytesKey = key
+        cachedPotentialReclaimableBytes = bytes
+        return bytes
     }
 
     var selectedCleanupCandidates: [CleanupCandidate] {
@@ -459,10 +600,10 @@ final class ScanStore: ObservableObject {
     }
 
     var selectedCleanupCandidate: CleanupCandidate? {
-        guard let scan, let selectedItemID else {
+        guard let selectedItemID else {
             return nil
         }
-        return scan.cleanupCandidates.first { $0.item.id == selectedItemID }
+        return cleanupCandidates.first { $0.item.id == selectedItemID }
     }
 
     var selectedCleanupBatchCandidates: [CleanupCandidate] {
@@ -481,7 +622,16 @@ final class ScanStore: ObservableObject {
         guard let scan else {
             return ReclaimPlan(sections: [], primaryAction: nil)
         }
-        return ReclaimPlanBuilder.build(scan: scan, visibleCleanupCandidates: cleanupCandidates)
+        guard let key = currentDerivedCacheKey else {
+            return ReclaimPlan(sections: [], primaryAction: nil)
+        }
+        if cachedReclaimPlanKey == key {
+            return cachedReclaimPlan
+        }
+        let plan = ReclaimPlanBuilder.build(scan: scan, visibleCleanupCandidates: cleanupCandidates)
+        cachedReclaimPlanKey = key
+        cachedReclaimPlan = plan
+        return plan
     }
 
     var selectedReclaimableBytes: Int64 {
@@ -489,20 +639,24 @@ final class ScanStore: ObservableObject {
     }
 
     func toggleCleanupCandidate(_ candidate: CleanupCandidate) {
-        if selectedCleanupCandidateIDs.contains(candidate.id) {
-            selectedCleanupCandidateIDs.remove(candidate.id)
-        } else {
-            selectedCleanupCandidateIDs.insert(candidate.id)
-        }
-        selectedItemID = candidate.item.id
+        selection.toggleCleanupCandidate(candidate)
     }
 
     func selectVerifiedCleanupCandidates() {
         selectedCleanupCandidateIDs = Set(verifiedCleanupCandidates.map(\.id))
     }
 
+    func selectAllVisibleCleanupCandidates() {
+        selectedCleanupCandidateIDs = Set(cleanupCandidates.map(\.id))
+    }
+
+    var allVisibleCleanupCandidatesSelected: Bool {
+        let visibleIDs = Set(cleanupCandidates.map(\.id))
+        return !visibleIDs.isEmpty && visibleIDs.isSubset(of: selectedCleanupCandidateIDs)
+    }
+
     func clearCleanupSelection() {
-        selectedCleanupCandidateIDs.removeAll()
+        selection.clearCleanupSelection()
     }
 
     func setCleanupLaneFilter(_ lane: CleanupLaneFilter) {
@@ -514,18 +668,18 @@ final class ScanStore: ObservableObject {
     }
 
     func resetDisplayFilters() {
-        query = ""
-        sizeFilter = .all
+        filter.resetDisplayFilters()
+        invalidateDerivedCaches()
     }
 
     func resetCleanupFilters() {
-        resetDisplayFilters()
-        cleanupLaneFilter = .all
+        filter.resetCleanupFilters()
+        invalidateDerivedCaches()
     }
 
     func ignoreCleanupCandidate(_ candidate: CleanupCandidate) {
-        ignoredCleanupCandidateIDs.insert(candidate.id)
-        selectedCleanupCandidateIDs.remove(candidate.id)
+        selection.ignoreCleanupCandidate(candidate)
+        invalidateDerivedCaches()
     }
 
     func moveCleanupCandidateToTrash(_ candidate: CleanupCandidate) {
@@ -544,22 +698,30 @@ final class ScanStore: ObservableObject {
             selectedCleanupCandidateIDs = Set(candidates.map(\.id))
         }
 
-        let urls = candidates.map(\.item.url)
-        let containsReviewRisk = CleanupSelectionPlanner.containsReviewRisk(candidates)
-        let reclaimableBytes = candidates.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
-        guard FileActionService.confirmTrash(
-            urls: urls,
-            containsReviewRisk: containsReviewRisk,
-            estimatedReclaimBytes: reclaimableBytes
-        ) else {
+        pendingTrashReviewPlan = TrashReviewPlan(candidates: candidates)
+    }
+
+    func cancelPendingTrashReview() {
+        pendingTrashReviewPlan = nil
+    }
+
+    func revealTrashReviewItem(_ item: TrashReviewPlan.Item) {
+        FileActionService.reveal(item.url)
+    }
+
+    func confirmPendingTrashReview() {
+        guard let plan = pendingTrashReviewPlan else {
             return
         }
 
+        let urls = plan.items.map(\.url)
+        let movedIDs = Set(plan.items.map(\.id))
         do {
             try FileActionService.moveToTrashTransactionally(urls)
-            ignoredCleanupCandidateIDs.formUnion(candidates.map(\.id))
-            selectedCleanupCandidateIDs.removeAll()
+            ignoredCleanupCandidateIDs.formUnion(movedIDs)
+            selection.clearCleanupSelection()
             selectedItemID = nil
+            pendingTrashReviewPlan = nil
             markResultsNeedRefresh()
         } catch {
             errorMessage = error.localizedDescription
@@ -613,6 +775,11 @@ final class ScanStore: ObservableObject {
             }
             return lhs.totalBytes > rhs.totalBytes
         }
+    }
+
+    func focusFileType(_ stat: FileTypeStat) {
+        query = stat.label == "No Extension" ? "." : stat.label
+        selectedView = .largestFiles
     }
 
     func revealSelectedItem() {
@@ -701,14 +868,43 @@ final class ScanStore: ObservableObject {
         case .all:
             return true
         case .verified:
-            return candidate.kind == .verifiedDuplicate && candidate.confidence == .high
+            return candidate.isHighConfidenceVerifiedDuplicate
         case .suggestions:
-            return !(candidate.kind == .verifiedDuplicate && candidate.confidence == .high)
+            return !candidate.isHighConfidenceVerifiedDuplicate
         }
     }
 
+    private var currentDerivedCacheKey: DerivedCacheKey? {
+        guard let scan else {
+            return nil
+        }
+        return DerivedCacheKey(
+            scanFinishedAt: scan.finishedAt,
+            query: query,
+            sizeFilter: sizeFilter,
+            sortOption: sortOption,
+            cleanupLaneFilter: cleanupLaneFilter,
+            ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
+        )
+    }
+
+    private func invalidateDerivedCaches() {
+        cachedCleanupCandidatesKey = nil
+        cachedCleanupCandidates = []
+        cachedPotentialReclaimableBytesKey = nil
+        cachedPotentialReclaimableBytes = 0
+        cachedReclaimPlanKey = nil
+        cachedReclaimPlan = ReclaimPlan(sections: [], primaryAction: nil)
+        invalidateItemsCache()
+    }
+
+    private func invalidateItemsCache() {
+        cachedItemsKey = nil
+        cachedItems = []
+    }
+
     private func markResultsNeedRefresh() {
-        resultsNeedRefresh = true
+        session.resultsNeedRefresh = true
         progress = ScanProgress(
             scannedItemCount: scan?.scannedItemCount ?? progress.scannedItemCount,
             totalBytes: scan?.totalBytes ?? progress.totalBytes,
@@ -762,27 +958,5 @@ final class ScanStore: ObservableObject {
 private enum StorageFormatless {
     static func kindLabel(_ kind: StorageItem.Kind) -> String {
         kind.rawValue
-    }
-}
-
-private extension StorageScan {
-    func lookupItem(id: String) -> StorageItem? {
-        if let treeItem = allItems.first(where: { $0.id == id }) {
-            return treeItem
-        }
-
-        if let rankedItem = (largestFiles + largestFolders + oldLargeFiles).first(where: { $0.id == id }) {
-            return rankedItem
-        }
-
-        for group in duplicateSizeGroups where group.items.contains(where: { $0.id == id }) {
-            return group.items.first { $0.id == id }
-        }
-
-        for group in verifiedDuplicateGroups where group.items.contains(where: { $0.id == id }) {
-            return group.items.first { $0.id == id }
-        }
-
-        return cleanupCandidates.first { $0.item.id == id }?.item
     }
 }

@@ -24,7 +24,7 @@ struct ContentView: View {
                 Button {
                     store.chooseFolderAndScan()
                 } label: {
-                    Label("Choose Folder", systemImage: "folder.badge.plus")
+                    Label(L10n.string("Choose Folder"), systemImage: "folder.badge.plus")
                 }
 
                 Button {
@@ -52,14 +52,22 @@ struct ContentView: View {
                 .disabled(store.selectedItem == nil)
             }
         }
-        .navigationTitle("StorageScope")
-        .alert("StorageScope", isPresented: Binding(
+        .navigationTitle(L10n.string("StorageScope"))
+        .alert(L10n.string("StorageScope"), isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(store.errorMessage ?? "")
+        }
+        .sheet(item: $store.pendingTrashReviewPlan) { plan in
+            TrashConfirmationSheet(
+                plan: plan,
+                reveal: { store.revealTrashReviewItem($0) },
+                cancel: { store.cancelPendingTrashReview() },
+                confirm: { store.confirmPendingTrashReview() }
+            )
         }
     }
 }

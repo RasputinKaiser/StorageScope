@@ -33,6 +33,12 @@ struct CleanupReviewView: View {
                         .help("Select verified duplicate cleanup items")
                         .disabled(store.verifiedCleanupCandidates.isEmpty)
 
+                        Button("Select All") {
+                            store.selectAllVisibleCleanupCandidates()
+                        }
+                        .help("Select all visible cleanup items")
+                        .disabled(store.cleanupCandidates.isEmpty || store.allVisibleCleanupCandidatesSelected)
+
                         Button("Clear") {
                             store.clearCleanupSelection()
                         }
@@ -172,7 +178,7 @@ private struct CleanupLaneControl: View {
     @ObservedObject var store: ScanStore
 
     private var verifiedCount: Int {
-        store.cleanupCandidates.filter { $0.kind == .verifiedDuplicate && $0.confidence == .high }.count
+        store.cleanupCandidates.filter(\.isHighConfidenceVerifiedDuplicate).count
     }
 
     private var suggestionCount: Int {
@@ -276,6 +282,7 @@ private struct CleanupCandidateRow: View {
                     .font(.title3)
                     .foregroundStyle(store.selectedCleanupCandidateIDs.contains(candidate.id) ? .green : .secondary)
                     .frame(width: 24)
+                    .accessibilityHidden(true)
 
                 Image(systemName: candidate.kind.systemImage)
                     .font(.title3)
@@ -319,6 +326,10 @@ private struct CleanupCandidateRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(candidate.item.name), \(candidate.kind.displayName), \(StorageFormat.bytes(candidate.reclaimableBytes))")
+        .accessibilityValue(store.selectedCleanupCandidateIDs.contains(candidate.id) ? "Selected" : "Not selected")
+        .accessibilityHint("Toggles selection for cleanup")
         .contextMenu {
             Button(store.selectedCleanupCandidateIDs.contains(candidate.id) ? "Unselect" : "Select") {
                 store.toggleCleanupCandidate(candidate)

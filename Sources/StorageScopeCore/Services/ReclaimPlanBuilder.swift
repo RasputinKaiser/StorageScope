@@ -58,7 +58,7 @@ public enum ReclaimPlanBuilder {
     ) -> ReclaimPlan {
         let verifiedCandidates = CleanupSelectionPlanner.verifiedDuplicateBatchCandidates(visibleCleanupCandidates)
         let reviewCandidates = CleanupSelectionPlanner.topLevelCandidates(
-            visibleCleanupCandidates.filter { !isHighConfidenceVerifiedDuplicate($0) }
+            visibleCleanupCandidates.filter { !$0.isHighConfidenceVerifiedDuplicate }
         )
 
         var sections: [ReclaimPlanSection] = []
@@ -106,9 +106,5 @@ public enum ReclaimPlanBuilder {
             sections: sections,
             primaryAction: sections.compactMap(\.action).first
         )
-    }
-
-    private static func isHighConfidenceVerifiedDuplicate(_ candidate: CleanupCandidate) -> Bool {
-        candidate.kind == .verifiedDuplicate && candidate.confidence == .high
     }
 }

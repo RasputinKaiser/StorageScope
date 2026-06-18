@@ -116,7 +116,7 @@ struct FileSystemScannerTests {
         #expect(scan.duplicateSizeGroups.count == 1)
         #expect(scan.verifiedDuplicateGroups.count == 1)
         #expect(scan.verifiedDuplicateGroups.first?.items.map(\.name).sorted() == ["copy-a.txt", "copy-b.txt"])
-        #expect(scan.cleanupCandidates.contains { $0.kind == .verifiedDuplicate && $0.confidence == .high })
+        #expect(scan.cleanupCandidates.contains { $0.isHighConfidenceVerifiedDuplicate })
         #expect(progressPaths.contains { $0.contains("Verifying duplicates") })
         #expect(DuplicateReviewPlanner.unverifiedSizeGroups(
             sizeGroups: scan.duplicateSizeGroups,
@@ -142,6 +142,31 @@ struct FileSystemScannerTests {
 
         #expect(scan.duplicateSizeGroups.count == 1)
         #expect(scan.verifiedDuplicateGroups.isEmpty)
+    }
+
+    @Test("duplicate verification budget favors smaller groups first")
+    func duplicateVerificationBudgetSortsGroupsAscending() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        try Data(repeating: 1, count: 25).write(to: temporaryRoot.appendingPathComponent("medium-a.bin"))
+        try Data(repeating: 1, count: 25).write(to: temporaryRoot.appendingPathComponent("medium-b.bin"))
+        try Data(repeating: 2, count: 15).write(to: temporaryRoot.appendingPathComponent("small-a.bin"))
+        try Data(repeating: 2, count: 15).write(to: temporaryRoot.appendingPathComponent("small-b.bin"))
+        try Data(repeating: 3, count: 14).write(to: temporaryRoot.appendingPathComponent("tiny-a.bin"))
+        try Data(repeating: 3, count: 14).write(to: temporaryRoot.appendingPathComponent("tiny-b.bin"))
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1,
+                duplicateVerificationByteLimit: 58
+            )
+        )
+
+        let verifiedNames = Set(scan.verifiedDuplicateGroups.flatMap { $0.items.map(\.name) })
+        #expect(verifiedNames.isSuperset(of: ["small-a.bin", "small-b.bin", "tiny-a.bin", "tiny-b.bin"]))
+        #expect(verifiedNames.isDisjoint(with: ["medium-a.bin", "medium-b.bin"]))
     }
 
     @Test("surfaces cleanup candidates for cache folders, installers, and compressed archives")
@@ -175,8 +200,8 @@ struct FileSystemScannerTests {
         let hiddenOff = try FileSystemScanner().scan(root: temporaryRoot, options: ScanOptions(includeHidden: false))
         let hiddenOn = try FileSystemScanner().scan(root: temporaryRoot, options: ScanOptions(includeHidden: true))
 
-        #expect(!hiddenOff.allItems.contains { $0.name == ".hidden" })
-        #expect(hiddenOn.allItems.contains { $0.name == ".hidden" })
+        #expect(!hiddenOff.retainedItems.contains { $0.name == ".hidden" })
+        #expect(hiddenOn.retainedItems.contains { $0.name == ".hidden" })
     }
 
     @Test("limits retained tree while preserving full scan summaries")
@@ -202,7 +227,7 @@ struct FileSystemScannerTests {
         #expect(scan.rootItem.immediateChildCount == 30)
         #expect(scan.rootItem.descendantCount == 30)
         #expect(scan.rootItem.children.count == 3)
-        #expect(scan.allItems.count == 4)
+        #expect(scan.retainedItems.count == 4)
         #expect(scan.largestFiles.count == 5)
         #expect(scan.largestFiles.first?.name == "sample-29.dat")
         #expect(scan.typeBreakdown.first?.fileCount == 30)
@@ -290,9 +315,34 @@ struct FileSystemScannerTests {
         #expect(scan.scannedItemCount == 121)
         #expect(scan.rootItem.immediateChildCount == 120)
         #expect(scan.rootItem.children.count == 5)
-        #expect(scan.allItems.count == 6)
+        #expect(scan.retainedItems.count == 6)
         #expect(scan.rootItem.children.first?.name == "wide-0119.dat")
         #expect(Array(scan.largestFiles.map(\.name).prefix(3)) == ["wide-0119.dat", "wide-0118.dat", "wide-0117.dat"])
+    }
+
+    @Test("lookup finds ranked items pruned from retained tree")
+    func lookupFindsPrunedRankedItems() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        try writeFile(named: "kept-large.dat", bytes: 9_000, in: temporaryRoot)
+        try writeFile(named: "pruned-ranked.dat", bytes: 7_000, in: temporaryRoot)
+        try writeFile(named: "tiny.dat", bytes: 1_000, in: temporaryRoot)
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                largeFileThreshold: 1,
+                duplicateCandidateThreshold: 20_000,
+                maxChildrenPerDirectory: 1,
+                maxRetainedItems: 2
+            )
+        )
+
+        let prunedRankedItem = try #require(scan.largestFiles.first { $0.name == "pruned-ranked.dat" })
+
+        #expect(!scan.retainedItems.contains { $0.id == prunedRankedItem.id })
+        #expect(scan.lookupItem(id: prunedRankedItem.id)?.name == "pruned-ranked.dat")
     }
 
     @Test("caps duplicate candidate retention for full-drive-sized scans")
@@ -571,9 +621,9 @@ struct FileSystemScannerTests {
         #expect(CleanupSelectionPlanner.containsReviewRisk([verifiedDuplicate, installer]))
     }
 
-    @Test("scan option policy keeps broad analysis thresholds independent from display filters")
-    func scanOptionPolicyIgnoresDisplayThresholds() {
-        let thresholds = ScanOptionPolicy.interactiveScanThresholds(displayThreshold: 10_000_000_000)
+    @Test("scan option policy uses fixed analysis thresholds")
+    func scanOptionPolicyUsesFixedThresholds() {
+        let thresholds = ScanOptionPolicy.interactiveScanThresholds()
 
         #expect(thresholds.largeFileThreshold == 1_000_000_000)
         #expect(thresholds.duplicateCandidateThreshold == 100_000_000)
@@ -617,6 +667,49 @@ struct FileSystemScannerTests {
         #expect(plan.sections.first { $0.kind == .verifiedDuplicates }?.reclaimableBytes == 8_000)
         #expect(plan.sections.first { $0.kind == .reviewSuggestions }?.reclaimableBytes == 10_000)
         #expect(plan.sections.first { $0.kind == .inaccessibleItems }?.itemCount == 2)
+    }
+
+    @Test("trash review plan groups verified and review candidates")
+    func trashReviewPlanGroupsVerifiedAndReviewCandidates() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let verifiedDuplicate = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("copy-a.mov"),
+            kind: .verifiedDuplicate,
+            bytes: 8_000,
+            confidence: .high
+        )
+        let diskImage = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("installer.dmg"),
+            kind: .diskImage,
+            bytes: 6_000,
+            confidence: .medium
+        )
+
+        let plan = TrashReviewPlan(candidates: [verifiedDuplicate, diskImage])
+
+        #expect(plan.title == "Move 2 Items to Trash?")
+        #expect(plan.estimatedReclaimBytes == 14_000)
+        #expect(plan.containsReviewRisk)
+        #expect(plan.verifiedItems.map(\.url.lastPathComponent) == ["copy-a.mov"])
+        #expect(plan.reviewItems.map(\.url.lastPathComponent) == ["installer.dmg"])
+    }
+
+    @Test("trash review plan collapses nested targets before presenting paths")
+    func trashReviewPlanCollapsesNestedTargetsBeforePresentingPaths() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let cacheFolder = temporaryRoot.appendingPathComponent("Caches", isDirectory: true)
+        let nestedInstaller = cacheFolder.appendingPathComponent("installer.dmg")
+        let cacheCandidate = cleanupCandidate(url: cacheFolder, kind: .cacheFolder, bytes: 10_000)
+        let installerCandidate = cleanupCandidate(url: nestedInstaller, kind: .diskImage, bytes: 4_000)
+
+        let plan = TrashReviewPlan(candidates: [installerCandidate, cacheCandidate])
+
+        #expect(plan.items.map(\.url.lastPathComponent) == ["Caches"])
+        #expect(plan.estimatedReclaimBytes == 10_000)
     }
 
     private func makeTemporaryRoot() throws -> URL {
@@ -700,7 +793,7 @@ struct FileSystemScannerTests {
             startedAt: Date(),
             finishedAt: Date(),
             rootItem: rootItem,
-            allItems: [rootItem],
+            retainedItems: [rootItem],
             scannedItemCount: scannedItemCount,
             inaccessibleItemCount: inaccessibleItemCount,
             totalBytes: totalBytes,

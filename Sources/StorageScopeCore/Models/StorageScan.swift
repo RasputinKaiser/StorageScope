@@ -5,7 +5,7 @@ public struct StorageScan: Sendable {
     public let startedAt: Date
     public let finishedAt: Date
     public let rootItem: StorageItem
-    public let allItems: [StorageItem]
+    public let retainedItems: [StorageItem]
     public let scannedItemCount: Int
     public let inaccessibleItemCount: Int
     public let totalBytes: Int64
@@ -21,13 +21,14 @@ public struct StorageScan: Sendable {
     public let duplicateCandidateItemsConsidered: Int
     public let duplicateCandidateLimitReached: Bool
     public let cleanupCandidates: [CleanupCandidate]
+    private let itemLookupByID: [String: StorageItem]
 
     public init(
         rootURL: URL,
         startedAt: Date,
         finishedAt: Date,
         rootItem: StorageItem,
-        allItems: [StorageItem],
+        retainedItems: [StorageItem],
         scannedItemCount: Int,
         inaccessibleItemCount: Int,
         totalBytes: Int64,
@@ -48,7 +49,7 @@ public struct StorageScan: Sendable {
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.rootItem = rootItem
-        self.allItems = allItems
+        self.retainedItems = retainedItems
         self.scannedItemCount = scannedItemCount
         self.inaccessibleItemCount = inaccessibleItemCount
         self.totalBytes = totalBytes
@@ -64,6 +65,45 @@ public struct StorageScan: Sendable {
         self.duplicateCandidateItemsConsidered = duplicateCandidateItemsConsidered
         self.duplicateCandidateLimitReached = duplicateCandidateLimitReached
         self.cleanupCandidates = cleanupCandidates
+        self.itemLookupByID = Self.buildItemLookup(
+            retainedItems: retainedItems,
+            largestFiles: largestFiles,
+            largestFolders: largestFolders,
+            oldLargeFiles: oldLargeFiles,
+            duplicateSizeGroups: duplicateSizeGroups,
+            verifiedDuplicateGroups: verifiedDuplicateGroups,
+            cleanupCandidates: cleanupCandidates
+        )
+    }
+
+    public func lookupItem(id: String) -> StorageItem? {
+        itemLookupByID[id]
+    }
+
+    private static func buildItemLookup(
+        retainedItems: [StorageItem],
+        largestFiles: [StorageItem],
+        largestFolders: [StorageItem],
+        oldLargeFiles: [StorageItem],
+        duplicateSizeGroups: [DuplicateSizeGroup],
+        verifiedDuplicateGroups: [VerifiedDuplicateGroup],
+        cleanupCandidates: [CleanupCandidate]
+    ) -> [String: StorageItem] {
+        var lookup: [String: StorageItem] = [:]
+
+        func insert(_ item: StorageItem) {
+            lookup[item.id] = item
+        }
+
+        retainedItems.forEach(insert)
+        largestFiles.forEach(insert)
+        largestFolders.forEach(insert)
+        oldLargeFiles.forEach(insert)
+        duplicateSizeGroups.flatMap(\.items).forEach(insert)
+        verifiedDuplicateGroups.flatMap(\.items).forEach(insert)
+        cleanupCandidates.map(\.item).forEach(insert)
+
+        return lookup
     }
 }
 
@@ -207,6 +247,10 @@ public struct CleanupCandidate: Identifiable, Hashable, Sendable {
         self.reclaimableBytes = reclaimableBytes
         self.confidence = confidence
         self.id = "\(kind.rawValue)-\(item.id)"
+    }
+
+    public var isHighConfidenceVerifiedDuplicate: Bool {
+        kind == .verifiedDuplicate && confidence == .high
     }
 }
 

@@ -3,7 +3,6 @@ import SwiftUI
 
 struct TreeExplorerView: View {
     @ObservedObject var store: ScanStore
-    @State private var expandedIDs = Set<String>()
 
     var body: some View {
         ScrollView {
@@ -22,13 +21,13 @@ struct TreeExplorerView: View {
                             item: rootItem,
                             rootSize: max(rootItem.displaySize, 1),
                             depth: 0,
-                            expandedIDs: $expandedIDs,
+                            expandedIDs: $store.treeExpandedIDs,
                             store: store
                         )
                     }
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .onAppear {
-                        expandedIDs.insert(rootItem.id)
+                        store.treeExpandedIDs.insert(rootItem.id)
                     }
                 } else {
                     ContentUnavailableView(
@@ -89,6 +88,8 @@ private struct TreeNodeRow: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 14)
+                            .accessibilityLabel(isExpanded ? "Collapse" : "Expand")
+                            .accessibilityAddTraits(.isButton)
                     } else {
                         Color.clear
                             .frame(width: 14, height: 14)
@@ -127,6 +128,10 @@ private struct TreeNodeRow: View {
                 .background(store.selectedItemID == item.id ? Color.accentColor.opacity(0.18) : Color.clear)
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(item.isContainer ? "Selects and toggles this folder" : "Selects this item")
             .contextMenu {
                 Button("Reveal in Finder") {
                     store.selectedItemID = item.id

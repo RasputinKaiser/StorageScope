@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        SecurityScopedBookmarkStore().prune()
         buildMainMenu()
         showMainWindow()
         scanDeveloperFixtureIfRequested()
@@ -112,6 +113,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(store: store))
         window.isReleasedWhenClosed = false
+        window.setFrameAutosaveName("StorageScopeSettings")
+        if let windowsMenu = NSApp.windowsMenu {
+            let settingsMenuItem = windowsMenu.addItem(
+                withTitle: window.title,
+                action: #selector(NSWindow.makeKeyAndOrderFront(_:)),
+                keyEquivalent: ""
+            )
+            settingsMenuItem.target = window
+        }
         window.makeKeyAndOrderFront(nil)
         settingsWindow = window
     }
@@ -119,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     @objc private func showAbout() {
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "StorageScope",
-            .applicationVersion: "0.1.0",
+            .applicationVersion: "0.1.1",
             .credits: NSAttributedString(string: "A local-first Mac storage map for reviewing large folders, verified duplicates, cleanup suggestions, and safer reclaim decisions.")
         ])
     }
