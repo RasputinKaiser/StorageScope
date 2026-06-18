@@ -83,6 +83,16 @@ StorageScope is intended to be grant- and contributor-friendly:
 - Automated public-upload audit for credentials, local artifacts, and build sanity.
 - Swift tests covering scanner behavior, cleanup safety, duplicate review, and broad-scan memory retention.
 
+## Support StorageScope
+
+StorageScope is open source, and commercial support is available for teams or Mac power users who need packaging help, compatibility testing, priority fixes, or sponsored cleanup workflows.
+
+- Request paid support: https://github.com/RasputinKaiser/StorageScope/issues/new?template=commercial_support.yml
+- Star the repository to improve discovery for other Mac users.
+- Open focused public issues for cleanup workflows, duplicate-review cases, or packaging needs that would make the app more useful.
+
+Commercial support helps fund packaging, notarization, compatibility testing, and local-first cleanup features without adding telemetry or uploaded scan data.
+
 ## Distribution
 
 Create a local DMG:
