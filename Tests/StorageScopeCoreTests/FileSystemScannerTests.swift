@@ -621,6 +621,84 @@ struct FileSystemScannerTests {
         #expect(CleanupSelectionPlanner.containsReviewRisk([verifiedDuplicate, installer]))
     }
 
+    @Test("cleanup trust details explain verified duplicates")
+    func cleanupTrustDetailsExplainVerifiedDuplicates() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let duplicate = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("copy-a.mov"),
+            kind: .verifiedDuplicate,
+            bytes: 8_000,
+            confidence: .high
+        )
+
+        let details = duplicate.trustDetails
+
+        #expect(details.confidenceLabel == "Verified")
+        #expect(details.safetyNote.contains("SHA-256"))
+        #expect(details.couldBreak.contains("Keep one"))
+        #expect(details.suggestedAction.contains("duplicate copies"))
+    }
+
+    @Test("cleanup trust details warn for review heuristics")
+    func cleanupTrustDetailsWarnForReviewHeuristics() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let cache = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("Caches", isDirectory: true),
+            kind: .cacheFolder,
+            bytes: 12_000,
+            confidence: .medium
+        )
+        let archive = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("backup.zip"),
+            kind: .archive,
+            bytes: 6_000,
+            confidence: .review
+        )
+
+        #expect(cache.trustDetails.confidenceLabel == "Review")
+        #expect(cache.trustDetails.couldBreak.contains("using the cache"))
+        #expect(cache.trustDetails.suggestedAction.contains("Quit the owning app"))
+        #expect(archive.trustDetails.confidenceLabel == "Manual")
+        #expect(archive.trustDetails.couldBreak.contains("only compressed backup"))
+        #expect(archive.trustDetails.suggestedAction.contains("Reveal"))
+    }
+
+    @Test("cleanup trust details cover every candidate kind")
+    func cleanupTrustDetailsCoverEveryCandidateKind() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let cases: [(CleanupCandidate.Kind, CleanupCandidate.Confidence, String, String)] = [
+            (.verifiedDuplicate, .high, "Keep one", "SHA-256"),
+            (.cacheFolder, .medium, "using the cache", "Quit the owning app"),
+            (.buildArtifact, .medium, "next clean build", "rebuild it"),
+            (.diskImage, .medium, "mounted content", "installed or preserved"),
+            (.installer, .medium, "download the installer again", "installed or preserved"),
+            (.archive, .review, "only compressed backup", "another usable copy exists"),
+            (.temporary, .review, "active work", "Reveal first"),
+            (.oldLargeFile, .review, "only copy", "Reveal and review")
+        ]
+
+        for (kind, confidence, riskFragment, actionFragment) in cases {
+            let candidate = cleanupCandidate(
+                url: temporaryRoot.appendingPathComponent("\(kind.rawValue).bin"),
+                kind: kind,
+                bytes: 4_000,
+                confidence: confidence
+            )
+            let details = candidate.trustDetails
+
+            #expect(!details.safetyNote.localizedCaseInsensitiveContains("safe to delete"))
+            #expect(!details.suggestedAction.localizedCaseInsensitiveContains("safe to delete"))
+            #expect(details.couldBreak.contains(riskFragment))
+            #expect(details.safetyNote.contains(actionFragment) || details.suggestedAction.contains(actionFragment))
+        }
+    }
+
     @Test("scan option policy uses fixed analysis thresholds")
     func scanOptionPolicyUsesFixedThresholds() {
         let thresholds = ScanOptionPolicy.interactiveScanThresholds()

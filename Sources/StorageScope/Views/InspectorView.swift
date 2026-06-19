@@ -126,13 +126,19 @@ private struct CleanupContextSection: View {
 
             HStack(spacing: 8) {
                 CleanupBadge(candidate.kind.displayName, tint: candidate.confidence.tint)
-                CleanupBadge(candidate.confidence.displayName, tint: candidate.confidence.tint)
+                CleanupBadge(candidate.trustDetails.confidenceLabel, tint: candidate.confidence.tint)
             }
 
             InspectorMetric(title: "Reclaimable", value: StorageFormat.bytes(candidate.reclaimableBytes))
-            InspectorMetric(title: "Why it appears", value: candidate.reason)
+            InspectorMetric(title: "Path", value: candidate.item.url.path)
+            InspectorMetric(title: "Kind", value: candidate.kind.displayName)
+            InspectorMetric(title: "Last Modified", value: StorageFormat.date(candidate.item.modifiedAt))
+            InspectorMetric(title: "Why StorageScope flagged this", value: candidate.trustDetails.flaggedReason)
+            InspectorMetric(title: "What could break if removed", value: candidate.trustDetails.couldBreak)
+            InspectorMetric(title: "Why it is usually safe or not safe", value: candidate.trustDetails.safetyNote)
+            InspectorMetric(title: "Suggested action", value: candidate.trustDetails.suggestedAction)
 
-            Text(candidate.confidence == .high ? "Content-verified duplicate candidates are the safest batch-review lane." : "This is a suggestion, not proof. Review the path and contents before moving it to Trash.")
+            Text(candidate.isHighConfidenceVerifiedDuplicate ? "Verified duplicates are content-matched. StorageScope still sends cleanup through Trash so you can recover from a bad choice." : "This is review guidance, not proof. Reveal the item and inspect the owning app or project before moving it to Trash.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -639,15 +639,20 @@ final class ScanStore: ObservableObject {
     }
 
     func toggleCleanupCandidate(_ candidate: CleanupCandidate) {
+        selectedItemID = candidate.item.id
         selection.toggleCleanupCandidate(candidate)
     }
 
     func selectVerifiedCleanupCandidates() {
-        selectedCleanupCandidateIDs = Set(verifiedCleanupCandidates.map(\.id))
+        let candidates = verifiedCleanupCandidates
+        selectedCleanupCandidateIDs = Set(candidates.map(\.id))
+        selectedItemID = candidates.first?.item.id ?? selectedItemID
     }
 
     func selectAllVisibleCleanupCandidates() {
-        selectedCleanupCandidateIDs = Set(cleanupCandidates.map(\.id))
+        let candidates = cleanupCandidates
+        selectedCleanupCandidateIDs = Set(candidates.map(\.id))
+        selectedItemID = candidates.first?.item.id ?? selectedItemID
     }
 
     var allVisibleCleanupCandidatesSelected: Bool {

@@ -240,6 +240,14 @@ public struct CleanupCandidate: Identifiable, Hashable, Sendable {
     public let reclaimableBytes: Int64
     public let confidence: Confidence
 
+    public struct TrustDetails: Hashable, Sendable {
+        public let flaggedReason: String
+        public let confidenceLabel: String
+        public let couldBreak: String
+        public let safetyNote: String
+        public let suggestedAction: String
+    }
+
     public init(kind: Kind, item: StorageItem, reason: String, reclaimableBytes: Int64, confidence: Confidence) {
         self.kind = kind
         self.item = item
@@ -251,6 +259,90 @@ public struct CleanupCandidate: Identifiable, Hashable, Sendable {
 
     public var isHighConfidenceVerifiedDuplicate: Bool {
         kind == .verifiedDuplicate && confidence == .high
+    }
+
+    public var trustDetails: TrustDetails {
+        TrustDetails(
+            flaggedReason: reason,
+            confidenceLabel: confidence.trustDisplayName,
+            couldBreak: kind.removalRisk,
+            safetyNote: kind.safetyNote,
+            suggestedAction: kind.suggestedAction
+        )
+    }
+}
+
+private extension CleanupCandidate.Confidence {
+    var trustDisplayName: String {
+        switch self {
+        case .high:
+            return "Verified"
+        case .medium:
+            return "Review"
+        case .review:
+            return "Manual"
+        }
+    }
+}
+
+private extension CleanupCandidate.Kind {
+    var removalRisk: String {
+        switch self {
+        case .verifiedDuplicate:
+            return "Removing every copy would lose the file. Keep one known-good copy before moving duplicate copies to Trash."
+        case .oldLargeFile:
+            return "The file may still be the only copy of old work, media, exports, or records."
+        case .archive:
+            return "The archive may be the only compressed backup, source drop, or portable copy."
+        case .installer:
+            return "You may need to download the installer again to reinstall or repair the app."
+        case .diskImage:
+            return "The disk image may contain an app, installer, license file, or mounted content you still need."
+        case .cacheFolder:
+            return "An app may be using the cache right now, and removing it can force re-downloads or temporary glitches."
+        case .buildArtifact:
+            return "A project may rely on generated output until the next clean build, and deleting it can slow or break local work."
+        case .temporary:
+            return "Temporary-looking files can still be active work, crash recovery data, or app handoff state."
+        }
+    }
+
+    var safetyNote: String {
+        switch self {
+        case .verifiedDuplicate:
+            return "StorageScope matched file contents with SHA-256 and treats one copy as the keeper. This is the safest cleanup lane, but review the path before deleting."
+        case .oldLargeFile:
+            return "Age and size make this worth reviewing, but StorageScope cannot know whether the content is still valuable."
+        case .archive:
+            return "Archives are worth reviewing after extraction or backup, but only remove one when another usable copy exists."
+        case .installer:
+            return "Installers are usually disposable after installation when the app and license are already preserved."
+        case .diskImage:
+            return "Disk images are often disposable after installation or extraction, but only after checking mounted contents and app provenance."
+        case .cacheFolder:
+            return "Caches are usually rebuildable. Quit the owning app first when possible and expect the cache to be recreated."
+        case .buildArtifact:
+            return "Build artifacts are usually rebuildable from source, but generated or vendored outputs deserve a quick project check."
+        case .temporary:
+            return "Only remove this after confirming no app or workflow is still writing to it."
+        }
+    }
+
+    var suggestedAction: String {
+        switch self {
+        case .verifiedDuplicate:
+            return "Keep one copy, reveal the selected path, then move only duplicate copies to Trash."
+        case .oldLargeFile, .archive:
+            return "Reveal and review before deciding whether to keep or move to Trash."
+        case .installer, .diskImage:
+            return "Reveal, confirm the app or contents are already installed or preserved, then move to Trash."
+        case .cacheFolder:
+            return "Quit the owning app, reveal the folder, then move to Trash only if the cache is not needed."
+        case .buildArtifact:
+            return "Confirm the project can rebuild it, then move to Trash."
+        case .temporary:
+            return "Reveal first; keep it if any app or recent workflow still depends on it."
+        }
     }
 }
 
