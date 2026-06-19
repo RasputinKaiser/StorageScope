@@ -20,6 +20,7 @@ public struct StorageScan: Sendable {
     public let duplicateCandidateItemsRetained: Int
     public let duplicateCandidateItemsConsidered: Int
     public let duplicateCandidateLimitReached: Bool
+    public let duplicateVerificationDuration: TimeInterval
     public let cleanupCandidates: [CleanupCandidate]
     private let itemLookupByID: [String: StorageItem]
 
@@ -43,6 +44,7 @@ public struct StorageScan: Sendable {
         duplicateCandidateItemsRetained: Int = 0,
         duplicateCandidateItemsConsidered: Int = 0,
         duplicateCandidateLimitReached: Bool = false,
+        duplicateVerificationDuration: TimeInterval = 0,
         cleanupCandidates: [CleanupCandidate]
     ) {
         self.rootURL = rootURL
@@ -64,6 +66,7 @@ public struct StorageScan: Sendable {
         self.duplicateCandidateItemsRetained = duplicateCandidateItemsRetained
         self.duplicateCandidateItemsConsidered = duplicateCandidateItemsConsidered
         self.duplicateCandidateLimitReached = duplicateCandidateLimitReached
+        self.duplicateVerificationDuration = duplicateVerificationDuration
         self.cleanupCandidates = cleanupCandidates
         self.itemLookupByID = Self.buildItemLookup(
             retainedItems: retainedItems,

@@ -699,6 +699,74 @@ struct FileSystemScannerTests {
         }
     }
 
+    @Test("benchmark report contains scanner summary values")
+    func benchmarkReportContainsScannerSummaryValues() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        try writeFile(named: "first.bin", bytes: 4_000, in: temporaryRoot)
+        try writeFile(named: "second.bin", bytes: 4_000, in: temporaryRoot)
+
+        let report = try ScanBenchmarkRunner().run(rootURL: temporaryRoot)
+        let text = report.text
+
+        #expect(text.contains("StorageScope benchmark"))
+        #expect(text.contains("Scope: \(temporaryRoot.lastPathComponent)"))
+        #expect(text.contains("Items scanned:"))
+        #expect(text.contains("Duplicate candidates:"))
+        #expect(text.contains("Duplicate verification:"))
+        #expect(text.contains("Results are local only."))
+        #expect(!text.contains(temporaryRoot.deletingLastPathComponent().path))
+        #expect(!text.localizedCaseInsensitiveContains("http://"))
+        #expect(!text.localizedCaseInsensitiveContains("https://"))
+    }
+
+    @Test("synthetic benchmark fixture creates expected candidate classes")
+    func syntheticBenchmarkFixtureCreatesExpectedCandidateClasses() throws {
+        let root = try SyntheticBenchmarkFixture.create()
+        defer { SyntheticBenchmarkFixture.remove(root) }
+
+        let scan = try FileSystemScanner().scan(root: root, options: .benchmarkDefaults())
+        let kinds = Set(scan.cleanupCandidates.map(\.kind))
+
+        #expect(kinds.contains(.verifiedDuplicate))
+        #expect(kinds.contains(.cacheFolder))
+        #expect(kinds.contains(.buildArtifact))
+        #expect(kinds.contains(.diskImage))
+        #expect(kinds.contains(.installer))
+        #expect(kinds.contains(.archive))
+        #expect(kinds.contains(.temporary))
+        #expect(kinds.contains(.oldLargeFile))
+        #expect(scan.duplicateCandidateItemsConsidered >= scan.duplicateCandidateItemsRetained)
+        #expect(scan.duplicateVerificationDuration >= 0)
+    }
+
+    @Test("benchmark fixture and report do not write private scan output into repo")
+    func benchmarkDoesNotWritePrivateScanOutputIntoRepo() throws {
+        let root = try SyntheticBenchmarkFixture.create()
+        defer { SyntheticBenchmarkFixture.remove(root) }
+
+        let report = try ScanBenchmarkRunner().run(rootURL: root)
+        let repoRoot = try repositoryRoot()
+        let benchmarkArtifacts = try FileManager.default.contentsOfDirectory(atPath: repoRoot.path)
+            .filter { $0.localizedCaseInsensitiveContains("benchmark") && !$0.hasSuffix(".sh") }
+
+        #expect(report.scopeLabel == root.lastPathComponent)
+        #expect(benchmarkArtifacts.isEmpty)
+    }
+
+    @Test("benchmark script passes shell syntax checks")
+    func benchmarkScriptPassesShellSyntaxChecks() throws {
+        let repoRoot = try repositoryRoot()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-n", repoRoot.appendingPathComponent("script/benchmark_scan.sh").path]
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(process.terminationStatus == 0)
+    }
+
     @Test("scan option policy uses fixed analysis thresholds")
     func scanOptionPolicyUsesFixedThresholds() {
         let thresholds = ScanOptionPolicy.interactiveScanThresholds()
@@ -801,6 +869,17 @@ struct FileSystemScannerTests {
         let url = directory.appendingPathComponent(name)
         let data = Data(repeating: 7, count: bytes)
         try data.write(to: url)
+    }
+
+    private func repositoryRoot() throws -> URL {
+        var url = URL(fileURLWithPath: #filePath)
+        while url.pathComponents.count > 1 {
+            url.deleteLastPathComponent()
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent("Package.swift").path) {
+                return url
+            }
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 
     private func cleanupCandidate(

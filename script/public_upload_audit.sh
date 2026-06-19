@@ -138,6 +138,6 @@ fi
 
 swift test --scratch-path "$audit_scratch_path" >/dev/null
 plutil -lint Config/StorageScope.entitlements Resources/PrivacyInfo.xcprivacy >/dev/null
-bash -n script/build_and_run.sh script/export_dmg.sh script/package_app_store.sh script/public_upload_audit.sh
+bash -n script/build_and_run.sh script/export_dmg.sh script/package_app_store.sh script/public_upload_audit.sh script/benchmark_scan.sh
 
 echo "public upload audit passed"

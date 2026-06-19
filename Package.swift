@@ -9,6 +9,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "StorageScope", targets: ["StorageScope"]),
+        .executable(name: "StorageScopeBenchmark", targets: ["StorageScopeBenchmark"]),
         .library(name: "StorageScopeCore", targets: ["StorageScopeCore"])
     ],
     targets: [
@@ -22,6 +23,12 @@ let package = Package(
             ],
             exclude: [
                 "Resources"
+            ]
+        ),
+        .executableTarget(
+            name: "StorageScopeBenchmark",
+            dependencies: [
+                "StorageScopeCore"
             ]
         ),
         .testTarget(

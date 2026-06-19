@@ -80,12 +80,14 @@ public final class FileSystemScanner {
         )
         let retainedItems = rootItem.flattened()
         let duplicateSizeGroups = accumulator.duplicateSizeGroups
+        let duplicateVerificationStartedAt = Date()
         let verifiedDuplicateGroups = try verifiedDuplicateGroups(
             from: duplicateSizeGroups,
             options: options,
             accumulator: accumulator,
             cancellation: cancellation
         )
+        let duplicateVerificationDuration = Date().timeIntervalSince(duplicateVerificationStartedAt)
         let finishedAt = Date()
 
         return StorageScan(
@@ -108,6 +110,7 @@ public final class FileSystemScanner {
             duplicateCandidateItemsRetained: accumulator.duplicateCandidateItemsRetained,
             duplicateCandidateItemsConsidered: accumulator.duplicateCandidateItemsConsidered,
             duplicateCandidateLimitReached: accumulator.duplicateCandidateLimitReached,
+            duplicateVerificationDuration: duplicateVerificationDuration,
             cleanupCandidates: accumulator.cleanupCandidates(
                 rootID: rootItem.id,
                 verifiedDuplicateGroups: verifiedDuplicateGroups,
