@@ -1,5 +1,7 @@
 # StorageScope
 
+[![Swift](https://github.com/RasputinKaiser/StorageScope/actions/workflows/swift.yml/badge.svg)](https://github.com/RasputinKaiser/StorageScope/actions/workflows/swift.yml)
+
 StorageScope is an open-source Mac storage map and reclaim planner for finding the folders and files that are filling a Mac. It is a local-first macOS storage management app, built with SwiftUI/AppKit, for large-folder analysis, duplicate review, and safer cleanup decisions.
 
 The app scans only folders the user grants through macOS folder selection or stored security-scoped bookmarks. It does not upload scan results, file names, paths, contents, analytics, or identifiers.

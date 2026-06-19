@@ -127,9 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     }
 
     @objc private func showAbout() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.1"
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "StorageScope",
-            .applicationVersion: "0.1.1",
+            .applicationVersion: version,
             .credits: NSAttributedString(string: "A local-first Mac storage map for reviewing large folders, verified duplicates, cleanup suggestions, and safer reclaim decisions.")
         ])
     }

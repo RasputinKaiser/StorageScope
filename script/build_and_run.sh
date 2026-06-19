@@ -18,6 +18,8 @@ BUNDLE_ID="com.rasputinkaiser.StorageScope"
 MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION_FILE="$ROOT_DIR/VERSION"
+APP_VERSION="${STORAGESCOPE_VERSION:-$(tr -d '[:space:]' <"$VERSION_FILE")}"
 DEFAULT_DIST_ROOT="${TMPDIR:-/tmp}/StorageScope"
 DEFAULT_FIXTURE_ROOT="$HOME/Library/Containers/$BUNDLE_ID/Data/tmp/StorageScope/fixture-scan"
 DIST_DIR="${STORAGESCOPE_DIST_DIR:-$DEFAULT_DIST_ROOT/dist}"
@@ -142,8 +144,13 @@ if [[ "$BUILD_CONFIGURATION" != "debug" ]]; then
   SWIFT_BUILD_ARGS=(-c "$BUILD_CONFIGURATION")
 fi
 
-swift build "${SWIFT_BUILD_ARGS[@]}"
-BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
+if [[ ${#SWIFT_BUILD_ARGS[@]} -gt 0 ]]; then
+  swift build "${SWIFT_BUILD_ARGS[@]}"
+  BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
+else
+  swift build
+  BUILD_DIR="$(swift build --show-bin-path)"
+fi
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 LOCALIZED_RESOURCES="$ROOT_DIR/Sources/$APP_NAME/Resources"
 
@@ -185,7 +192,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.1</string>
+  <string>$APP_VERSION</string>
   <key>NSHumanReadableCopyright</key>
   <string>Copyright (c) 2026 RasputinKaiser. All rights reserved.</string>
   <key>LSApplicationCategoryType</key>
