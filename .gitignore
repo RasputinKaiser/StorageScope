@@ -25,3 +25,16 @@ AGENT_REVIEW_ALERT.md
 APP_STORE_READINESS.md
 COMPLETION_AUDIT.md
 DIRECT_DISTRIBUTION_LOCAL.md
+
+# Local harness/agent state and generated docs.
+.ncode/
+NCODE.md
+
+# Unrelated showcase page (origins unclear; per NCODE.md it's not part of StorageScope).
+storagescope-showcase/
+
+# Regenerable intermediate icon assets (script/generate_app_icon.swift produces .icns directly).
+Resources/AppIcon.iconset/
+
+# Recursive .DS_Store coverage (existing `.DS_Store` is top-level only).
+**/.DS_Store
