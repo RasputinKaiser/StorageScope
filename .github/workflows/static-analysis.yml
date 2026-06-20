@@ -27,9 +27,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -resultBundlePath ./build/StorageScope.xcresult
 
-      - name: Export result JSON
+      - name: Export build results
         run: |
-          xcrun xcresulttool get --format json --path ./build/StorageScope.xcresult > build/analysis.json
+          # `xcresulttool get build-results` is the post-deprecation path that
+          # returns a flat JSON with analyzerWarningCount/analyzerWarnings,
+          # warnings, errors — no reference resolution chain required.
+          xcrun xcresulttool get build-results --path ./build/StorageScope.xcresult > build/analysis.json
 
       - name: Fail on static analyzer findings
         run: python3 script/check_analyzer_results.py build/analysis.json
