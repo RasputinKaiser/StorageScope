@@ -1,0 +1,43 @@
+name: Static analysis
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Build and analyze StorageScope with xcodebuild
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and analyze
+        run: |
+          mkdir -p build
+          xcodebuild -scheme StorageScope \
+            -destination 'platform=macOS' \
+            analyze \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath ./build/StorageScope.xcresult
+
+      - name: Export result JSON
+        run: |
+          xcrun xcresulttool get --format json --path ./build/StorageScope.xcresult > build/analysis.json
+
+      - name: Fail on static analyzer findings
+        run: python3 script/check_analyzer_results.py build/analysis.json
+
+      - name: Upload xcresult
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storagescope-analysis-xcresult
+          path: build/StorageScope.xcresult
+          retention-days: 7
