@@ -34,6 +34,8 @@ test -f "$APP_BUNDLE/Contents/Resources/PrivacyInfo.xcprivacy"
 plutil -lint "$APP_BUNDLE/Contents/Info.plist" >/dev/null
 
 cp -R "$APP_BUNDLE" "$STAGE_DIR/$APP_NAME.app"
+# Re-verify staged bundle in case cp -R drops signature/entitlement xattrs.
+codesign --verify --deep --strict "$STAGE_DIR/$APP_NAME.app"
 ln -s /Applications "$STAGE_DIR/Applications"
 cp "$ROOT_DIR/Resources/DMG-README.txt" "$STAGE_DIR/README.txt"
 
