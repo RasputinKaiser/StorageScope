@@ -2,10 +2,25 @@ import AppKit
 import Foundation
 import StorageScopeCore
 
+struct RecentScanEntry: Codable, Identifiable, Hashable {
+    let path: String
+    let scannedAt: Date
+    let totalBytes: Int64
+
+    var id: String { path }
+}
+
 @MainActor
 final class ScanStore: ObservableObject {
     private static let recentScanPathsKey = "StorageScope.recentScanPaths"
+    private static let recentScanEntriesKey = "StorageScope.recentScanEntries"
     private static let overviewItemCap = 100
+
+    private static func defaultHashCacheURL() -> URL? {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return caches.appendingPathComponent("StorageScopeDuplicateHashCache.json")
+    }
 
     struct ScanOptionsSnapshot: Equatable {
         let includeHiddenFiles: Bool
@@ -39,15 +54,30 @@ final class ScanStore: ObservableObject {
     @Published private var selection = ScanSelection()
     @Published var errorMessage: String?
     @Published var pendingTrashReviewPlan: TrashReviewPlan?
-    @Published private(set) var recentScanPaths: [String]
+    @Published private(set) var recentScanEntries: [RecentScanEntry]
+    // searchText is the immediate input bound to .searchable; query is its debounced
+    // downstream value that filters read. Keeping them split means per-keystroke
+    // recompute is bounded to one publish per ~200ms, not per character.
+    @Published var searchText: String = "" {
+        didSet {
+            guard oldValue != searchText else { return }
+            scheduleSearchTextDebounce()
+        }
+    }
+    @Published private(set) var isMovingToTrash = false
+    @Published private(set) var searchSubtreeMatchIDs: Set<String>?
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?
     private var selectVerifiedCleanupWhenCurrentScanCompletes = false
+    private var searchTextDebounceTask: Task<Void, Never>?
+
+    private var keeperOverridesByChecksum: [String: String] = [:]
 
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
     private var scanTask: Task<Void, Never>?
     private let bookmarkStore = SecurityScopedBookmarkStore()
+    private let hashCache = DuplicateHashCache(cacheURL: ScanStore.defaultHashCacheURL())
     private var activeRootAccess: SecurityScopedResourceAccess?
     private var cachedCleanupCandidatesKey: DerivedCacheKey?
     private var cachedCleanupCandidates: [CleanupCandidate] = []
@@ -57,9 +87,22 @@ final class ScanStore: ObservableObject {
     private var cachedReclaimPlan = ReclaimPlan(sections: [], primaryAction: nil)
     private var cachedItemsKey: ItemsCacheKey?
     private var cachedItems: [StorageItem] = []
+    private var cachedOldLargeFilesKey: DerivedCacheKey?
+    private var cachedOldLargeFiles: [StorageItem] = []
 
     init() {
-        recentScanPaths = UserDefaults.standard.stringArray(forKey: Self.recentScanPathsKey) ?? []
+        if let data = UserDefaults.standard.data(forKey: Self.recentScanEntriesKey),
+           let decoded = try? JSONDecoder().decode([RecentScanEntry].self, from: data) {
+            recentScanEntries = decoded
+        } else {
+            // One-time migration from the legacy string-array recent-scans list.
+            let legacyPaths = UserDefaults.standard.stringArray(forKey: Self.recentScanPathsKey) ?? []
+            let now = Date()
+            recentScanEntries = legacyPaths.map { RecentScanEntry(path: $0, scannedAt: now, totalBytes: 0) }
+            if !legacyPaths.isEmpty {
+                UserDefaults.standard.removeObject(forKey: Self.recentScanPathsKey)
+            }
+        }
     }
 
     var activeView: SmartView {
@@ -76,6 +119,7 @@ final class ScanStore: ObservableObject {
         set {
             session.scan = newValue
             invalidateDerivedCaches()
+            rebuildSearchSubtreeMatchIDs()
         }
     }
 
@@ -94,6 +138,7 @@ final class ScanStore: ObservableObject {
         set {
             filter.query = newValue
             invalidateDerivedCaches()
+            rebuildSearchSubtreeMatchIDs()
         }
     }
 
@@ -147,6 +192,56 @@ final class ScanStore: ObservableObject {
     var treeExpandedIDs: Set<String> {
         get { selection.treeExpandedIDs }
         set { selection.treeExpandedIDs = newValue }
+    }
+
+    enum ScanStage: String {
+        case idle
+        case enumerating
+        case verifyingDuplicates
+        case complete
+
+        var title: String {
+            switch self {
+            case .idle: return ""
+            case .enumerating: return "Enumerating"
+            case .verifyingDuplicates: return "Verifying duplicates"
+            case .complete: return "Complete"
+            }
+        }
+    }
+
+    var scanStage: ScanStage {
+        if !isScanning {
+            return scan == nil ? .idle : .complete
+        }
+        return progress.phase == .verifyingDuplicates ? .verifyingDuplicates : .enumerating
+    }
+
+    // Precomputes the set of retained item IDs whose subtree contains a query match, so the
+    // tree view avoids O(n²) per-row recursive matching. Single post-order pass: a node is
+    // included when it matches OR any descendant matches. Rebuilt on scan/query change.
+    private func rebuildSearchSubtreeMatchIDs() {
+        guard let scan else {
+            searchSubtreeMatchIDs = nil
+            return
+        }
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            searchSubtreeMatchIDs = nil
+            return
+        }
+
+        var subtreeContains = Set<String>()
+        func visit(_ item: StorageItem) -> Bool {
+            var any = item.matchesNormalizedSearchQuery(trimmedQuery)
+            for child in item.children where visit(child) {
+                any = true
+            }
+            if any { subtreeContains.insert(item.id) }
+            return any
+        }
+        _ = visit(scan.rootItem)
+        searchSubtreeMatchIDs = subtreeContains
     }
 
     var selectedItem: StorageItem? {
@@ -292,8 +387,14 @@ final class ScanStore: ObservableObject {
     }
 
     func forgetRecentScanPath(_ path: String) {
-        recentScanPaths.removeAll { $0 == path }
-        UserDefaults.standard.set(recentScanPaths, forKey: Self.recentScanPathsKey)
+        recentScanEntries.removeAll { $0.path == path }
+        persistRecentScanEntries()
+    }
+
+    private func persistRecentScanEntries() {
+        if let data = try? JSONEncoder().encode(recentScanEntries) {
+            UserDefaults.standard.set(data, forKey: Self.recentScanEntriesKey)
+        }
     }
 
     var mountedVolumes: [URL] {
@@ -365,6 +466,7 @@ final class ScanStore: ObservableObject {
         rememberScanURL(url)
         session.lastScannedURL = url
         selection.resetForNewScan()
+        keeperOverridesByChecksum.removeAll()
         invalidateDerivedCaches()
         errorMessage = nil
         session.resultsNeedRefresh = false
@@ -391,10 +493,11 @@ final class ScanStore: ObservableObject {
             }
 
             do {
+                let hashCache = self.hashCache
                 let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<StorageScan, Error>) in
                     DispatchQueue.global(qos: .userInitiated).async {
                         do {
-                            let scanner = FileSystemScanner()
+                            let scanner = FileSystemScanner(hashCache: hashCache)
                             let scan = try scanner.scan(
                                 root: url,
                                 options: options,
@@ -420,6 +523,9 @@ final class ScanStore: ObservableObject {
                 }
 
                 scan = result
+                let cacheToPersist = hashCache
+                Task.detached(priority: .utility) { cacheToPersist.persist() }
+                rememberScanURL(url, scannedAt: result.finishedAt, totalBytes: result.totalBytes)
                 treeExpandedIDs = [result.rootItem.id]
                 session.appliedOptions = optionsSnapshot
                 if markResultsNeedRefreshWhenCurrentScanCompletes {
@@ -512,7 +618,16 @@ final class ScanStore: ObservableObject {
         guard let scan else {
             return []
         }
-        return filtered(scan.oldLargeFiles.filter { $0.displaySize >= max(sizeFilter.threshold, 100_000_000) })
+        guard let key = currentDerivedCacheKey else {
+            return []
+        }
+        if cachedOldLargeFilesKey == key {
+            return cachedOldLargeFiles
+        }
+        let result = filtered(scan.oldLargeFiles.filter { $0.displaySize >= max(sizeFilter.threshold, 100_000_000) })
+        cachedOldLargeFilesKey = key
+        cachedOldLargeFiles = result
+        return result
     }
 
     var duplicateGroups: [DuplicateSizeGroup] {
@@ -544,6 +659,30 @@ final class ScanStore: ObservableObject {
                 )
             }
             .filter { $0.items.count > 1 }
+    }
+
+    func keeperItemID(for group: VerifiedDuplicateGroup) -> String? {
+        keeperOverridesByChecksum[group.checksum] ?? group.items.first?.id
+    }
+
+    func isKeeper(_ itemID: String, in group: VerifiedDuplicateGroup) -> Bool {
+        keeperItemID(for: group) == itemID
+    }
+
+    func setKeeper(itemID: String, for group: VerifiedDuplicateGroup) {
+        keeperOverridesByChecksum[group.checksum] = itemID
+        // The keeper override only affects which verified copies are excluded at trash time;
+        // derived display caches (candidate lists, reclaim plan) do not depend on it, so no
+        // invalidateDerivedCaches() is needed here.
+    }
+
+    private var currentKeeperItemIDs: Set<String> {
+        guard let scan else {
+            return []
+        }
+        return Set(scan.verifiedDuplicateGroups.compactMap { group -> String? in
+            keeperOverridesByChecksum[group.checksum] ?? group.items.first?.id
+        })
     }
 
     var cleanupCandidates: [CleanupCandidate] {
@@ -688,6 +827,24 @@ final class ScanStore: ObservableObject {
         invalidateDerivedCaches()
     }
 
+    func unignoreCleanupCandidate(_ candidate: CleanupCandidate) {
+        selection.unignoreCleanupCandidate(candidate)
+        invalidateDerivedCaches()
+    }
+
+    func clearIgnoredCleanupCandidates() {
+        guard !ignoredCleanupCandidateIDs.isEmpty else { return }
+        selection.clearIgnoredCleanupCandidates()
+        invalidateDerivedCaches()
+    }
+
+    var ignoredCleanupCandidates: [CleanupCandidate] {
+        guard let scan, !ignoredCleanupCandidateIDs.isEmpty else {
+            return []
+        }
+        return scan.cleanupCandidates.filter { ignoredCleanupCandidateIDs.contains($0.id) }
+    }
+
     func moveCleanupCandidateToTrash(_ candidate: CleanupCandidate) {
         selectedCleanupCandidateIDs = [candidate.id]
         selectedItemID = candidate.item.id
@@ -715,30 +872,69 @@ final class ScanStore: ObservableObject {
         FileActionService.reveal(item.url)
     }
 
+    func removePendingTrashReviewItem(_ item: TrashReviewPlan.Item) {
+        selectedCleanupCandidateIDs.remove(item.id)
+        let remaining = selectedCleanupBatchCandidates
+        if remaining.isEmpty {
+            pendingTrashReviewPlan = nil
+        } else {
+            pendingTrashReviewPlan = TrashReviewPlan(candidates: remaining)
+        }
+    }
+
     func confirmPendingTrashReview() {
         guard let plan = pendingTrashReviewPlan else {
             return
         }
+        guard !isMovingToTrash else {
+            return
+        }
 
-        let urls = plan.items.map(\.url)
-        let movedIDs = Set(plan.items.map(\.id))
-        do {
-            try FileActionService.moveToTrashTransactionally(urls)
-            ignoredCleanupCandidateIDs.formUnion(movedIDs)
-            selection.clearCleanupSelection()
-            selectedItemID = nil
+        let keeperItemIDs = currentKeeperItemIDs
+        let itemsToMove = plan.items.filter { !keeperItemIDs.contains($0.id) }
+        guard !itemsToMove.isEmpty else {
+            errorMessage = "Every selected item is currently designated as the keeper for its duplicate group. Reassign the keeper before moving copies to Trash."
             pendingTrashReviewPlan = nil
-            markResultsNeedRefresh()
-        } catch let error as BatchTrashError {
-            errorMessage = error.localizedDescription
-            switch error {
-            case .rollbackFailed, .missingTargets:
-                markResultsNeedRefresh()
-            default:
-                break
+            return
+        }
+
+        let urls = itemsToMove.map(\.url)
+        let movedIDs = Set(itemsToMove.map(\.id))
+        isMovingToTrash = true
+
+        Task { [weak self] in
+            let result: Result<Void, Error>
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try FileActionService.moveToTrashTransactionally(urls)
+                }.value
+                result = .success(())
+            } catch {
+                result = .failure(error)
             }
-        } catch {
-            errorMessage = error.localizedDescription
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.isMovingToTrash = false
+                switch result {
+                case .success:
+                    self.ignoredCleanupCandidateIDs.formUnion(movedIDs)
+                    self.selection.clearCleanupSelection()
+                    self.selectedItemID = nil
+                    self.pendingTrashReviewPlan = nil
+                    self.markResultsNeedRefresh()
+                case .failure(let error):
+                    self.errorMessage = error.localizedDescription
+                    if let batchError = error as? BatchTrashError {
+                        switch batchError {
+                        case .rollbackFailed, .missingTargets:
+                            self.markResultsNeedRefresh()
+                        default:
+                            break
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -827,17 +1023,18 @@ final class ScanStore: ObservableObject {
             return
         }
 
-        guard FileActionService.confirmTrash(url: selectedItem.url) else {
-            return
-        }
+        let candidate = selectedCleanupCandidate ?? synthesizedTrashCandidate(for: selectedItem)
+        pendingTrashReviewPlan = TrashReviewPlan(candidates: [candidate])
+    }
 
-        do {
-            try FileActionService.moveToTrash(selectedItem.url)
-            selectedItemID = nil
-            markResultsNeedRefresh()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+    private func synthesizedTrashCandidate(for item: StorageItem) -> CleanupCandidate {
+        CleanupCandidate(
+            kind: .general,
+            item: item,
+            reason: "Manually selected from \(activeView.title). Review the path before moving to Trash.",
+            reclaimableBytes: item.displaySize,
+            confidence: .review
+        )
     }
 
     func canMoveItemToTrash(_ item: StorageItem) -> Bool {
@@ -909,12 +1106,27 @@ final class ScanStore: ObservableObject {
         cachedPotentialReclaimableBytes = 0
         cachedReclaimPlanKey = nil
         cachedReclaimPlan = ReclaimPlan(sections: [], primaryAction: nil)
+        cachedOldLargeFilesKey = nil
+        cachedOldLargeFiles = []
         invalidateItemsCache()
     }
 
     private func invalidateItemsCache() {
         cachedItemsKey = nil
         cachedItems = []
+    }
+
+    private func scheduleSearchTextDebounce() {
+        searchTextDebounceTask?.cancel()
+        let snapshot = searchText
+        searchTextDebounceTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                guard let self, self.query != snapshot else { return }
+                self.query = snapshot
+            }
+        }
     }
 
     private func markResultsNeedRefresh() {
@@ -941,12 +1153,13 @@ final class ScanStore: ObservableObject {
         )
     }
 
-    private func rememberScanURL(_ url: URL) {
+    private func rememberScanURL(_ url: URL, scannedAt: Date = Date(), totalBytes: Int64 = 0) {
         let path = url.standardizedFileURL.path
-        recentScanPaths.removeAll { $0 == path }
-        recentScanPaths.insert(path, at: 0)
-        recentScanPaths = Array(recentScanPaths.prefix(8))
-        UserDefaults.standard.set(recentScanPaths, forKey: Self.recentScanPathsKey)
+        let entry = RecentScanEntry(path: path, scannedAt: scannedAt, totalBytes: totalBytes)
+        recentScanEntries.removeAll { $0.path == path }
+        recentScanEntries.insert(entry, at: 0)
+        recentScanEntries = Array(recentScanEntries.prefix(8))
+        persistRecentScanEntries()
     }
 
     private func replaceActiveRootAccess(with access: SecurityScopedResourceAccess) {

@@ -37,17 +37,21 @@ struct SidebarView: View {
                         }
                     }
 
-                    if !store.recentScanPaths.isEmpty {
+                    if !store.recentScanEntries.isEmpty {
                         SidebarSectionTitle("Recent Scans")
 
                         VStack(spacing: 2) {
-                            ForEach(store.recentScanPaths, id: \.self) { path in
-                                SidebarPathButton(path: path, systemImage: "clock.arrow.circlepath") {
-                                    store.scanRecentPath(path)
+                            ForEach(store.recentScanEntries) { entry in
+                                SidebarPathButton(
+                                    path: entry.path,
+                                    systemImage: "clock.arrow.circlepath",
+                                    subtitle: recentScanSubtitle(for: entry)
+                                ) {
+                                    store.scanRecentPath(entry.path)
                                 }
                                 .contextMenu {
                                     Button("Forget Recent Scan") {
-                                        store.forgetRecentScanPath(path)
+                                        store.forgetRecentScanPath(entry.path)
                                     }
                                 }
                             }
@@ -151,12 +155,14 @@ private struct SidebarPathButton: View {
     let path: String
     let title: String?
     let systemImage: String
+    let subtitle: String?
     let action: () -> Void
 
-    init(path: String, title: String? = nil, systemImage: String, action: @escaping () -> Void) {
+    init(path: String, title: String? = nil, systemImage: String, subtitle: String? = nil, action: @escaping () -> Void) {
         self.path = path
         self.title = title
         self.systemImage = systemImage
+        self.subtitle = subtitle
         self.action = action
     }
 
@@ -176,6 +182,13 @@ private struct SidebarPathButton: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -188,19 +201,29 @@ private struct SidebarPathButton: View {
     }
 }
 
+private func recentScanSubtitle(for entry: RecentScanEntry) -> String {
+    let relative = entry.scannedAt.formatted(.relative(presentation: .named))
+    guard entry.totalBytes > 0 else { return relative }
+    return "\(relative) · \(StorageFormat.bytes(entry.totalBytes))"
+}
+
 private struct ScanStatusFooter: View {
     @ObservedObject var store: ScanStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if store.isScanning {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Scanning \(store.progress.scannedItemCount.formatted()) items")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Scan progress")
-                    .accessibilityValue("Scanning \(store.progress.scannedItemCount.formatted()) items")
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(store.scanStage.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 4)
+                    Text("\(store.progress.scannedItemCount.formatted()) items")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
                 Text(store.progress.currentPath)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)

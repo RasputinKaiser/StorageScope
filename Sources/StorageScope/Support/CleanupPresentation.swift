@@ -20,6 +20,8 @@ extension CleanupCandidate.Kind {
             return "Build Artifact"
         case .temporary:
             return "Temporary"
+        case .general:
+            return "Selected Item"
         }
     }
 
@@ -41,6 +43,8 @@ extension CleanupCandidate.Kind {
             return "hammer.fill"
         case .temporary:
             return "timer"
+        case .general:
+            return "trash"
         }
     }
 }

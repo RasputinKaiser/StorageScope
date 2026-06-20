@@ -42,6 +42,7 @@ public final class FileSystemScanner {
     public typealias ProgressHandler = (ScanProgress) -> Void
 
     private let fileManager: FileManager
+    private let hashCache: DuplicateHashCache?
     private let resourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey,
         .isRegularFileKey,
@@ -55,8 +56,9 @@ public final class FileSystemScanner {
         .contentModificationDateKey
     ]
 
-    public init(fileManager: FileManager = .default) {
+    public init(fileManager: FileManager = .default, hashCache: DuplicateHashCache? = nil) {
         self.fileManager = fileManager
+        self.hashCache = hashCache
     }
 
     public func scan(
@@ -257,23 +259,41 @@ public final class FileSystemScanner {
 
         if verificationGroups.count < sizeGroups.count {
             accumulator.recordPhase(
-                path: "Duplicate verification capped to \(verificationGroups.count) of \(sizeGroups.count) size groups"
+                path: "Duplicate verification capped to \(verificationGroups.count) of \(sizeGroups.count) size groups",
+                phase: .verifyingDuplicates
             )
         }
 
         accumulator.recordPhase(
-            path: "Verifying duplicates across \(verificationGroups.count) size groups"
+            path: "Verifying duplicates across \(verificationGroups.count) size groups",
+            phase: .verifyingDuplicates
         )
 
         let verifiedGroupsLock = NSLock()
+        let cacheLock = NSLock()
+        let ioSemaphore = DispatchSemaphore(value: 4)
+
         DispatchQueue.concurrentPerform(iterations: verificationGroups.count) { groupIndex in
             do {
                 try cancellation?.check()
                 let sizeGroup = verificationGroups[groupIndex]
 
                 let hashedItems = sizeGroup.items.compactMap { item -> HashedStorageItem? in
+                    let cacheKey = DuplicateHashCache.LookupKey(item: item)
+
+                    if let cached = hashCache?.checksum(for: cacheKey) {
+                        return HashedStorageItem(checksum: cached, item: item)
+                    }
+
+                    ioSemaphore.wait()
+                    defer { ioSemaphore.signal() }
                     guard let checksum = try? sha256Checksum(for: item.url, cancellation: cancellation) else {
                         return nil
+                    }
+                    if let hashCache {
+                        cacheLock.lock()
+                        defer { cacheLock.unlock() }
+                        hashCache.record(cacheKey, checksum: checksum)
                     }
                     return HashedStorageItem(checksum: checksum, item: item)
                 }
@@ -315,11 +335,15 @@ public final class FileSystemScanner {
         var plannedBytes: Int64 = 0
         var plannedFiles = 0
 
+        // Prioritize the groups that reclaim the most space: sort by reclaimableBytes
+        // descending so the biggest wins are verified within the budget. Tie-break by byteSize
+        // so that within equal reclaim, larger individual files are hashed first — a single
+        // large duplicate copy frees as much as many small ones.
         let budgetOrderedGroups = sizeGroups.sorted { lhs, rhs in
-            if lhs.totalBytes == rhs.totalBytes {
-                return lhs.byteSize < rhs.byteSize
+            if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                return lhs.byteSize > rhs.byteSize
             }
-            return lhs.totalBytes < rhs.totalBytes
+            return lhs.reclaimableBytes > rhs.reclaimableBytes
         }
 
         for group in budgetOrderedGroups {
@@ -472,8 +496,8 @@ private final class ScanAccumulator {
         emitProgress(path: path)
     }
 
-    func recordPhase(path: String) {
-        emitProgress(path: path, force: true)
+    func recordPhase(path: String, phase: ScanPhase = .enumerating) {
+        emitProgress(path: path, force: true, phase: phase)
     }
 
     func recordItem(_ item: StorageItem) {
@@ -637,7 +661,7 @@ private final class ScanAccumulator {
             .map { $0 }
     }
 
-    private func emitProgress(path: String, force: Bool = false) {
+    private func emitProgress(path: String, force: Bool = false, phase: ScanPhase = .enumerating) {
         guard let progress else {
             return
         }
@@ -648,7 +672,7 @@ private final class ScanAccumulator {
         }
 
         lastProgressDate = now
-        progress(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path))
+        progress(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path, phase: phase))
     }
 
     private func recordFile(_ item: StorageItem) {

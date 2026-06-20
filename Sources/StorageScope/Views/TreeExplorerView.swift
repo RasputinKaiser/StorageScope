@@ -67,10 +67,10 @@ private struct TreeNodeRow: View {
     }
 
     private var visibleChildren: [StorageItem] {
-        let trimmedQuery = store.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let subtreeMatchIDs = store.searchSubtreeMatchIDs
         return item.children.filter { child in
             child.displaySize >= store.sizeFilter.threshold &&
-                child.retainedTreeContainsNormalizedSearchMatch(trimmedQuery)
+                (subtreeMatchIDs == nil || subtreeMatchIDs!.contains(child.id))
         }
     }
 

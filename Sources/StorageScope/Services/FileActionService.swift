@@ -31,24 +31,7 @@ enum FileActionService {
         NSPasteboard.general.setString(url.path, forType: .string)
     }
 
-    static func moveToTrash(_ url: URL) throws {
-        var resultingURL: NSURL?
-        try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
-    }
-
     static func moveToTrashTransactionally(_ urls: [URL]) throws {
         try TransactionalTrashMover().moveToTrash(urls)
     }
-
-    @MainActor
-    static func confirmTrash(url: URL) -> Bool {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Move to Trash?"
-        alert.informativeText = "\(url.lastPathComponent) will be moved to Trash. You can restore it from Finder if needed."
-        alert.addButton(withTitle: "Move to Trash")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
-    }
-
 }

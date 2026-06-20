@@ -1,3 +1,4 @@
+import AppKit
 import StorageScopeCore
 import SwiftUI
 
@@ -54,6 +55,7 @@ struct DetailView: View {
 
 private struct WelcomeView: View {
     @ObservedObject var store: ScanStore
+    @AppStorage("StorageScope.didDismissFirstRunCard") private var didDismissFirstRunCard = false
 
     var body: some View {
         VStack(spacing: 28) {
@@ -76,6 +78,13 @@ private struct WelcomeView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 680)
+            }
+
+            if !didDismissFirstRunCard {
+                FirstRunPermissionCard {
+                    didDismissFirstRunCard = true
+                }
+                .frame(maxWidth: 760)
             }
 
             HStack(spacing: 12) {
@@ -139,6 +148,51 @@ private struct WelcomeCapabilityCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct FirstRunPermissionCard: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "lock.shield.fill")
+                .font(.title2)
+                .foregroundStyle(.tint)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("How folder access works")
+                    .font(.headline)
+                Text("StorageScope is sandboxed. It only reads folders you choose with the macOS picker, never uploads file names, paths, or contents. Scans of protected locations (Home, Desktop, Documents, Downloads, external volumes) may require you to grant access, or Full Disk Access for whole-disk scans.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Open System Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss this card")
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

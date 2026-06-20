@@ -88,6 +88,10 @@ struct CleanupReviewView: View {
                         }
                     }
                 }
+
+                if !store.ignoredCleanupCandidates.isEmpty {
+                    IgnoredCleanupSection(store: store)
+                }
             }
             .padding(20)
         }
@@ -354,6 +358,72 @@ private struct CleanupCandidateRow: View {
             Button("Move to Trash", role: .destructive) {
                 store.moveCleanupCandidateToTrash(candidate)
             }
+            .disabled(!store.canMoveItemToTrash(candidate.item))
         }
+    }
+}
+
+private struct IgnoredCleanupSection: View {
+    @ObservedObject var store: ScanStore
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation { isExpanded.toggle() }
+            } label: {
+                HStack {
+                    Label("Ignored (\(store.ignoredCleanupCandidates.count.formatted()))", systemImage: "eye.slash")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(store.ignoredCleanupCandidates) { candidate in
+                        HStack(spacing: 10) {
+                            Image(systemName: candidate.kind.systemImage)
+                                .foregroundStyle(candidate.confidence.tint)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(candidate.item.name)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                Text(candidate.item.url.path)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer(minLength: 8)
+                            Button {
+                                store.unignoreCleanupCandidate(candidate)
+                            } label: {
+                                Label("Restore", systemImage: "arrow.uturn.backward")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .help("Restore this candidate to the review list")
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    Button("Restore All Ignored", role: .cancel) {
+                        store.clearIgnoredCleanupCandidates()
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
