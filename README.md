@@ -2,7 +2,7 @@
 
 [![Swift](https://github.com/RasputinKaiser/StorageScope/actions/workflows/swift.yml/badge.svg)](https://github.com/RasputinKaiser/StorageScope/actions/workflows/swift.yml)
 
-StorageScope is an open-source Mac storage map and reclaim planner for finding the folders and files that are filling a Mac. It is a local-first macOS storage management app, built with SwiftUI/AppKit, for large-folder analysis, duplicate review, and safer cleanup decisions.
+StorageScope is a free open-source macOS disk space analyzer and Mac storage cleaner for finding the folders and files that are filling a Mac. It is a local-first macOS storage management app, built with SwiftUI/AppKit, for large-folder analysis, duplicate file review, disk usage analysis, and safer cleanup planning.
 
 The app scans only folders the user grants through macOS folder selection or stored security-scoped bookmarks. It does not upload scan results, file names, paths, contents, analytics, or identifiers.
 
@@ -12,11 +12,11 @@ The name is intentional: StorageScope is not a black-box cleaner. It scopes stor
 
 ## Highlights
 
-- Mac storage management views for disk usage, file cleanup, old large files, duplicate candidates, and type-heavy storage.
+- macOS disk space analyzer views for disk usage, file cleanup, old large files, duplicate candidates, and type-heavy storage.
 - Reclaim Plan overview that separates verified duplicate reclaim, review-suggested cleanup, and access gaps.
 - Ranked storage views for largest folders, largest files, stale large files, and file type usage.
 - Folder tree browsing with size bars and an inspector for selected items.
-- Duplicate review that starts from same-size candidates and verifies matches with SHA-256 within a bounded work budget.
+- Duplicate file review that starts from same-size candidates and verifies matches with SHA-256 within a bounded work budget.
 - Cleanup review for verified duplicate copies, cache folders, build artifacts, installers, archives, disk images, and temporary-looking files.
 - Confirmed file actions for Reveal in Finder, Open, Copy Path, and Move to Trash.
 - Transactional cleanup batches that collapse nested selections, disclose mixed-confidence risk, use macOS Trash APIs, and roll back earlier moves if a later move fails.
@@ -27,10 +27,26 @@ The name is intentional: StorageScope is not a black-box cleaner. It scopes stor
 StorageScope is designed for people looking for a transparent alternative to black-box Mac cleaner utilities:
 
 - Find what is taking up disk space on macOS.
+- Use a free Mac storage cleaner that runs locally.
 - Review large folders, old large files, installers, archives, disk images, and build artifacts.
 - Inspect verified duplicate files separately from review-suggested cleanup.
 - Plan Mac storage cleanup locally without uploading file names, paths, hashes, or scan results.
 - Explore disk usage with an open-source Swift macOS app instead of a closed cleanup tool.
+
+## Search Terms
+
+StorageScope is useful for people looking for:
+
+- macOS disk space analyzer
+- Mac storage cleaner
+- free Mac cleaner
+- open-source Mac cleaner
+- duplicate file finder for macOS
+- large folder scanner for Mac
+- disk usage analyzer for macOS
+- cache cleaner for macOS
+- local-first Mac cleanup tool
+- SwiftUI macOS storage app
 
 ## Requirements
 
