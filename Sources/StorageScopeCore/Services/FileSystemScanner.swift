@@ -36,10 +36,24 @@ public final class ScanCancellation: @unchecked Sendable {
             throw FileSystemScannerError.cancelled
         }
     }
+
+    /// Non-throwing probe used inside `DispatchQueue.concurrentPerform`, which cannot propagate thrown errors.
+    public var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
 }
 
 public final class FileSystemScanner {
     public typealias ProgressHandler = (ScanProgress) -> Void
+
+    /// Bounded concurrency for duplicate-verification hashing. Scales with available cores
+    /// but caps at 8 to avoid file-handle pressure on huge machines.
+    private static let hashConcurrency: Int = {
+        let cores = ProcessInfo.processInfo.processorCount
+        return min(8, max(4, cores))
+    }()
 
     private let fileManager: FileManager
     private let hashCache: DuplicateHashCache?
@@ -196,15 +210,60 @@ public final class FileSystemScanner {
                 options: directoryOptions
             )
 
-            var summary = DirectoryScanSummary(retainedCandidateLimit: options.maxChildrenPerDirectory)
-            for childURL in childURLs {
-                let child = try scanItem(
-                    at: childURL,
-                    options: options,
-                    cancellation: cancellation,
-                    accumulator: accumulator
-                )
+            // Recurse into every child directory in parallel. Profits from SSD parallelism for
+            // wide directory layouts (e.g. home folder, mounted volumes). concurrentPerform
+            // is synchronous — the calling thread waits for all iterations to finish — and
+            // cannot propagate thrown errors, so cancellation is propagated via a flag
+            // inspected after the call returns. Child items are stored at their original
+            // index so the order entering `DirectoryScanSummary` is preserved.
+            var childItems: [StorageItem?] = Array(repeating: nil, count: childURLs.count)
+            let cancellationLock = NSLock()
+            var didCancel = false
 
+            DispatchQueue.concurrentPerform(iterations: childURLs.count) { index in
+                if cancellation?.isCancelled ?? false {
+                    return
+                }
+
+                do {
+                    try cancellation?.check()
+                    let child = try scanItem(
+                        at: childURLs[index],
+                        options: options,
+                        cancellation: cancellation,
+                        accumulator: accumulator
+                    )
+                    childItems[index] = child
+                } catch FileSystemScannerError.cancelled {
+                    cancellationLock.lock()
+                    didCancel = true
+                    cancellationLock.unlock()
+                } catch {
+                    // Unreachable: scanItem only throws FileSystemScannerError.cancelled;
+                    // ingestion/directory-enumeration failures are caught internally and
+                    // surface as .inaccessible StorageItems. Belt-and-braces guard.
+                    let unreachable = StorageItem(
+                        url: childURLs[index],
+                        kind: .inaccessible,
+                        byteSize: 0,
+                        allocatedSize: 0,
+                        modifiedAt: nil,
+                        immediateChildCount: 0,
+                        descendantCount: 0,
+                        isReadable: false,
+                        fileExtension: nil
+                    )
+                    childItems[index] = unreachable
+                    accumulator.recordItem(unreachable)
+                }
+            }
+
+            if didCancel {
+                throw FileSystemScannerError.cancelled
+            }
+
+            var summary = DirectoryScanSummary(retainedCandidateLimit: options.maxChildrenPerDirectory)
+            for case let child? in childItems {
                 guard child.kind != .other || child.displaySize > 0 else {
                     continue
                 }
@@ -271,7 +330,7 @@ public final class FileSystemScanner {
 
         let verifiedGroupsLock = NSLock()
         let cacheLock = NSLock()
-        let ioSemaphore = DispatchSemaphore(value: 4)
+        let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
 
         DispatchQueue.concurrentPerform(iterations: verificationGroups.count) { groupIndex in
             do {
@@ -471,6 +530,12 @@ private final class ScanAccumulator {
     var inaccessibleItemCount = 0
     var totalBytes: Int64 = 0
 
+    /// Guards every mutable field above. Held briefly during directory enumeration's
+    /// record*() calls; the user `progress` closure is invoked under this lock, so it must
+    /// not re-enter the accumulator. Contention is bounded because the scan's bottleneck is
+    /// `contentsOfDirectory`+`resourceValues` I/O outside the lock.
+    private let lock = NSLock()
+
     init(options: ScanOptions, progress: FileSystemScanner.ProgressHandler?) {
         self.options = options
         self.progress = progress
@@ -483,27 +548,37 @@ private final class ScanAccumulator {
     }
 
     func recordVisit(path: String) {
+        lock.lock()
+        defer { lock.unlock() }
         scannedItemCount += 1
-        emitProgress(path: path)
+        emitProgressLocked(path: path)
     }
 
     func recordBytes(_ bytes: Int64) {
+        lock.lock()
+        defer { lock.unlock() }
         totalBytes += bytes
     }
 
     func recordInaccessible(path: String) {
+        lock.lock()
+        defer { lock.unlock() }
         inaccessibleItemCount += 1
-        emitProgress(path: path)
+        emitProgressLocked(path: path)
     }
 
     func recordPhase(path: String, phase: ScanPhase = .enumerating) {
-        emitProgress(path: path, force: true, phase: phase)
+        lock.lock()
+        defer { lock.unlock() }
+        emitProgressLocked(path: path, force: true, phase: phase)
     }
 
     func recordItem(_ item: StorageItem) {
+        lock.lock()
+        defer { lock.unlock() }
         switch item.kind {
         case .file:
-            recordFile(item)
+            recordFileLocked(item)
         case .folder, .package:
             largestFolderItems.append(item)
             trimRankedItems(&largestFolderItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
@@ -512,11 +587,13 @@ private final class ScanAccumulator {
         }
 
         if let candidate = ruleBasedCleanupCandidate(for: item) {
-            insertCandidate(candidate, into: &cleanupCandidatesByID)
+            insertCandidateLocked(candidate, into: &cleanupCandidatesByID)
         }
     }
 
     func retainedChildren(from children: [StorageItem]) -> [StorageItem] {
+        lock.lock()
+        defer { lock.unlock() }
         let perDirectoryLimit = max(0, options.maxChildrenPerDirectory)
         let retainedLimit = max(1, options.maxRetainedItems)
         guard perDirectoryLimit > 0, retainedItemCount < retainedLimit else {
@@ -634,7 +711,7 @@ private final class ScanAccumulator {
 
         for group in verifiedDuplicateGroups {
             for item in group.items.dropFirst() {
-                insertCandidate(
+                insertCandidateLocked(
                     CleanupCandidate(
                         kind: .verifiedDuplicate,
                         item: item,
@@ -661,7 +738,7 @@ private final class ScanAccumulator {
             .map { $0 }
     }
 
-    private func emitProgress(path: String, force: Bool = false, phase: ScanPhase = .enumerating) {
+    private func emitProgressLocked(path: String, force: Bool = false, phase: ScanPhase = .enumerating) {
         guard let progress else {
             return
         }
@@ -675,7 +752,7 @@ private final class ScanAccumulator {
         progress(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path, phase: phase))
     }
 
-    private func recordFile(_ item: StorageItem) {
+    private func recordFileLocked(_ item: StorageItem) {
         largestFileItems.append(item)
         trimRankedItems(&largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
 
@@ -700,11 +777,11 @@ private final class ScanAccumulator {
         fileTypeStats[typeLabel] = typeStat
 
         if item.byteSize >= options.duplicateCandidateThreshold {
-            recordDuplicateCandidate(item)
+            recordDuplicateCandidateLocked(item)
         }
     }
 
-    private func recordDuplicateCandidate(_ item: StorageItem) {
+    private func recordDuplicateCandidateLocked(_ item: StorageItem) {
         duplicateCandidateConsideredCount += 1
         let candidateLimit = max(0, options.maxDuplicateCandidateItems)
         guard candidateLimit > 0 else {
@@ -730,10 +807,10 @@ private final class ScanAccumulator {
         }
 
         duplicateCandidateLimitReached = true
-        removeSmallestDuplicateCandidate()
+        removeSmallestDuplicateCandidateLocked()
     }
 
-    private func removeSmallestDuplicateCandidate() {
+    private func removeSmallestDuplicateCandidateLocked() {
         guard let smallestByteSize = smallestDuplicateCandidateByteSize ?? duplicateCandidatesBySize.keys.min(),
               var items = duplicateCandidatesBySize[smallestByteSize],
               !items.isEmpty else {
@@ -839,7 +916,7 @@ private final class ScanAccumulator {
         return nil
     }
 
-    private func insertCandidate(_ candidate: CleanupCandidate, into candidatesByID: inout [String: CleanupCandidate]) {
+    private func insertCandidateLocked(_ candidate: CleanupCandidate, into candidatesByID: inout [String: CleanupCandidate]) {
         if let existing = candidatesByID[candidate.item.id] {
             if candidate.confidence.sortRank < existing.confidence.sortRank ||
                 candidate.reclaimableBytes > existing.reclaimableBytes {
