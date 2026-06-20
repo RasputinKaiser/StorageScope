@@ -5,6 +5,7 @@ import StorageScopeCore
 @MainActor
 final class ScanStore: ObservableObject {
     private static let recentScanPathsKey = "StorageScope.recentScanPaths"
+    private static let overviewItemCap = 100
 
     struct ScanOptionsSnapshot: Equatable {
         let includeHiddenFiles: Bool
@@ -484,7 +485,7 @@ final class ScanStore: ObservableObject {
         let baseItems: [StorageItem]
         switch view {
         case .overview:
-            baseItems = Array(scan.rootItem.children.prefix(100))
+            baseItems = Array(scan.rootItem.children.prefix(Self.overviewItemCap))
         case .cleanupReview:
             baseItems = cleanupCandidates.map(\.item)
         case .tree:
