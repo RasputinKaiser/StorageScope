@@ -105,6 +105,7 @@ private struct SectionHeader: View {
 private struct VerifiedDuplicateGroupCard: View {
     let group: VerifiedDuplicateGroup
     @ObservedObject var store: ScanStore
+    @State private var showingComparison = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -114,6 +115,16 @@ private struct VerifiedDuplicateGroupCard: View {
                     .foregroundStyle(.green)
 
                 Spacer()
+
+                Button {
+                    showingComparison = true
+                } label: {
+                    Label("Compare", systemImage: "rectangle.split.2x1")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Compare keeper and copies side-by-side")
 
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(StorageFormat.bytes(group.reclaimableBytes))
@@ -142,6 +153,14 @@ private struct VerifiedDuplicateGroupCard: View {
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .sheet(isPresented: $showingComparison) {
+            KeeperComparisonSheet(
+                group: group,
+                keeperItemID: store.keeperItemID(for: group),
+                onSetKeeper: { item in store.setKeeper(itemID: item.id, for: group) },
+                onDismiss: { showingComparison = false }
+            )
+        }
     }
 }
 
