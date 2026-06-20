@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         window.minSize = NSSize(width: 1180, height: 760)
         window.center()
         window.setFrameAutosaveName("StorageScopeMainWindow")
-        window.contentView = NSHostingView(rootView: ContentView(store: store))
+        window.contentView = NSHostingView(rootView: ContentView(store: store, onOpenSettings: { [weak self] in self?.showSettings() }))
         window.toolbar = makeToolbar()
         window.toolbarStyle = .unified
         window.makeKeyAndOrderFront(nil)
@@ -164,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     private func applyDeveloperFixtureFilters(_ environment: [String: String]) {
         if let query = environment["STORAGESCOPE_DEVELOPER_QUERY"]?.trimmingCharacters(in: .whitespacesAndNewlines) {
             store.query = query
+            store.searchText = query
         }
         if let value = environment["STORAGESCOPE_DEVELOPER_SIZE_FILTER"],
            let sizeFilter = SizeFilter(developerFixtureValue: value) {

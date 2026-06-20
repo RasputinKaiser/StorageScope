@@ -11,12 +11,10 @@ enum StorageFormat {
         return formatter
     }()
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
+    // Date.FormatStyle is a thread-safe value type, unlike the shared
+    // mutable DateFormatter instance used previously. Swift Testing and
+    // background formatting paths can hit this concurrently.
+    private static let formatDateStyle = Date.FormatStyle.dateTime.year().month().day()
 
     static func bytes(_ value: Int64) -> String {
         byteFormatter.string(fromByteCount: value)
@@ -26,7 +24,7 @@ enum StorageFormat {
         guard let date else {
             return "Unknown"
         }
-        return dateFormatter.string(from: date)
+        return date.formatted(formatDateStyle)
     }
 
     static func duration(from start: Date, to end: Date) -> String {

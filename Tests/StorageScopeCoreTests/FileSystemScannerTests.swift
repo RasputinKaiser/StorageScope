@@ -144,29 +144,62 @@ struct FileSystemScannerTests {
         #expect(scan.verifiedDuplicateGroups.isEmpty)
     }
 
-    @Test("duplicate verification budget favors smaller groups first")
-    func duplicateVerificationBudgetSortsGroupsAscending() throws {
+    @Test("duplicate verification budget favors groups with the most reclaimable bytes")
+    func duplicateVerificationBudgetPrioritizesReclaimableBytes() throws {
         let temporaryRoot = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: temporaryRoot) }
 
-        try Data(repeating: 1, count: 25).write(to: temporaryRoot.appendingPathComponent("medium-a.bin"))
-        try Data(repeating: 1, count: 25).write(to: temporaryRoot.appendingPathComponent("medium-b.bin"))
-        try Data(repeating: 2, count: 15).write(to: temporaryRoot.appendingPathComponent("small-a.bin"))
-        try Data(repeating: 2, count: 15).write(to: temporaryRoot.appendingPathComponent("small-b.bin"))
-        try Data(repeating: 3, count: 14).write(to: temporaryRoot.appendingPathComponent("tiny-a.bin"))
-        try Data(repeating: 3, count: 14).write(to: temporaryRoot.appendingPathComponent("tiny-b.bin"))
+        // big: 3 copies × 20 bytes = 60 total, reclaimable = 40
+        try Data(repeating: 0x41, count: 20).write(to: temporaryRoot.appendingPathComponent("big-a.bin"))
+        try Data(repeating: 0x41, count: 20).write(to: temporaryRoot.appendingPathComponent("big-b.bin"))
+        try Data(repeating: 0x41, count: 20).write(to: temporaryRoot.appendingPathComponent("big-c.bin"))
+        // small: 2 copies × 10 bytes = 20 total, reclaimable = 10
+        try Data(repeating: 0x42, count: 10).write(to: temporaryRoot.appendingPathComponent("small-a.bin"))
+        try Data(repeating: 0x42, count: 10).write(to: temporaryRoot.appendingPathComponent("small-b.bin"))
 
+        // Budget of 60 bytes: big (60 total) fits, small (would push to 80) does not.
         let scan = try FileSystemScanner().scan(
             root: temporaryRoot,
             options: ScanOptions(
                 duplicateCandidateThreshold: 1,
-                duplicateVerificationByteLimit: 58
+                duplicateVerificationByteLimit: 60
             )
         )
 
         let verifiedNames = Set(scan.verifiedDuplicateGroups.flatMap { $0.items.map(\.name) })
-        #expect(verifiedNames.isSuperset(of: ["small-a.bin", "small-b.bin", "tiny-a.bin", "tiny-b.bin"]))
-        #expect(verifiedNames.isDisjoint(with: ["medium-a.bin", "medium-b.bin"]))
+        #expect(verifiedNames.isSuperset(of: ["big-a.bin", "big-b.bin", "big-c.bin"]))
+        #expect(verifiedNames.isDisjoint(with: ["small-a.bin", "small-b.bin"]))
+    }
+
+    @Test("hash cache returns stored checksum on hit and nil on size mismatch")
+    func hashCacheReturnsHitOnMatchAndMissOnSizeChange() throws {
+        let cache = DuplicateHashCache(cacheURL: nil)
+
+        let item = StorageItem(
+            url: URL(fileURLWithPath: "/tmp/example.bin"),
+            kind: .file,
+            byteSize: 1_024,
+            allocatedSize: 1_024,
+            modifiedAt: Date(timeIntervalSince1970: 1_000_000),
+            immediateChildCount: 0,
+            descendantCount: 0,
+            isReadable: true,
+            fileExtension: "bin"
+        )
+
+        let key = DuplicateHashCache.LookupKey(item: item)
+        #expect(cache.checksum(for: key) == nil)
+
+        cache.record(key, checksum: "abc123")
+        #expect(cache.checksum(for: key) == "abc123")
+
+        // Size change invalidates the cache entry.
+        let resized = DuplicateHashCache.LookupKey(
+            path: item.url.standardizedFileURL.path,
+            byteSize: 2_048,
+            modificationDate: item.modifiedAt
+        )
+        #expect(cache.checksum(for: resized) == nil)
     }
 
     @Test("surfaces cleanup candidates for cache folders, installers, and compressed archives")
@@ -856,6 +889,29 @@ struct FileSystemScannerTests {
 
         #expect(plan.items.map(\.url.lastPathComponent) == ["Caches"])
         #expect(plan.estimatedReclaimBytes == 10_000)
+    }
+
+    @Test("trash review plan routes synthesized general candidates through review lane only")
+    func trashReviewPlanRoutesGeneralCandidateThroughReviewLane() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let generalItem = cleanupCandidate(
+            url: temporaryRoot.appendingPathComponent("manual-pick.bin"),
+            kind: .general,
+            bytes: 4_096,
+            confidence: .review
+        )
+
+        let plan = TrashReviewPlan(candidates: [generalItem])
+
+        #expect(plan.title == "Move 1 Item to Trash?")
+        #expect(plan.items.count == 1)
+        #expect(plan.verifiedItems.isEmpty)
+        #expect(plan.reviewItems.count == 1)
+        #expect(plan.containsReviewRisk)
+        #expect(plan.reviewItems.first?.kind == .general)
+        #expect(plan.reviewItems.first?.isVerified == false)
     }
 
     private func makeTemporaryRoot() throws -> URL {

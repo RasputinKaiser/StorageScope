@@ -128,7 +128,17 @@ private struct VerifiedDuplicateGroupCard: View {
                 .font(.caption2.monospaced())
                 .foregroundStyle(.secondary)
 
-            DuplicateItemList(items: group.items, store: store)
+            Text("One copy is the keeper and is never moved to Trash. Use a row's menu to reassign the keeper.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            DuplicateItemList(
+                items: group.items,
+                store: store,
+                keeperItemID: store.keeperItemID(for: group),
+                onSetKeeper: { item in store.setKeeper(itemID: item.id, for: group) }
+            )
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -177,7 +187,7 @@ private struct DuplicateGroupCard: View {
                 }
             }
 
-            DuplicateItemList(items: visibleItems, store: store)
+            DuplicateItemList(items: visibleItems, store: store, keeperItemID: nil, onSetKeeper: nil)
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -187,10 +197,13 @@ private struct DuplicateGroupCard: View {
 private struct DuplicateItemList: View {
     let items: [StorageItem]
     @ObservedObject var store: ScanStore
+    var keeperItemID: String? = nil
+    var onSetKeeper: ((StorageItem) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                let isKeeper = keeperItemID == item.id
                 Button {
                     store.selectedItemID = item.id
                 } label: {
@@ -199,6 +212,14 @@ private struct DuplicateItemList: View {
                             .foregroundStyle(.secondary)
                         Text(item.name)
                             .lineLimit(1)
+                        if isKeeper {
+                            Text("Keeper")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.green.opacity(0.14), in: Capsule())
+                        }
                         Spacer()
                         Text(item.url.deletingLastPathComponent().path)
                             .font(.caption)
@@ -214,6 +235,24 @@ private struct DuplicateItemList: View {
                 .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))")
                 .accessibilityValue(store.selectedItemID == item.id ? "Selected" : "Not selected")
                 .accessibilityHint("Selects this duplicate candidate")
+                .contextMenu {
+                    if let onSetKeeper, !isKeeper {
+                        Button {
+                            onSetKeeper(item)
+                        } label: {
+                            Label("Set as Keeper", systemImage: "checkmark.seal")
+                        }
+                        Divider()
+                    }
+                    Button("Reveal in Finder") {
+                        store.selectedItemID = item.id
+                        store.revealSelectedItem()
+                    }
+                    Button("Copy Path") {
+                        store.selectedItemID = item.id
+                        store.copySelectedPath()
+                    }
+                }
 
                 if index < items.index(before: items.endIndex) {
                     Divider()

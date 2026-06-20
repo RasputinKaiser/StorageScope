@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var store: ScanStore
+    var onOpenSettings: () -> Void = {}
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
@@ -18,7 +19,7 @@ struct ContentView: View {
                     .frame(minWidth: 300, idealWidth: 330, maxWidth: 380)
             }
         }
-        .searchable(text: $store.query, placement: .toolbar, prompt: "Search files and paths")
+        .searchable(text: $store.searchText, placement: .toolbar, prompt: "Search files and paths")
         .toolbar {
             ToolbarItemGroup {
                 Button {
@@ -50,6 +51,13 @@ struct ContentView: View {
                     Label("Reveal", systemImage: "folder")
                 }
                 .disabled(store.selectedItem == nil)
+
+                Button {
+                    onOpenSettings()
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .help("Open scan and display settings")
             }
         }
         .navigationTitle(L10n.string("StorageScope"))
@@ -64,7 +72,9 @@ struct ContentView: View {
         .sheet(item: $store.pendingTrashReviewPlan) { plan in
             TrashConfirmationSheet(
                 plan: plan,
+                isMoving: store.isMovingToTrash,
                 reveal: { store.revealTrashReviewItem($0) },
+                remove: { store.removePendingTrashReviewItem($0) },
                 cancel: { store.cancelPendingTrashReview() },
                 confirm: { store.confirmPendingTrashReview() }
             )

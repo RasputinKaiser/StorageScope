@@ -31,4 +31,12 @@ struct ScanSelection {
         ignoredCleanupCandidateIDs.insert(candidate.id)
         selectedCleanupCandidateIDs.remove(candidate.id)
     }
+
+    mutating func unignoreCleanupCandidate(_ candidate: CleanupCandidate) {
+        ignoredCleanupCandidateIDs.remove(candidate.id)
+    }
+
+    mutating func clearIgnoredCleanupCandidates() {
+        ignoredCleanupCandidateIDs.removeAll()
+    }
 }

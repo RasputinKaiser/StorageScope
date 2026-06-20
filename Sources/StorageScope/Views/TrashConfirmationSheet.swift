@@ -3,7 +3,9 @@ import SwiftUI
 
 struct TrashConfirmationSheet: View {
     let plan: TrashReviewPlan
+    let isMoving: Bool
     let reveal: (TrashReviewPlan.Item) -> Void
+    let remove: (TrashReviewPlan.Item) -> Void
     let cancel: () -> Void
     let confirm: () -> Void
 
@@ -17,6 +19,17 @@ struct TrashConfirmationSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if isMoving {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Moving items to Trash…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
             }
             .padding(20)
 
@@ -31,7 +44,9 @@ struct TrashConfirmationSheet: View {
                             systemImage: "checkmark.seal.fill",
                             tint: .green,
                             items: plan.verifiedItems,
-                            reveal: reveal
+                            reveal: reveal,
+                            remove: remove,
+                            isMoving: isMoving
                         )
                     }
 
@@ -42,13 +57,16 @@ struct TrashConfirmationSheet: View {
                             systemImage: "exclamationmark.octagon.fill",
                             tint: .orange,
                             items: plan.reviewItems,
-                            reveal: reveal
+                            reveal: reveal,
+                            remove: remove,
+                            isMoving: isMoving
                         )
                     }
                 }
                 .padding(20)
             }
             .frame(minHeight: 260)
+            .disabled(isMoving)
 
             Divider()
 
@@ -63,11 +81,13 @@ struct TrashConfirmationSheet: View {
                     cancel()
                 }
                 .keyboardShortcut(.cancelAction)
+                .disabled(isMoving)
 
                 Button(L10n.string("Move to Trash"), role: .destructive) {
                     confirm()
                 }
                 .keyboardShortcut(.defaultAction)
+                .disabled(isMoving)
             }
             .padding(20)
         }
@@ -90,6 +110,8 @@ private struct TrashReviewSection: View {
     let tint: Color
     let items: [TrashReviewPlan.Item]
     let reveal: (TrashReviewPlan.Item) -> Void
+    let remove: (TrashReviewPlan.Item) -> Void
+    let isMoving: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -111,7 +133,7 @@ private struct TrashReviewSection: View {
 
             VStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    TrashReviewRow(item: item, reveal: reveal)
+                    TrashReviewRow(item: item, reveal: reveal, remove: remove, isMoving: isMoving)
 
                     if index < items.index(before: items.endIndex) {
                         Divider()
@@ -126,6 +148,8 @@ private struct TrashReviewSection: View {
 private struct TrashReviewRow: View {
     let item: TrashReviewPlan.Item
     let reveal: (TrashReviewPlan.Item) -> Void
+    let remove: (TrashReviewPlan.Item) -> Void
+    let isMoving: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -165,6 +189,15 @@ private struct TrashReviewRow: View {
                     .labelStyle(.iconOnly)
             }
             .help("Reveal \(item.url.lastPathComponent) in Finder")
+
+            Button {
+                remove(item)
+            } label: {
+                Label("Remove from batch", systemImage: "minus.circle")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Remove \(item.url.lastPathComponent) from this Trash batch")
+            .disabled(isMoving)
         }
         .padding(12)
         .accessibilityElement(children: .combine)

@@ -228,6 +228,7 @@ public struct CleanupCandidate: Identifiable, Hashable, Sendable {
         case cacheFolder
         case buildArtifact
         case temporary
+        case general
     }
 
     public enum Confidence: String, Hashable, Sendable {
@@ -307,6 +308,8 @@ private extension CleanupCandidate.Kind {
             return "A project may rely on generated output until the next clean build, and deleting it can slow or break local work."
         case .temporary:
             return "Temporary-looking files can still be active work, crash recovery data, or app handoff state."
+        case .general:
+            return "Removing this item may affect files or apps that depend on it. StorageScope has no specific safety signal for it."
         }
     }
 
@@ -328,6 +331,8 @@ private extension CleanupCandidate.Kind {
             return "Build artifacts are usually rebuildable from source, but generated or vendored outputs deserve a quick project check."
         case .temporary:
             return "Only remove this after confirming no app or workflow is still writing to it."
+        case .general:
+            return "StorageScope flagged this from a manual selection, not from cleanup rules. Reveal and inspect before moving it to Trash."
         }
     }
 
@@ -345,19 +350,28 @@ private extension CleanupCandidate.Kind {
             return "Confirm the project can rebuild it, then move to Trash."
         case .temporary:
             return "Reveal first; keep it if any app or recent workflow still depends on it."
+        case .general:
+            return "Reveal in Finder, confirm no app or workflow depends on it, then move to Trash."
         }
     }
+}
+
+public enum ScanPhase: String, Sendable {
+    case enumerating
+    case verifyingDuplicates
 }
 
 public struct ScanProgress: Sendable {
     public let scannedItemCount: Int
     public let totalBytes: Int64
     public let currentPath: String
+    public let phase: ScanPhase
 
-    public init(scannedItemCount: Int, totalBytes: Int64, currentPath: String) {
+    public init(scannedItemCount: Int, totalBytes: Int64, currentPath: String, phase: ScanPhase = .enumerating) {
         self.scannedItemCount = scannedItemCount
         self.totalBytes = totalBytes
         self.currentPath = currentPath
+        self.phase = phase
     }
 }
 
