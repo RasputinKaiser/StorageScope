@@ -29,3 +29,19 @@ jobs:
       run: swift build -c release
     - name: Verify app bundle signing and launch
       run: bash ./script/build_and_run.sh --verify
+    - name: Verify DMG packaging
+      run: |
+        DMG_PATH="$(bash ./script/export_dmg.sh)"
+        echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+        echo "## DMG Output" >> "$GITHUB_STEP_SUMMARY"
+        echo "Path: \`${DMG_PATH}\`" >> "$GITHUB_STEP_SUMMARY"
+        if [[ -f "${DMG_PATH}.sha256" ]]; then
+          echo "SHA256: \`$(cat "${DMG_PATH}.sha256")\`" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: storagescope-dmg
+        path: exports/*.dmg
+        retention-days: 7
