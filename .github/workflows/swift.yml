@@ -25,3 +25,7 @@ jobs:
       run: swift test -v
     - name: Public upload audit
       run: ./script/public_upload_audit.sh
+    - name: Verify release build
+      run: swift build -c release
+    - name: Verify app bundle signing and launch
+      run: bash ./script/build_and_run.sh --verify
