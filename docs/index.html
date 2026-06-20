@@ -3,15 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>StorageScope - Open-source Mac storage map and reclaim planner</title>
-  <meta name="description" content="StorageScope is an open-source macOS storage management app for disk space analysis, large-folder review, verified duplicate review, and local-first reclaim planning.">
+  <title>StorageScope - Free Open-source macOS Disk Space Analyzer</title>
+  <meta name="description" content="StorageScope is a free open-source macOS disk space analyzer and Mac storage cleaner for large folder scanning, disk usage analysis, duplicate file review, and local-first cleanup planning.">
   <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/">
-  <meta property="og:title" content="StorageScope - Mac storage map and reclaim planner">
-  <meta property="og:description" content="Open-source Swift macOS app for storage management, disk usage analysis, verified duplicate review, and safer cleanup decisions.">
+  <meta property="og:title" content="StorageScope - Free macOS disk space analyzer">
+  <meta property="og:description" content="Open-source Swift macOS app for disk usage analysis, Mac storage cleanup planning, large folder review, verified duplicate review, and local-first privacy.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/">
   <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
   <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "StorageScope",
+    "applicationCategory": "UtilitiesApplication",
+    "operatingSystem": "macOS 14+",
+    "softwareVersion": "0.1.0",
+    "programmingLanguage": "Swift",
+    "license": "https://opensource.org/license/mit",
+    "description": "Free open-source macOS disk space analyzer and Mac storage cleaner for large folders, stale files, duplicate review, and local-first cleanup planning.",
+    "url": "https://rasputinkaiser.github.io/StorageScope/",
+    "codeRepository": "https://github.com/RasputinKaiser/StorageScope",
+    "image": "https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png",
+    "author": {
+      "@type": "Person",
+      "name": "RasputinKaiser"
+    }
+  }
+  </script>
   <style>
     :root {
       color-scheme: light dark;
@@ -129,6 +149,22 @@
       line-height: 1.5;
     }
 
+    .links {
+      margin-top: 36px;
+    }
+
+    .links ul {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    .links a {
+      color: inherit;
+    }
+
     footer {
       margin-top: 36px;
       color: var(--muted);
@@ -141,7 +177,8 @@
       }
 
       .hero,
-      .grid {
+      .grid,
+      .links ul {
         grid-template-columns: 1fr;
       }
     }
@@ -153,24 +190,24 @@
       <div>
         <h1>StorageScope</h1>
         <p class="lede">
-          An open-source Mac storage map and reclaim planner for finding large folders,
-          stale files, verified duplicates, and review-only cleanup targets without uploading your scan data.
+          A free open-source macOS disk space analyzer and Mac storage cleaner for finding large folders,
+          stale files, verified duplicates, caches, and review-only cleanup targets without uploading your scan data.
         </p>
         <div class="actions">
           <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope">View on GitHub</a>
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
         </div>
       </div>
-      <img class="screenshot" src="images/storagescope-overview.png" alt="StorageScope macOS app overview showing storage views, cleanup review, folder tree, and inspector panes">
+      <img class="screenshot" src="images/storagescope-overview.png" alt="StorageScope macOS disk space analyzer showing storage views, cleanup review, folder tree, and inspector panes">
     </div>
 
     <div class="grid" aria-label="StorageScope features">
       <section>
-        <h2>Mac storage management</h2>
+        <h2>macOS disk space analyzer</h2>
         <p>Rank largest folders, old large files, file types, installers, archives, disk images, caches, and build artifacts.</p>
       </section>
       <section>
-        <h2>Guided reclaim plan</h2>
+        <h2>Mac storage cleaner planning</h2>
         <p>Separate verified duplicate reclaim, review-suggested cleanup, and access gaps before anything moves to Trash.</p>
       </section>
       <section>
@@ -178,6 +215,16 @@
         <p>Start from same-size duplicate candidates, verify matches with SHA-256, and keep hashing work bounded.</p>
       </section>
     </div>
+
+    <section class="links" aria-label="StorageScope guides">
+      <h2>StorageScope guides</h2>
+      <ul>
+        <li><a href="macos-disk-space-analyzer.html">Free macOS disk space analyzer</a></li>
+        <li><a href="mac-storage-cleaner.html">Open-source Mac storage cleaner</a></li>
+        <li><a href="duplicate-file-finder-macos.html">Duplicate file finder for macOS</a></li>
+        <li><a href="open-source-cleanmymac-alternative.html">Open-source CleanMyMac alternative</a></li>
+      </ul>
+    </section>
 
     <footer>
       StorageScope is a SwiftUI/AppKit macOS app released under the MIT License.

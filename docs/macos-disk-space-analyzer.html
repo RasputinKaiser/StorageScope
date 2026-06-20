@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Free macOS Disk Space Analyzer - StorageScope</title>
+  <meta name="description" content="StorageScope is a free open-source macOS disk space analyzer for finding large folders, stale files, duplicate candidates, caches, archives, and disk usage patterns locally.">
+  <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/macos-disk-space-analyzer.html">
+  <meta property="og:title" content="Free macOS disk space analyzer - StorageScope">
+  <meta property="og:description" content="Find what is using disk space on a Mac with an open-source SwiftUI/AppKit storage analyzer that keeps scan data local.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/macos-disk-space-analyzer.html">
+  <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <style>
+    :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
+    @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; }
+    h2 { margin-top: 36px; }
+    p, li { color: var(--muted); line-height: 1.6; }
+    a { color: var(--accent); }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-top: 24px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--panel); font-weight: 650; }
+    .primary { background: var(--accent); border-color: var(--accent); color: white; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="./">StorageScope</a></p>
+    <h1>Free macOS disk space analyzer</h1>
+    <p>StorageScope helps Mac users find what is taking up disk space without uploading scan results, file names, paths, or hashes. It is an open-source SwiftUI/AppKit app for disk usage analysis, large folder scanning, stale file review, and cleanup planning.</p>
+
+    <section class="card">
+      <h2>What it analyzes</h2>
+      <ul>
+        <li>Largest folders and files</li>
+        <li>Old large files that may be worth reviewing</li>
+        <li>File type usage across scanned folders</li>
+        <li>Caches, build artifacts, installers, archives, disk images, and temporary-looking files</li>
+        <li>Duplicate candidates that can be verified before cleanup</li>
+      </ul>
+    </section>
+
+    <h2>Why local-first matters</h2>
+    <p>StorageScope runs scans against folders the user grants through macOS folder selection or security-scoped bookmarks. The app is built for people who want a storage analyzer they can inspect, build, and run without sending private file metadata to a service.</p>
+
+    <h2>Related StorageScope pages</h2>
+    <ul>
+      <li><a href="mac-storage-cleaner.html">Open-source Mac storage cleaner</a></li>
+      <li><a href="duplicate-file-finder-macos.html">Duplicate file finder for macOS</a></li>
+      <li><a href="open-source-cleanmymac-alternative.html">Open-source CleanMyMac alternative</a></li>
+    </ul>
+
+    <div class="actions">
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope">View on GitHub</a>
+      <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
+    </div>
+  </main>
+</body>
+</html>
