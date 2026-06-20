@@ -729,6 +729,14 @@ final class ScanStore: ObservableObject {
             selectedItemID = nil
             pendingTrashReviewPlan = nil
             markResultsNeedRefresh()
+        } catch let error as BatchTrashError {
+            errorMessage = error.localizedDescription
+            switch error {
+            case .rollbackFailed, .missingTargets:
+                markResultsNeedRefresh()
+            default:
+                break
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
