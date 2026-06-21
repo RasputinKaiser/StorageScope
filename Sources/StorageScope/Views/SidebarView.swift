@@ -23,16 +23,16 @@ struct SidebarView: View {
                     SidebarSectionTitle("Grant Access")
 
                     VStack(spacing: 6) {
-                        SidebarActionButton(title: "Choose Home...", systemImage: "house.fill") {
+                        SidebarActionButton(title: "Choose Home...", systemImage: "house.fill", isDisabled: store.isScanning) {
                             store.scanHome()
                         }
-                        SidebarActionButton(title: "Choose Documents...", systemImage: "doc.richtext.fill") {
+                        SidebarActionButton(title: "Choose Documents...", systemImage: "doc.richtext.fill", isDisabled: store.isScanning) {
                             store.scanDocuments()
                         }
-                        SidebarActionButton(title: "Choose Downloads...", systemImage: "arrow.down.circle.fill") {
+                        SidebarActionButton(title: "Choose Downloads...", systemImage: "arrow.down.circle.fill", isDisabled: store.isScanning) {
                             store.scanDownloads()
                         }
-                        SidebarActionButton(title: "Choose Folder...", systemImage: "folder.fill.badge.plus") {
+                        SidebarActionButton(title: "Choose Folder...", systemImage: "folder.fill.badge.plus", isDisabled: store.isScanning) {
                             store.chooseFolderAndScan()
                         }
                     }
@@ -47,6 +47,8 @@ struct SidebarView: View {
                                 } forgetAction: {
                                     store.recents.forget(path: entry.path)
                                 }
+                                .disabled(store.isScanning)
+                                .help(store.isScanning ? "Cancel the current scan before rescanning" : "")
                             }
                         }
                     }
@@ -60,6 +62,8 @@ struct SidebarView: View {
                                 SidebarPathButton(path: url.path, title: url.lastPathComponent.nonEmpty ?? url.path, systemImage: "externaldrive.fill") {
                                     store.scanVolume(url)
                                 }
+                                .disabled(store.isScanning)
+                                .help(store.isScanning ? "Cancel the current scan before scanning another volume" : "")
                             }
                         }
                     }
@@ -129,7 +133,15 @@ private struct SidebarSmartButton: View {
 private struct SidebarActionButton: View {
     let title: String
     let systemImage: String
+    let isDisabled: Bool
     let action: () -> Void
+
+    init(title: String, systemImage: String, isDisabled: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.isDisabled = isDisabled
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -141,6 +153,8 @@ private struct SidebarActionButton: View {
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .help(isDisabled ? "Cancel the current scan before starting another" : "")
     }
 }
 
