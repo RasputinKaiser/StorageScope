@@ -123,6 +123,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         store.selectedView = view
     }
 
+    @objc private func openStorageScopeOnGitHub() {
+        if let url = URL(string: "https://github.com/RasputinKaiser/StorageScope") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func reportAnIssue() {
+        if let url = URL(string: "https://github.com/RasputinKaiser/StorageScope/issues/new") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc private func showSettings() {
         if let settingsWindow {
             settingsWindow.makeKeyAndOrderFront(nil)
@@ -272,7 +284,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(showMainWindow), #selector(showSettings), #selector(showAbout):
+        case #selector(showMainWindow), #selector(showSettings), #selector(showAbout),
+             #selector(openStorageScopeOnGitHub), #selector(reportAnIssue):
             return true
         case #selector(chooseFolder), #selector(scanHome), #selector(scanDocuments), #selector(scanDownloads):
             return !store.isScanning
@@ -363,6 +376,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
         NSApp.windowsMenu = windowMenu
+
+        let helpMenuItem = NSMenuItem()
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(menuItem("StorageScope on GitHub", action: #selector(openStorageScopeOnGitHub), key: ""))
+        helpMenu.addItem(menuItem("Report an Issue", action: #selector(reportAnIssue), key: ""))
+        helpMenuItem.submenu = helpMenu
+        mainMenu.addItem(helpMenuItem)
+        NSApp.helpMenu = helpMenu
 
         NSApp.mainMenu = mainMenu
     }
