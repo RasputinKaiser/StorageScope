@@ -28,14 +28,25 @@ enum StorageFormat {
     }
 
     static func duration(from start: Date, to end: Date) -> String {
-        let seconds = max(0, end.timeIntervalSince(start))
-        if seconds < 1 {
+        let totalSeconds = max(0, Int(end.timeIntervalSince(start).rounded()))
+        if totalSeconds < 1 {
             return "< 1 sec"
         }
-        if seconds < 60 {
-            return "\(Int(seconds.rounded())) sec"
+        if totalSeconds < 60 {
+            return "\(totalSeconds) sec"
         }
-        return "\(Int((seconds / 60).rounded())) min"
+        // Sub-10-min scans are usually the comparison case ("did this rescan run faster?")
+        // — rounding to a whole minute hides meaningful differences. Show "X min Y sec"
+        // until the seconds stop mattering relative to the minutes.
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        if minutes < 10 {
+            return "\(minutes) min \(seconds) sec"
+        }
+        // Round-to-minute fine for long scans — precision stops being useful and "min"
+        // truncates nicely. Don't lose precision below 1 min though.
+        let rounded = minutes + (seconds >= 30 ? 1 : 0)
+        return "\(rounded) min"
     }
 
     static func icon(for item: StorageItem) -> String {
