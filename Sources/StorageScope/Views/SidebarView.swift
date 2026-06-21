@@ -118,7 +118,7 @@ private struct SidebarSmartButton: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
             .contentShape(Rectangle())
-            .background(isSelected ? Color.accentColor.opacity(0.24) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .selectionBackground(isSelected: isSelected, tint: 0.24, radius: 6)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(view.title)

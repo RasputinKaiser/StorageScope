@@ -125,7 +125,7 @@ private struct TreeNodeRow: View {
                 .padding(.trailing, 12)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
-                .background(store.selectedItemID == item.id ? Color.accentColor.opacity(0.18) : Color.clear)
+                .selectionBackground(isSelected: store.selectedItemID == item.id)
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
