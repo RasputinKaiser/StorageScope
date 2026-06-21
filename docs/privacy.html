@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy - StorageScope</title>
+  <meta name="description" content="StorageScope privacy posture: local-first, sandboxed, no uploads of scan results, file names, paths, hashes, analytics, or identifiers.">
+  <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/privacy.html">
+  <meta property="og:title" content="Privacy - StorageScope">
+  <meta property="og:description" content="StorageScope never sends scan data off your Mac. Sandboxed, no telemetry, no uploads.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/privacy.html">
+  <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Privacy - StorageScope">
+  <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "StorageScope privacy posture",
+    "inLanguage": "en",
+    "about": "Local-first storage analyzer privacy: sandboxed, no telemetry, no uploads.",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "StorageScope",
+      "url": "https://rasputinkaiser.github.io/StorageScope/"
+    }
+  }
+  </script>
+  <style>
+    :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
+    @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; }
+    h2 { margin-top: 36px; }
+    p, li { color: var(--muted); line-height: 1.6; }
+    a { color: var(--accent); }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-top: 24px; }
+    .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+    .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
+    .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
+    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; }
+    .site-nav nav a:hover { color:var(--accent); }
+    footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
+    footer.site-footer a { color:inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="site-nav" aria-label="Site navigation">
+      <a class="brand" href="./">StorageScope</a>
+      <nav>
+        <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
+        <a href="mac-storage-cleaner.html">Storage cleaner</a>
+        <a href="duplicate-file-finder-macos.html">Duplicate finder</a>
+        <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative</a>
+      </nav>
+    </header>
+    <h1>Privacy</h1>
+    <p>StorageScope is local-first. Scans run entirely on your Mac against folders you grant access to. The app does not contact a server to transmit your scan data.</p>
+
+    <section class="card">
+      <h2>What stays on your Mac</h2>
+      <ul>
+        <li>Scan results, file names, paths, sizes, and modification dates.</li>
+        <li>SHA-256 hashes computed for duplicate verification.</li>
+        <li>Security-scoped bookmarks persisted to remember granted folders across launches.</li>
+        <li>The persisted duplicate hash cache used to skip unchanged files on rescan.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>What StorageScope does not do</h2>
+      <ul>
+        <li>No upload of scan results, file names, paths, contents, or hashes.</li>
+        <li>No analytics, usage tracking, advertising identifiers, or telemetry in the binary.</li>
+        <li>No account, sign-in, or third-party SDKs that phone home.</li>
+        <li>No silent permanent deletion &mdash; file actions go to macOS Trash and can be restored.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>How folder access works</h2>
+      <p>StorageScope is sandboxed. It can only read folders you select through the macOS folder picker or re-grant via security-scoped bookmarks. Bookmarks are stored locally and let the app re-open folders you previously approved without re-prompting on every launch.</p>
+    </section>
+
+    <section class="card">
+      <h2>Open source, verifiable</h2>
+      <p>The entire codebase is available under the MIT License. You can read the scanner, the duplicate verifier, and the Trash mover before running anything. See the <a href="https://github.com/RasputinKaiser/StorageScope">GitHub repository</a>.</p>
+    </section>
+
+    <div class="actions-note"><a href="changelog.html">Changelog</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/blob/main/Config/StorageScope.entitlements">Entitlements</a></div>
+
+    <footer class="site-footer">
+      <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="changelog.html">Changelog</a></div>
+      <div>v0.3.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+    </footer>
+  </main>
+</body>
+</html>
