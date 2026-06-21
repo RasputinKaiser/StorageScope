@@ -8,8 +8,8 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(title: "Scan Options") {
-                Toggle("Include hidden files", isOn: $store.includeHiddenFiles)
-                Stepper("Treat files older than \(store.oldFileAgeDays) days as old", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
+                Toggle("Include hidden files", isOn: store.filterBinding(\.includeHiddenFiles))
+                Stepper("Treat files older than \(store.oldFileAgeDays) days as old", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
 
                 if let status = store.scanOptionsStatusText {
                     HStack {
@@ -31,7 +31,7 @@ struct SettingsView: View {
             Divider()
 
             SettingsSection(title: "Display Filters") {
-                Picker("Visible size", selection: $store.sizeFilter) {
+                Picker("Visible size", selection: store.filterBinding(\.sizeFilter)) {
                     ForEach(SizeFilter.allCases) { filter in
                         Text(filter.title).tag(filter)
                     }

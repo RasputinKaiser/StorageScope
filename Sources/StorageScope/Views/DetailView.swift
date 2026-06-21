@@ -341,7 +341,7 @@ private struct FilterBarView: View {
     }
 
     private var sizePicker: some View {
-        Picker("Size", selection: $store.sizeFilter) {
+        Picker("Size", selection: store.filterBinding(\.sizeFilter)) {
             ForEach(SizeFilter.allCases) { filter in
                 Text(filter.title).tag(filter)
             }
@@ -351,7 +351,7 @@ private struct FilterBarView: View {
     }
 
     private var sortPicker: some View {
-        Picker("Sort", selection: $store.sortOption) {
+        Picker("Sort", selection: store.filterBinding(\.sortOption)) {
             ForEach(ItemSortOption.allCases) { option in
                 Text(option.title).tag(option)
             }
@@ -388,10 +388,10 @@ private struct FilterBarView: View {
             HStack(spacing: 10) {
                 ControlGroupLabel(title: "Scan Options", systemImage: "slider.horizontal.3")
 
-                Stepper("Old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
+                Stepper("Old after \(store.oldFileAgeDays) days", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
                     .frame(width: 190)
 
-                Toggle("Hidden", isOn: $store.includeHiddenFiles)
+                Toggle("Hidden", isOn: store.filterBinding(\.includeHiddenFiles))
             }
 
             Spacer()
@@ -416,10 +416,10 @@ private struct FilterBarView: View {
             ControlGroupLabel(title: "Scan Options", systemImage: "slider.horizontal.3")
 
             HStack(spacing: 12) {
-                Stepper("Old after \(store.oldFileAgeDays) days", value: $store.oldFileAgeDays, in: 30...1440, step: 30)
+                Stepper("Old after \(store.oldFileAgeDays) days", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
                     .frame(width: 190)
 
-                Toggle("Hidden", isOn: $store.includeHiddenFiles)
+                Toggle("Hidden", isOn: store.filterBinding(\.includeHiddenFiles))
 
                 Spacer(minLength: 0)
 

@@ -217,7 +217,7 @@ private struct CleanupLaneControl: View {
                     CleanupLaneStat(
                         title: "Visible Reclaim",
                         value: StorageFormat.bytes(store.potentialReclaimableBytes),
-                        detail: store.cleanupLaneFilter.detail,
+                        detail: store.filters.cleanupLaneFilter.detail,
                         tint: .blue
                     )
                 }
@@ -226,7 +226,7 @@ private struct CleanupLaneControl: View {
                     CleanupLaneStat(
                         title: "Visible Reclaim",
                         value: StorageFormat.bytes(store.potentialReclaimableBytes),
-                        detail: store.cleanupLaneFilter.detail,
+                        detail: store.filters.cleanupLaneFilter.detail,
                         tint: .blue
                     )
                 }
@@ -236,7 +236,7 @@ private struct CleanupLaneControl: View {
 
     private var cleanupLaneBinding: Binding<CleanupLaneFilter> {
         Binding(
-            get: { store.cleanupLaneFilter },
+            get: { store.filters.cleanupLaneFilter },
             set: { store.setCleanupLaneFilter($0) }
         )
     }

@@ -1,5 +1,6 @@
 import Foundation
 import StorageScopeCore
+import SwiftUI
 
 @MainActor
 final class ScanStore: ObservableObject {
@@ -41,25 +42,13 @@ final class ScanStore: ObservableObject {
         didSet { invalidateItemsCache() }
     }
     @Published private var session = ScanSession()
-    @Published private var filter = ScanFilter()
     @Published private var selection = ScanSelection()
     @Published var errorMessage: String?
     @Published var pendingTrashReviewPlan: TrashReviewPlan?
-    // searchText is the immediate input bound to .searchable; query is its debounced
-    // downstream value that filters read. Keeping them split means per-keystroke
-    // recompute is bounded to one publish per ~200ms, not per character.
-    @Published var searchText: String = "" {
-        didSet {
-            guard oldValue != searchText else { return }
-            scheduleSearchTextDebounce()
-        }
-    }
     @Published private(set) var isMovingToTrash = false
-    @Published private(set) var searchSubtreeMatchIDs: Set<String>?
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?
     private var selectVerifiedCleanupWhenCurrentScanCompletes = false
-    private var searchTextDebounceTask: Task<Void, Never>?
 
     private var keeperOverridesByChecksum: [String: String] = [:]
 
@@ -94,6 +83,19 @@ final class ScanStore: ObservableObject {
         reportError: { [weak self] message in self?.errorMessage = message }
     )
 
+    lazy var filters = FilterStore(
+        scanLookup: { [weak self] in self?.scan },
+        coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() }
+    )
+
+    /// Typed Binding<T> for any writable FilterStore property — used by Picker/Stepper/Toggle
+    /// in views since `$store.filters.X` can't traverse ObservableObject's sub-store boundary.
+    func filterBinding<T>(_ keyPath: ReferenceWritableKeyPath<FilterStore, T>) -> Binding<T> {
+        Binding(get: { self.filters[keyPath: keyPath] }, set: { self.filters[keyPath: keyPath] = $0 })
+    }
+
+    var oldFileAgeDays: Int { filters.oldFileAgeDays }
+
     var activeView: SmartView {
         selectedView ?? .overview
     }
@@ -108,7 +110,7 @@ final class ScanStore: ObservableObject {
         set {
             session.scan = newValue
             invalidateDerivedCaches()
-            rebuildSearchSubtreeMatchIDs()
+            filters.rebuildAfterScanChange()
         }
     }
 
@@ -120,49 +122,6 @@ final class ScanStore: ObservableObject {
     var progress: ScanProgress {
         get { session.progress }
         set { session.progress = newValue }
-    }
-
-    var query: String {
-        get { filter.query }
-        set {
-            filter.query = newValue
-            invalidateDerivedCaches()
-            rebuildSearchSubtreeMatchIDs()
-        }
-    }
-
-    var sizeFilter: SizeFilter {
-        get { filter.sizeFilter }
-        set {
-            filter.sizeFilter = newValue
-            invalidateDerivedCaches()
-        }
-    }
-
-    var sortOption: ItemSortOption {
-        get { filter.sortOption }
-        set {
-            filter.sortOption = newValue
-            invalidateDerivedCaches()
-        }
-    }
-
-    var cleanupLaneFilter: CleanupLaneFilter {
-        get { filter.cleanupLaneFilter }
-        set {
-            filter.cleanupLaneFilter = newValue
-            invalidateDerivedCaches()
-        }
-    }
-
-    var includeHiddenFiles: Bool {
-        get { filter.includeHiddenFiles }
-        set { filter.includeHiddenFiles = newValue }
-    }
-
-    var oldFileAgeDays: Int {
-        get { filter.oldFileAgeDays }
-        set { filter.oldFileAgeDays = newValue }
     }
 
     var selectedCleanupCandidateIDs: Set<String> {
@@ -206,32 +165,7 @@ final class ScanStore: ObservableObject {
         return progress.phase == .verifyingDuplicates ? .verifyingDuplicates : .enumerating
     }
 
-    // Precomputes the set of retained item IDs whose subtree contains a query match, so the
-    // tree view avoids O(n²) per-row recursive matching. Single post-order pass: a node is
-    // included when it matches OR any descendant matches. Rebuilt on scan/query change.
-    private func rebuildSearchSubtreeMatchIDs() {
-        guard let scan else {
-            searchSubtreeMatchIDs = nil
-            return
-        }
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else {
-            searchSubtreeMatchIDs = nil
-            return
-        }
-
-        var subtreeContains = Set<String>()
-        func visit(_ item: StorageItem) -> Bool {
-            var any = item.matchesNormalizedSearchQuery(trimmedQuery)
-            for child in item.children where visit(child) {
-                any = true
-            }
-            if any { subtreeContains.insert(item.id) }
-            return any
-        }
-        _ = visit(scan.rootItem)
-        searchSubtreeMatchIDs = subtreeContains
-    }
+    var searchSubtreeMatchIDs: Set<String>? { filters.searchSubtreeMatchIDs }
 
     var selectedItem: StorageItem? {
         guard let scan else {
@@ -290,33 +224,10 @@ final class ScanStore: ObservableObject {
         return nil
     }
 
-    var activeDisplayFilterDescriptions: [String] {
-        var descriptions: [String] = []
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedQuery.isEmpty {
-            descriptions.append("Search: \(trimmedQuery)")
-        }
-        if sizeFilter != .all {
-            descriptions.append("Size: \(sizeFilter.title)")
-        }
-        return descriptions
-    }
-
-    var activeCleanupFilterDescriptions: [String] {
-        var descriptions = activeDisplayFilterDescriptions
-        if cleanupLaneFilter != .all {
-            descriptions.append("Lane: \(cleanupLaneFilter.title)")
-        }
-        return descriptions
-    }
-
-    var hasActiveDisplayFilters: Bool {
-        !activeDisplayFilterDescriptions.isEmpty
-    }
-
-    var hasActiveCleanupFilters: Bool {
-        !activeCleanupFilterDescriptions.isEmpty
-    }
+    var activeDisplayFilterDescriptions: [String] { filters.activeDisplayFilterDescriptions }
+    var activeCleanupFilterDescriptions: [String] { filters.activeCleanupFilterDescriptions }
+    var hasActiveDisplayFilters: Bool { filters.hasActiveDisplayFilters }
+    var hasActiveCleanupFilters: Bool { filters.hasActiveCleanupFilters }
 
     func chooseFolderAndScan(startingAt directoryURL: URL? = nil) {
         guard let url = FileActionService.chooseFolder(startingAt: directoryURL) else {
@@ -455,8 +366,8 @@ final class ScanStore: ObservableObject {
         let scanID = UUID()
         let thresholds = ScanOptionPolicy.interactiveScanThresholds()
         let options = ScanOptions(
-            includeHidden: includeHiddenFiles,
-            oldFileAgeDays: oldFileAgeDays,
+            includeHidden: filters.includeHiddenFiles,
+            oldFileAgeDays: filters.oldFileAgeDays,
             largeFileThreshold: thresholds.largeFileThreshold,
             duplicateCandidateThreshold: thresholds.duplicateCandidateThreshold,
             maxRankedResults: 800
@@ -561,10 +472,10 @@ final class ScanStore: ObservableObject {
         let key = ItemsCacheKey(
             scanFinishedAt: scan.finishedAt,
             view: view,
-            query: query,
-            sizeFilter: sizeFilter,
-            sortOption: sortOption,
-            cleanupLaneFilter: cleanupLaneFilter,
+            query: filters.query,
+            sizeFilter: filters.sizeFilter,
+            sortOption: filters.sortOption,
+            cleanupLaneFilter: filters.cleanupLaneFilter,
             ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
         )
         if cachedItemsKey == key {
@@ -607,7 +518,7 @@ final class ScanStore: ObservableObject {
         if cachedOldLargeFilesKey == key {
             return cachedOldLargeFiles
         }
-        let result = filtered(scan.oldLargeFiles.filter { $0.displaySize >= max(sizeFilter.threshold, 100_000_000) })
+        let result = filtered(scan.oldLargeFiles.filter { $0.displaySize >= max(filters.sizeFilter.threshold, 100_000_000) })
         cachedOldLargeFilesKey = key
         cachedOldLargeFiles = result
         return result
@@ -625,7 +536,7 @@ final class ScanStore: ObservableObject {
             sizeGroups: scan.duplicateSizeGroups,
             verifiedGroups: mergedVerifiedGroups
         )
-            .filter { $0.byteSize >= max(sizeFilter.threshold, 100_000_000) }
+            .filter { $0.byteSize >= max(filters.sizeFilter.threshold, 100_000_000) }
             .map { group in
                 DuplicateSizeGroup(byteSize: group.byteSize, items: filtered(group.items))
             }
@@ -636,7 +547,7 @@ final class ScanStore: ObservableObject {
         guard let scan else {
             return onDemandVerification.verifiedGroupsByChecksum.isEmpty
                 ? []
-                : Array(onDemandVerification.verifiedGroupsByChecksum.values).filter { $0.byteSize >= sizeFilter.threshold }
+                : Array(onDemandVerification.verifiedGroupsByChecksum.values).filter { $0.byteSize >= filters.sizeFilter.threshold }
                     .map { group in
                         VerifiedDuplicateGroup(
                             checksum: group.checksum,
@@ -665,7 +576,7 @@ final class ScanStore: ObservableObject {
         }
 
         return merged.values
-            .filter { $0.byteSize >= sizeFilter.threshold }
+            .filter { $0.byteSize >= filters.sizeFilter.threshold }
             .map { group in
                 VerifiedDuplicateGroup(
                     checksum: group.checksum,
@@ -721,25 +632,25 @@ final class ScanStore: ObservableObject {
 
         let key = DerivedCacheKey(
             scanFinishedAt: scan.finishedAt,
-            query: query,
-            sizeFilter: sizeFilter,
-            sortOption: sortOption,
-            cleanupLaneFilter: cleanupLaneFilter,
+            query: filters.query,
+            sizeFilter: filters.sizeFilter,
+            sortOption: filters.sortOption,
+            cleanupLaneFilter: filters.cleanupLaneFilter,
             ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
         )
         if cachedCleanupCandidatesKey == key {
             return cachedCleanupCandidates
         }
 
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedQuery = filters.query.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidates = scan.cleanupCandidates.filter { candidate in
             guard !ignoredCleanupCandidateIDs.contains(candidate.id) else {
                 return false
             }
 
             let item = candidate.item
-            let passesSize = candidate.reclaimableBytes >= sizeFilter.threshold || item.displaySize >= sizeFilter.threshold
-            let passesLane = cleanupCandidate(candidate, passes: cleanupLaneFilter)
+            let passesSize = candidate.reclaimableBytes >= filters.sizeFilter.threshold || item.displaySize >= filters.sizeFilter.threshold
+            let passesLane = cleanupCandidate(candidate, passes: filters.cleanupLaneFilter)
             let passesQuery = trimmedQuery.isEmpty ||
                 item.matchesNormalizedSearchQuery(trimmedQuery) ||
                 candidate.reason.localizedCaseInsensitiveContains(trimmedQuery) ||
@@ -834,20 +745,20 @@ final class ScanStore: ObservableObject {
     }
 
     func setCleanupLaneFilter(_ lane: CleanupLaneFilter) {
-        guard cleanupLaneFilter != lane else {
+        guard filters.cleanupLaneFilter != lane else {
             return
         }
-        cleanupLaneFilter = lane
+        filters.cleanupLaneFilter = lane
         clearCleanupSelection()
     }
 
     func resetDisplayFilters() {
-        filter.resetDisplayFilters()
+        filters.resetDisplayFilters()
         invalidateDerivedCaches()
     }
 
     func resetCleanupFilters() {
-        filter.resetCleanupFilters()
+        filters.resetCleanupFilters()
         invalidateDerivedCaches()
     }
 
@@ -971,7 +882,7 @@ final class ScanStore: ObservableObject {
         guard let scan else {
             return []
         }
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedQuery = filters.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
             return scan.typeBreakdown
         }
@@ -985,7 +896,7 @@ final class ScanStore: ObservableObject {
         guard let scan else {
             return []
         }
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !filters.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return scan.categoryBreakdown
         }
 
@@ -1017,7 +928,7 @@ final class ScanStore: ObservableObject {
     }
 
     func focusFileType(_ stat: FileTypeStat) {
-        query = stat.label == "No Extension" ? "." : stat.label
+        filters.query = stat.label == "No Extension" ? "." : stat.label
         selectedView = .largestFiles
     }
 
@@ -1071,10 +982,10 @@ final class ScanStore: ObservableObject {
     }
 
     private func filtered(_ items: [StorageItem]) -> [StorageItem] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedQuery = filters.query.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return sorted(items.filter { item in
-            let passesSize = item.displaySize >= sizeFilter.threshold
+            let passesSize = item.displaySize >= filters.sizeFilter.threshold
             let passesQuery = item.matchesNormalizedSearchQuery(trimmedQuery)
             return passesSize && passesQuery
         })
@@ -1082,7 +993,7 @@ final class ScanStore: ObservableObject {
 
     private func sorted(_ items: [StorageItem]) -> [StorageItem] {
         items.sorted { lhs, rhs in
-            switch sortOption {
+            switch filters.sortOption {
             case .sizeDescending:
                 if lhs.displaySize == rhs.displaySize {
                     return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
@@ -1120,10 +1031,10 @@ final class ScanStore: ObservableObject {
         }
         return DerivedCacheKey(
             scanFinishedAt: scan.finishedAt,
-            query: query,
-            sizeFilter: sizeFilter,
-            sortOption: sortOption,
-            cleanupLaneFilter: cleanupLaneFilter,
+            query: filters.query,
+            sizeFilter: filters.sizeFilter,
+            sortOption: filters.sortOption,
+            cleanupLaneFilter: filters.cleanupLaneFilter,
             ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
         )
     }
@@ -1145,19 +1056,6 @@ final class ScanStore: ObservableObject {
         cachedItems = []
     }
 
-    private func scheduleSearchTextDebounce() {
-        searchTextDebounceTask?.cancel()
-        let snapshot = searchText
-        searchTextDebounceTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                guard let self, self.query != snapshot else { return }
-                self.query = snapshot
-            }
-        }
-    }
-
     private func markResultsNeedRefresh() {
         session.resultsNeedRefresh = true
         progress = ScanProgress(
@@ -1177,8 +1075,8 @@ final class ScanStore: ObservableObject {
 
     private var currentScanOptions: ScanOptionsSnapshot {
         ScanOptionsSnapshot(
-            includeHiddenFiles: includeHiddenFiles,
-            oldFileAgeDays: oldFileAgeDays
+            includeHiddenFiles: filters.includeHiddenFiles,
+            oldFileAgeDays: filters.oldFileAgeDays
         )
     }
 

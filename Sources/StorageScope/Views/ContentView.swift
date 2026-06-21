@@ -19,7 +19,7 @@ struct ContentView: View {
                     .frame(minWidth: 300, idealWidth: 330, maxWidth: 380)
             }
         }
-        .searchable(text: $store.searchText, placement: .toolbar, prompt: "Search files and paths")
+        .searchable(text: store.filterBinding(\.searchText), placement: .toolbar, prompt: "Search files and paths")
         .toolbar {
             ToolbarItemGroup {
                 Button {
