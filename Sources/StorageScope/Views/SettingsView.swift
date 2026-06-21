@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: ScanStore
+    @State private var showingClearCacheAlert = false
+    @State private var cacheSnapshot: CacheSnapshot = .init(entryCount: 0, lastPersistedAt: nil)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -38,12 +40,55 @@ struct SettingsView: View {
                 SettingsFootnote("Size changes only filter the current view. They do not rescan the folder.")
             }
 
+            Divider()
+
+            SettingsSection(title: "Duplicate Hash Cache") {
+                LabeledContent("Stored entries", value: cacheSnapshot.entryCount.formatted())
+
+                if let lastPersistedAt = cacheSnapshot.lastPersistedAt {
+                    LabeledContent("Last updated", value: lastPersistedAt.formatted(date: .abbreviated, time: .shortened))
+                } else {
+                    LabeledContent("Last updated", value: "Never")
+                }
+
+                Button(role: .destructive) {
+                    showingClearCacheAlert = true
+                } label: {
+                    Label("Clear Cache", systemImage: "trash")
+                }
+                .disabled(cacheSnapshot.entryCount == 0)
+
+                SettingsFootnote("Cached SHA-256 hashes make rescans faster by skipping unchanged files. Clearing forces a full re-hash on the next scan. Cache lives in your user Caches directory and never leaves the Mac.")
+            }
+
             Spacer(minLength: 0)
         }
         .padding(20)
         .frame(width: 520, alignment: .topLeading)
-        .frame(minHeight: 280, alignment: .topLeading)
+        .frame(minHeight: 320, alignment: .topLeading)
+        .task { refreshCacheSnapshot() }
+        .alert("Clear Duplicate Hash Cache?", isPresented: $showingClearCacheAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) {
+                store.clearDuplicateHashCache()
+                refreshCacheSnapshot()
+            }
+        } message: {
+            Text("Every cached SHA-256 hash will be discarded. The next scan will re-hash duplicate candidates from scratch. This cannot be undone.")
+        }
     }
+
+    private func refreshCacheSnapshot() {
+        cacheSnapshot = CacheSnapshot(
+            entryCount: store.duplicateHashCacheEntryCount,
+            lastPersistedAt: store.duplicateHashCacheLastPersistedAt
+        )
+    }
+}
+
+private struct CacheSnapshot: Equatable {
+    let entryCount: Int
+    let lastPersistedAt: Date?
 }
 
 private struct SettingsSection<Content: View>: View {
