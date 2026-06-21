@@ -942,6 +942,21 @@ func setSelectedView(_ view: SmartView) {
         }
     }
 
+    /// Drops every item in `items` from the pending review plan in one update. Used by
+    /// `TrashReviewSection`'s "Remove All" affordance so the user can drop a whole section
+    /// (e.g. all review-suggested items, leaving verified-only) without N clicks.
+    func removeAllPendingTrashReviewItems(_ items: [TrashReviewPlan.Item]) {
+        guard !items.isEmpty else { return }
+        let ids = Set(items.map(\.id))
+        selectedCleanupCandidateIDs.subtract(ids)
+        let remaining = selectedCleanupBatchCandidates
+        if remaining.isEmpty {
+            pendingTrashReviewPlan = nil
+        } else {
+            pendingTrashReviewPlan = TrashReviewPlan(candidates: remaining)
+        }
+    }
+
     func confirmPendingTrashReview() {
         guard let plan = pendingTrashReviewPlan else {
             return

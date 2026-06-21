@@ -102,6 +102,7 @@ struct ContentView: View {
                     revealAll: { store.revealAllTrashReviewItems($0) },
                     open: { store.openTrashReviewItem($0) },
                     remove: { store.removePendingTrashReviewItem($0) },
+                    removeAll: { store.removeAllPendingTrashReviewItems($0) },
                     cancel: { store.cancelPendingTrashReview() },
                     confirm: { store.confirmPendingTrashReview() }
                 )
