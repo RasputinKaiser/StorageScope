@@ -74,6 +74,19 @@ enum SmartView: String, CaseIterable, Identifiable {
             return "checkmark.seal"
         }
     }
+
+    /// Views whose rows are individual files (rather than folders / categories) and so
+    /// can serve as a destination for the `Type: <ext>` filter chip set from
+    /// TypeBreakdownView. Used by ScanStore.selectedView's didSet to auto-clear a stale
+    /// file-type focus when the user navigates to a view it doesn't apply to.
+    var supportsFileTypeFocus: Bool {
+        switch self {
+        case .largestFiles, .oldLargeFiles, .duplicateCandidates:
+            return true
+        case .overview, .cleanupReview, .tree, .largestFolders, .typeBreakdown:
+            return false
+        }
+    }
 }
 
 enum SizeFilter: Int, CaseIterable, Identifiable {
