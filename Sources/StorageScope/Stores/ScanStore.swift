@@ -203,6 +203,17 @@ final class ScanStore: ObservableObject {
         selectedItem != nil && !isScanning
     }
 
+    var canOpenSelectedItem: Bool {
+        guard canUseSelectedItemActions, let selectedItem else {
+            return false
+        }
+        // Open routes through NSWorkspace.open(url) which silently no-ops when the URL's
+        // underlying file isn't readable (e.g. permission-denied paths surfaced as
+        // .inaccessible during the scan). Gate the Open affordance on isReadable so the
+        // button doesn't appear responsive but dead.
+        return selectedItem.isReadable
+    }
+
     var canMoveSelectedItemToTrash: Bool {
         guard canUseSelectedItemActions, let selectedItem else {
             return false

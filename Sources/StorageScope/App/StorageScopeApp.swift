@@ -293,8 +293,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             return store.canRescan
         case #selector(cancelScan):
             return store.canCancelScan
-        case #selector(revealSelectedItem), #selector(openSelectedItem), #selector(copySelectedPath):
+        case #selector(revealSelectedItem), #selector(copySelectedPath):
             return store.canUseSelectedItemActions
+        case #selector(openSelectedItem):
+            return store.canOpenSelectedItem
         case #selector(moveSelectedItemToTrash):
             return store.canMoveSelectedItemToTrash
         case #selector(selectSidebarView(_:)):
