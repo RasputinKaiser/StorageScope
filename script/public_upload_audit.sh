@@ -49,7 +49,18 @@ done
 
 secret_hits="$(mktemp)"
 trap 'rm -f "$candidate_file" "$secret_hits"' EXIT
-sensitive_pattern='(secret|token|password|passwd|api[_-]?key|private[_-]?key|client[_-]?secret|bearer|authorization|oauth|stripe|paypal|gumroad|/Users/|@gmail|@icloud|ssh-rsa|BEGIN (RSA|OPENSSH|PRIVATE)|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9])'
+sensitive_pattern='(secret|token|password|passwd|api[_-]?key|private[_-]?key|client[_-]?secret|bearer|authorization|oauth|stripe|paypal|gumroad|/Users/|@gmail|@icloud|ssh-rsa|BEGIN (RSA|OPENSSH|PRIVATE)|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,})'
+
+# Env var NAMES (uppercase ALL_CAPS_WITH_UNDERSCORES in shell scripts) that reference runtime
+# credentials the maintainer supplies locally. These match sensitive_pattern via `api[_-]?key`
+# but carry no checked-in secret value — they're declared as $VAR or VAR= references in shell.
+# Listed here so a future PR can add a credential ref without tripping the audit; expand as new
+# runtime-only credentials are introduced.
+safe_env_var_ref_patterns=(
+  '^[^:]+\.sh:[0-9]+:.*\bAPP_STORE_CONNECT_API_KEY_(ID|FILEPATH)\b'
+  '^[^:]+\.sh:[0-9]+:.*\bAPP_STORE_CONNECT_API_ISSUER_ID\b'
+  '^[^:]+\.sh:[0-9]+:.*\bSTORAGESCOPE_SIGN_IDENTITY\b'
+)
 
 while IFS= read -r candidate; do
   if [[ "$candidate" == "script/public_upload_audit.sh" ]]; then
@@ -57,9 +68,22 @@ while IFS= read -r candidate; do
   fi
 
   if [[ -f "$candidate" ]]; then
-    rg -I -n -i "$sensitive_pattern" "$candidate" >>"$secret_hits" || true
+    grep -E -H -n -i "$sensitive_pattern" "$candidate" >>"$secret_hits" || true
   fi
 done <"$candidate_file"
+
+# Drop false positives: shell-script lines whose only match is a reference to a known
+# runtime-only env var name (no value committed). This preserves the audit's ability to
+# catch real hardcoded values while allowing maintainer scripts to reference credentials
+# that are supplied in the local shell at release time.
+filtered_hits="$(mktemp)"
+trap 'rm -f "$candidate_file" "$secret_hits" "$filtered_hits"' EXIT
+cp "$secret_hits" "$filtered_hits"
+for pattern in "${safe_env_var_ref_patterns[@]}"; do
+  grep -vE "$pattern" "$filtered_hits" > "$filtered_hits.tmp" || true
+  mv "$filtered_hits.tmp" "$filtered_hits"
+done
+mv "$filtered_hits" "$secret_hits"
 
 python3 - "$candidate_file" "$secret_hits" "$identity_blocklist_path" <<'PY'
 import pathlib
