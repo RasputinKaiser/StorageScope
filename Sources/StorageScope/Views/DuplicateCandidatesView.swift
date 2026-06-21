@@ -171,7 +171,7 @@ private struct DuplicateGroupCard: View {
     let toggleExpanded: () -> Void
 
     private var isVerifying: Bool {
-        store.verifyingGroupIDs.contains(group.id)
+        store.onDemandVerification.verifyingGroupIDs.contains(group.id)
     }
 
     private var visibleItems: [StorageItem] {
@@ -200,7 +200,7 @@ private struct DuplicateGroupCard: View {
                 }
 
                 Button {
-                    store.verifyOnDemand(group)
+                    store.onDemandVerification.verify(group)
                 } label: {
                     if isVerifying {
                         HStack(spacing: 6) {
