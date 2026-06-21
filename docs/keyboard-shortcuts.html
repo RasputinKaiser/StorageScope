@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Keyboard Shortcuts - StorageScope</title>
+  <meta name="description" content="Every keyboard shortcut StorageScope ships - Smart View hotkeys, Find, Reveal, Move to Trash, Copy Path, full screen, and the Cmd+G find-next coming in v0.5.0.">
+  <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/keyboard-shortcuts.html">
+  <meta property="og:title" content="Keyboard Shortcuts - StorageScope">
+  <meta property="og:description" content="Every StorageScope keyboard shortcut in one page, including v0.5.0 Cmd+G find-next navigation.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/keyboard-shortcuts.html">
+  <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --accent: #0a84ff;
+      --text: #1d1d1f;
+      --muted: #5f6368;
+      --bg: #f5f5f7;
+      --panel: #ffffff;
+      --border: #d8dee4;
+      --kbd-bg: #f0f0f3;
+      --kbd-border: #c6c9d0;
+      --kbd-shadow: #b8bcc4;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #f5f5f7;
+        --muted: #a1a1a6;
+        --bg: #101114;
+        --panel: #1b1d22;
+        --border: #2f343d;
+        --kbd-bg: #2a2d33;
+        --kbd-border: #3a3f48;
+        --kbd-shadow: #000;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 56px 24px 72px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2.25rem, 5vw, 3.25rem);
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+    }
+
+    .lede {
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.55;
+      margin: 0 0 36px;
+      max-width: 60ch;
+    }
+
+    h2 {
+      margin: 40px 0 14px;
+      font-size: 1.35rem;
+      letter-spacing: -0.01em;
+    }
+
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 1.05rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    th {
+      background: var(--panel);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    td.shortcut { white-space: nowrap; width: 28%; }
+
+    td.action { font-weight: 550; width: 28%; }
+
+    td.notes { color: var(--muted); font-size: 0.95rem; }
+
+    kbd {
+      display: inline-block;
+      font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: var(--kbd-bg);
+      border: 1px solid var(--kbd-border);
+      box-shadow: 0 1px 0 var(--kbd-shadow);
+      color: var(--text);
+      margin-right: 2px;
+      min-width: 1.6em;
+      text-align: center;
+    }
+
+    kbd + kbd { margin-left: 4px; }
+
+    .callout {
+      margin-top: 36px;
+      padding: 20px 24px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .callout strong { color: var(--text); }
+
+    .coming {
+      background: var(--panel);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin-top: 18px;
+    }
+
+    .coming h3 {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .site-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 16px 24px;
+      margin-bottom: 8px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .site-nav .brand {
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .site-nav nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      margin-left: auto;
+    }
+
+    .site-nav nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+
+    .site-nav nav a:hover { color: var(--accent); }
+
+    footer.site-footer {
+      margin-top: 48px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.95rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      justify-content: space-between;
+    }
+
+    footer.site-footer a { color: inherit; }
+
+    .site-footer-meta { color: var(--muted); }
+
+    @media (max-width: 720px) {
+      main { padding-top: 32px; }
+      .site-nav nav { margin-left: 0; }
+      td, th { padding: 10px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="site-nav" aria-label="Site navigation">
+      <a class="brand" href="./">StorageScope</a>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="faq.html">FAQ</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="architecture.html">Architecture</a>
+      </nav>
+    </header>
+
+    <h1>Keyboard Shortcuts</h1>
+    <p class="lede">
+      StorageScope follows the macOS keyboard-first convention. Every sidebar Smart View,
+      scan command, item action, and standard menu function has a documented hotkey.
+      Press <kbd>Cmd</kbd>+<kbd>?</kbd> from any menu in the app to discover more.
+    </p>
+
+    <h2>Default Shortcuts</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Shortcut</th>
+          <th>Action</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>1</kbd> &ndash; <kbd>Cmd</kbd><kbd>8</kbd></td>
+          <td class="action">Switch sidebar Smart View</td>
+          <td class="notes">See "Smart View hotkeys" below for the full mapping.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>F</kbd></td>
+          <td class="action">Find / focus search field</td>
+          <td class="notes">Endpoints aware: searches files and paths, folder paths, duplicate paths, or extensions depending on the active view.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>W</kbd></td>
+          <td class="action">Close window</td>
+          <td class="notes">Standard macOS close.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>Ctrl</kbd><kbd>F</kbd></td>
+          <td class="action">Enter Full Screen</td>
+          <td class="notes">Toggle macOS full-screen mode.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>,</kbd></td>
+          <td class="action">Open Settings</td>
+          <td class="notes">Scan + display preferences, recent scans, duplicate hash cache state.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>R</kbd></td>
+          <td class="action">Rescan current location</td>
+          <td class="notes">Re-scans the last scanned root with the same options.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>.</kbd></td>
+          <td class="action">Cancel active scan</td>
+          <td class="notes">Cancellable mid-scan, including during hash verification.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>O</kbd></td>
+          <td class="action">Choose folder to scan</td>
+          <td class="notes">Opens the macOS folder picker with security-scoped access.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>H</kbd></td>
+          <td class="action">Scan Home folder</td>
+          <td class="notes">Direct shortcut; entry is disabled mid-scan.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>D</kbd></td>
+          <td class="action">Scan Documents folder</td>
+          <td class="notes"></td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>L</kbd></td>
+          <td class="action">Scan Downloads folder</td>
+          <td class="notes"></td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>F</kbd></td>
+          <td class="action">Reveal selected item in Finder</td>
+          <td class="notes">Opens the file's parent folder with the file highlighted.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>&#8617;</kbd></td>
+          <td class="action">Open selected item</td>
+          <td class="notes">Hands off to the default app for the file type. Disabled on inaccessible items with an explanatory help tag.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>Option</kbd><kbd>C</kbd></td>
+          <td class="action">Copy selected file path</td>
+          <td class="notes">Places the POSIX path on the pasteboard.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>&#8998;</kbd></td>
+          <td class="action">Move selected item to Trash</td>
+          <td class="notes">Routes through macOS Trash APIs with transactional rollback on partial failures.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>A</kbd></td>
+          <td class="action">Select all (focused list)</td>
+          <td class="notes">Standard macOS text/list behavior.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>C</kbd> / <kbd>Cmd</kbd><kbd>V</kbd> / <kbd>Cmd</kbd><kbd>X</kbd></td>
+          <td class="action">Copy / Paste / Cut (text)</td>
+          <td class="notes">Standard text editing inside focused fields.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>M</kbd></td>
+          <td class="action">Minimize window</td>
+          <td class="notes"></td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>N</kbd></td>
+          <td class="action">Show main window</td>
+          <td class="notes">Brings the existing main window forward (Window menu).</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>Q</kbd></td>
+          <td class="action">Quit StorageScope</td>
+          <td class="notes">App terminates after the last window closes.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Smart View Hotkeys (Cmd+1 &ndash; Cmd+8)</h2>
+    <p style="color: var(--muted); margin-bottom: 12px;">
+      Cmd+1 through Cmd+8 switch the sidebar Smart View in <code>SmartView.allCases</code> order,
+      so the menu order in <em>View</em> exactly matches the numeric order. Each entry also
+      persists the selection across launches.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Shortcut</th>
+          <th>Smart View</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>1</kbd></td>
+          <td class="action">Overview</td>
+          <td class="notes">Default landing view; largest file / folder / oldest large file insight cards.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>2</kbd></td>
+          <td class="action">Cleanup Review</td>
+          <td class="notes">Verified duplicates + suggested cleanup lanes. Carry file-type / size chips via FilterStore.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>3</kbd></td>
+          <td class="action">Folder Tree</td>
+          <td class="notes">Expand All / Collapse All in header. Path-aware search prompt.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>4</kbd></td>
+          <td class="action">Largest Folders</td>
+          <td class="notes">Sorted by total size descending.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>5</kbd></td>
+          <td class="action">Largest Files</td>
+          <td class="notes">Sortable column headers with chevron direction.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>6</kbd></td>
+          <td class="action">Old Large Files</td>
+          <td class="notes">Modified column shows relative time for recent files.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>7</kbd></td>
+          <td class="action">File Types</td>
+          <td class="notes">Clicking a type row applies a `Type: <ext>` filter chip via fileTypeFocus.</td>
+        </tr>
+        <tr>
+          <td class="shortcut"><kbd>Cmd</kbd><kbd>8</kbd></td>
+          <td class="action">Duplicate Review</td>
+          <td class="notes">Sidebar label is "Duplicate Review"; SmartView case is `.duplicateCandidates`.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Coming in v0.5.0</h2>
+    <div class="coming">
+      <h3>Search improvements</h3>
+      <p style="color: var(--muted); margin: 0 0 12px;">
+        The v0.5.0 Search upgrade introduces mechanism-style find-next navigation built on the
+        Mail / Finder convention. These entries are listed here so site visitors see the planned
+        map. They will land as the corresponding pull requests merge.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Shortcut</th>
+            <th>Action</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="shortcut"><kbd>Cmd</kbd><kbd>G</kbd></td>
+            <td class="action">Find next search result</td>
+            <td class="notes">Advances the current find-next target through the ordered result list, wrapping around at the end.</td>
+          </tr>
+          <tr>
+            <td class="shortcut"><kbd>Cmd</kbd><kbd>Shift</kbd><kbd>G</kbd></td>
+            <td class="action">Find previous search result</td>
+            <td class="notes">Reverses direction; wraps around at the start.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Notes</h2>
+    <div class="callout">
+      <p>
+        StorageScope uses standard macOS modifiers in every shortcut:
+      </p>
+      <p>
+        <kbd>Cmd</kbd> Command &middot; <kbd>Shift</kbd> &uarr;Shift &middot;
+        <kbd>Option</kbd> Option / Alt &middot; <kbd>Ctrl</kbd> Control &middot;
+        <kbd>&#8998;</kbd> Delete (Backspace) &middot; <kbd>&#8617;</kbd> Return / Enter.
+      </p>
+      <p style="margin-top: 14px;">
+        Hotkeys follow the SmartView <code>allCases</code> order from
+        <code>Sources/StorageScope/Stores/SmartView.swift</code>, so adding or reordering a
+        SmartView case will renumber the Cmd+1&nd;8 binding. See the
+        <a href="changelog.html">changelog</a> for the v0.4.5 introduction of the full menu suite
+        and the <a href="architecture.html">architecture page</a> for how the menu is wired in
+        <code>AppDelegate.buildMainMenu()</code>.
+      </p>
+      <p style="margin-top: 14px;">
+        <strong>Find on macOS 14:</strong> Cmd+F focuses the search field on macOS 15+.
+        On macOS 14, the menu item still surfaces the "Find... F" hint but the programmatic
+        focus path is not bindable in SwiftUI's <code>.searchable</code> field <em>(see the
+        <a href="architecture.html">architecture page</a> for the if-available ViewModifier
+        bridge that handles this)</em>.
+      </p>
+    </div>
+
+    <footer class="site-footer">
+      <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="changelog.html">Changelog</a> &middot; <a href="faq.html">FAQ</a></div>
+      <div class="site-footer-meta">v0.4.5 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+    </footer>
+  </main>
+</body>
+</html>
