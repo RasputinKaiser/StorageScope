@@ -303,7 +303,13 @@ final class ScanStore: ObservableObject {
     }
 
     var mountedVolumes: [URL] {
-        let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsInternalKey]
+        let keys: [URLResourceKey] = [
+            .volumeNameKey,
+            .volumeIsBrowsableKey,
+            .volumeIsInternalKey,
+            .volumeAvailableCapacityKey,
+            .volumeTotalCapacityKey
+        ]
         return FileManager.default.mountedVolumeURLs(
             includingResourceValuesForKeys: keys,
             options: [.skipHiddenVolumes]
@@ -315,6 +321,20 @@ final class ScanStore: ObservableObject {
         .sorted { lhs, rhs in
             lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
         } ?? []
+    }
+
+    /// Returns "N free of M" string for a volume URL, or nil if the values aren't available.
+    /// Used by the sidebar Volumes section to surface free vs total capacity before the user
+    /// commits to scanning a volume.
+    func volumeCapacityDescription(for url: URL) -> String? {
+        let keys: Set<URLResourceKey> = [.volumeAvailableCapacityKey, .volumeTotalCapacityKey]
+        guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
+        let free = values.volumeAvailableCapacity ?? 0
+        let total = values.volumeTotalCapacity ?? 0
+        guard total > 0 else { return nil }
+        let freeText = StorageFormat.bytes(Int64(free))
+        let totalText = StorageFormat.bytes(Int64(total))
+        return "\(freeText) free of \(totalText)"
     }
 
     func rescan() {

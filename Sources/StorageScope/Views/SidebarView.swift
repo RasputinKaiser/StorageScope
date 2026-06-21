@@ -59,7 +59,12 @@ struct SidebarView: View {
 
                         VStack(spacing: 2) {
                             ForEach(volumes, id: \.path) { url in
-                                SidebarPathButton(path: url.path, title: url.lastPathComponent.nonEmpty ?? url.path, systemImage: "externaldrive.fill") {
+                                SidebarPathButton(
+                                    path: url.path,
+                                    title: url.lastPathComponent.nonEmpty ?? url.path,
+                                    systemImage: "externaldrive.fill",
+                                    subtitle: store.volumeCapacityDescription(for: url)
+                                ) {
                                     store.scanVolume(url)
                                 }
                                 .disabled(store.isScanning)
