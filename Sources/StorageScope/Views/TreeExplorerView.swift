@@ -8,11 +8,43 @@ struct TreeExplorerView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Folder Tree")
-                        .font(.headline)
-                    Text(treeSummaryText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Folder Tree")
+                                .font(.headline)
+                            Text(treeSummaryText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        if store.scan?.rootItem != nil {
+                            HStack(spacing: 6) {
+                                Button {
+                                    store.expandEntireTree()
+                                } label: {
+                                    Label("Expand All", systemImage: "chevron.down.square")
+                                        .labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.borderless)
+                                .controlSize(.small)
+                                .disabled(!store.canExpandAllTree)
+                                .help("Expand every folder in the tree")
+
+                                Button {
+                                    store.collapseEntireTree()
+                                } label: {
+                                    Label("Collapse All", systemImage: "chevron.right.square")
+                                        .labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.borderless)
+                                .controlSize(.small)
+                                .disabled(!store.canCollapseTree)
+                                .help("Collapse every folder to the root")
+                            }
+                        }
+                    }
                 }
 
                 if let rootItem = store.scan?.rootItem {
