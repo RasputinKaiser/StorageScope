@@ -276,6 +276,10 @@ private struct DuplicateItemList: View {
                 .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))")
                 .accessibilityValue(store.selectedItemID == item.id ? "Selected" : "Not selected")
                 .accessibilityHint("Selects this duplicate candidate")
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    store.selectedItemID = item.id
+                    store.openSelectedItem()
+                })
                 .contextMenu {
                     if let onSetKeeper, !isKeeper {
                         Button {
