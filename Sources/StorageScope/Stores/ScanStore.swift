@@ -1099,7 +1099,7 @@ final class ScanStore: ObservableObject {
                 if lhs.kind == rhs.kind {
                     return lhs.displaySize > rhs.displaySize
                 }
-                return StorageFormatless.kindLabel(lhs.kind) < StorageFormatless.kindLabel(rhs.kind)
+                return lhs.kind.rawValue < rhs.kind.rawValue
             }
         }
     }
@@ -1200,11 +1200,5 @@ final class ScanStore: ObservableObject {
         activeScanID = nil
         cancellation = nil
         scanTask = nil
-    }
-}
-
-private enum StorageFormatless {
-    static func kindLabel(_ kind: StorageItem.Kind) -> String {
-        kind.rawValue
     }
 }
