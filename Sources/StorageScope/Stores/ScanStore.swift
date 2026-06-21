@@ -54,7 +54,7 @@ final class ScanStore: ObservableObject {
             }
         }
     }
-    @Published private var session = ScanSession()
+    @Published private(set) var session = ScanSession()
     @Published private var selection = ScanSelection()
     @Published var errorMessage: String?
     @Published var pendingTrashReviewPlan: TrashReviewPlan?
