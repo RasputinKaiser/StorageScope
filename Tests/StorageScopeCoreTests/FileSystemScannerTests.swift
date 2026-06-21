@@ -999,6 +999,58 @@ struct FileSystemScannerTests {
         #expect(process.terminationStatus == 0)
     }
 
+    @Test("benchmark report exposes per-phase durations")
+    func benchmarkReportExposesPerPhaseDurations() throws {
+        let root = try SyntheticBenchmarkFixture.create()
+        defer { SyntheticBenchmarkFixture.remove(root) }
+
+        let report = try ScanBenchmarkRunner().run(rootURL: root)
+
+        #expect(report.enumerateDuration >= 0)
+        #expect(report.verifyDuration >= 0)
+        #expect(report.verifyDuration == report.duplicateVerificationDuration)
+        #expect(report.persistDuration == 0)
+        #expect(report.totalDuration == report.enumerateDuration + report.verifyDuration + report.persistDuration)
+        #expect(report.totalDuration >= report.verifyDuration)
+
+        // The text report should surface every phase so a CLI user can spot regressions.
+        let text = report.text
+        #expect(text.contains("Enumerate duration:"))
+        #expect(text.contains("Verify duration:"))
+        #expect(text.contains("Persist duration:"))
+        #expect(text.contains("Phase total (enum+verify+persist):"))
+    }
+
+    @Test("benchmark runner persists and times the on-disk hash cache phase when wired up")
+    func benchmarkRunnerPersistsAndTimesOnDiskHashCachePhase() throws {
+        let root = try SyntheticBenchmarkFixture.create()
+        defer { SyntheticBenchmarkFixture.remove(root) }
+
+        let cacheDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StorageScopeBenchmarkCache-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: cacheDir) }
+        let cacheURL = cacheDir.appendingPathComponent("hashes.json")
+
+        let cache = DuplicateHashCache(cacheURL: cacheURL)
+        let scanner = FileSystemScanner(hashCache: cache)
+        let runner = ScanBenchmarkRunner(scanner: scanner, hashCache: cache)
+
+        let firstReport = try runner.run(rootURL: root)
+        #expect(firstReport.enumerateDuration >= 0)
+        #expect(firstReport.verifyDuration >= 0)
+        #expect(firstReport.persistDuration >= 0)
+        #expect(FileManager.default.fileExists(atPath: cacheURL.path))
+
+        // Second run hits the cache: verify should drop materially, persist stays measurable.
+        let secondReport = try runner.run(rootURL: root)
+        #expect(secondReport.enumerateDuration >= 0)
+        #expect(secondReport.verifyDuration >= 0)
+        #expect(secondReport.verifyDuration <= firstReport.verifyDuration + 0.001)
+        #expect(secondReport.persistDuration >= 0)
+        #expect(secondReport.totalDuration >= 0)
+    }
+
     @Test("scan option policy uses fixed analysis thresholds")
     func scanOptionPolicyUsesFixedThresholds() {
         let thresholds = ScanOptionPolicy.interactiveScanThresholds()

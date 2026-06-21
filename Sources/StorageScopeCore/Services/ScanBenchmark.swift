@@ -13,10 +13,25 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
     public let duplicateCandidateLimitReached: Bool
     public let verifiedDuplicateGroupCount: Int
     public let duplicateVerificationDuration: TimeInterval
+    public let enumerateDuration: TimeInterval
+    public let verifyDuration: TimeInterval
+    public let persistDuration: TimeInterval
     public let cleanupCandidateCount: Int
     public let peakMemoryBytes: UInt64?
 
-    public init(scopeLabel: String, scan: StorageScan, peakMemoryBytes: UInt64? = Self.currentPeakResidentMemoryBytes()) {
+    /// Sum of the three instrumented phases (enumerate + verify + persist). This typically
+    /// under-shoots `duration` because bookkeeping between phases (cleanup candidate
+    /// planning, retained child collection, lookup construction) is not separately timed.
+    public var totalDuration: TimeInterval {
+        enumerateDuration + verifyDuration + persistDuration
+    }
+
+    public init(
+        scopeLabel: String,
+        scan: StorageScan,
+        persistDuration: TimeInterval = 0,
+        peakMemoryBytes: UInt64? = Self.currentPeakResidentMemoryBytes()
+    ) {
         self.scopeLabel = scopeLabel
         self.duration = scan.finishedAt.timeIntervalSince(scan.startedAt)
         self.scannedItemCount = scan.scannedItemCount
@@ -29,6 +44,9 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
         self.duplicateCandidateLimitReached = scan.duplicateCandidateLimitReached
         self.verifiedDuplicateGroupCount = scan.verifiedDuplicateGroups.count
         self.duplicateVerificationDuration = scan.duplicateVerificationDuration
+        self.enumerateDuration = scan.enumerateDuration
+        self.verifyDuration = scan.duplicateVerificationDuration
+        self.persistDuration = persistDuration
         self.cleanupCandidateCount = scan.cleanupCandidates.count
         self.peakMemoryBytes = peakMemoryBytes
     }
@@ -47,6 +65,10 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
             "Duplicate cap reached: \(duplicateCandidateLimitReached ? "yes" : "no")",
             "Verified duplicate groups: \(verifiedDuplicateGroupCount.formatted())",
             "Duplicate verification: \(Self.seconds(duplicateVerificationDuration))",
+            "Enumerate duration: \(Self.seconds(enumerateDuration))",
+            "Verify duration: \(Self.seconds(verifyDuration))",
+            "Persist duration: \(Self.seconds(persistDuration))",
+            "Phase total (enum+verify+persist): \(Self.seconds(totalDuration))",
             "Cleanup candidates: \(cleanupCandidateCount.formatted())",
             "Peak memory: \(peakMemoryBytes.map(Self.bytes) ?? "unavailable")",
             "Results are local only."
@@ -84,16 +106,33 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
 
 public struct ScanBenchmarkRunner {
     private let scanner: FileSystemScanner
+    private let hashCache: DuplicateHashCache?
 
-    public init(scanner: FileSystemScanner = FileSystemScanner()) {
+    /// - parameters:
+    ///   - scanner: The scanner to drive. Defaults to a fresh `FileSystemScanner` with
+    ///     no cache attached. To measure real persist I/O after a duplicate scan,
+    ///     pass a scanner constructed with the same `hashCache`
+    ///     (e.g. `FileSystemScanner(hashCache: cache)`); the runner does not rewire
+    ///     the cache into the scanner for you.
+    ///   - hashCache: When set, the runner drives `hashCache.persist()` after each scan
+    ///     and records `persistDuration`. When nil, `persistDuration` stays 0 because
+    ///     the benchmark never triggers an on-disk write.
+    public init(scanner: FileSystemScanner = FileSystemScanner(), hashCache: DuplicateHashCache? = nil) {
         self.scanner = scanner
+        self.hashCache = hashCache
     }
 
     public func run(rootURL: URL, options: ScanOptions = .benchmarkDefaults(), showFullPath: Bool = false) throws -> ScanBenchmarkReport {
         let scan = try scanner.scan(root: rootURL, options: options)
+
+        let persistStartedAt = Date()
+        hashCache?.persist()
+        let persistDuration = Date().timeIntervalSince(persistStartedAt)
+
         return ScanBenchmarkReport(
             scopeLabel: ScanBenchmarkReport.scopeLabel(for: rootURL, showFullPath: showFullPath),
-            scan: scan
+            scan: scan,
+            persistDuration: persistDuration
         )
     }
 }
