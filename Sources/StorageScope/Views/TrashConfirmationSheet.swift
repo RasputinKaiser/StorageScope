@@ -7,6 +7,7 @@ struct TrashReviewActions {
     let isMoving: Bool
     let reveal: (TrashReviewPlan.Item) -> Void
     let revealAll: ([TrashReviewPlan.Item]) -> Void
+    let open: (TrashReviewPlan.Item) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
     let cancel: () -> Void
     let confirm: () -> Void
@@ -53,6 +54,7 @@ struct TrashConfirmationSheet: View {
                             items: plan.verifiedItems,
                             reveal: actions.reveal,
                             revealAll: actions.revealAll,
+                            open: actions.open,
                             remove: actions.remove,
                             isMoving: actions.isMoving
                         )
@@ -67,6 +69,7 @@ struct TrashConfirmationSheet: View {
                             items: plan.reviewItems,
                             reveal: actions.reveal,
                             revealAll: actions.revealAll,
+                            open: actions.open,
                             remove: actions.remove,
                             isMoving: actions.isMoving
                         )
@@ -120,6 +123,7 @@ private struct TrashReviewSection: View {
     let items: [TrashReviewPlan.Item]
     let reveal: (TrashReviewPlan.Item) -> Void
     let revealAll: ([TrashReviewPlan.Item]) -> Void
+    let open: (TrashReviewPlan.Item) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
     let isMoving: Bool
 
@@ -156,7 +160,7 @@ private struct TrashReviewSection: View {
 
             VStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    TrashReviewRow(item: item, reveal: reveal, remove: remove, isMoving: isMoving)
+                    TrashReviewRow(item: item, reveal: reveal, open: open, remove: remove, isMoving: isMoving)
 
                     if index < items.index(before: items.endIndex) {
                         Divider()
@@ -171,6 +175,7 @@ private struct TrashReviewSection: View {
 private struct TrashReviewRow: View {
     let item: TrashReviewPlan.Item
     let reveal: (TrashReviewPlan.Item) -> Void
+    let open: (TrashReviewPlan.Item) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
     let isMoving: Bool
 
@@ -204,6 +209,14 @@ private struct TrashReviewRow: View {
             }
 
             Spacer(minLength: 12)
+
+            Button {
+                open(item)
+            } label: {
+                Label("Open", systemImage: "arrow.up.right.square")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Open \(item.url.lastPathComponent) in its default app")
 
             Button {
                 reveal(item)

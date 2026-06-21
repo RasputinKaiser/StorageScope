@@ -854,6 +854,10 @@ final class ScanStore: ObservableObject {
         FileActionService.reveal(item.url)
     }
 
+    func openTrashReviewItem(_ item: TrashReviewPlan.Item) {
+        FileActionService.open(item.url)
+    }
+
     func revealAllTrashReviewItems(_ items: [TrashReviewPlan.Item]) {
         let urls = items.map(\.url)
         FileActionService.revealAll(urls)
