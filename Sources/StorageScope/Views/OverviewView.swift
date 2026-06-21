@@ -118,7 +118,7 @@ private struct ReclaimPlanView: View {
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .cardBackground()
                 } else {
                     FilterRecoveryView(
                         title: "No Reclaim Actions",
@@ -129,7 +129,7 @@ private struct ReclaimPlanView: View {
                         clearAction: clearFilters
                     )
                     .frame(minHeight: 130)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .cardBackground()
                 }
             } else {
                 ViewThatFits(in: .horizontal) {
@@ -197,7 +197,7 @@ private struct ReclaimPlanSectionCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground()
     }
 }
 
@@ -231,7 +231,7 @@ private struct SizeDistributionView: View {
                         store.resetDisplayFilters()
                     }
                     .frame(minHeight: 180)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .cardBackground()
                 } else {
                     VStack(spacing: 8) {
                         ForEach(items) { item in
@@ -265,7 +265,7 @@ private struct SizeDistributionView: View {
                                     }
                                 }
                                 .padding(10)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                                .cardBackground()
                             }
                             .buttonStyle(.plain)
                         }
@@ -315,7 +315,7 @@ private struct InsightCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground()
     }
 }
 

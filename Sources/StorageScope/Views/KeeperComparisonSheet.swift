@@ -97,7 +97,7 @@ struct KeeperComparisonSheet: View {
                     }
                 }
             }
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .cardBackground()
         }
     }
 

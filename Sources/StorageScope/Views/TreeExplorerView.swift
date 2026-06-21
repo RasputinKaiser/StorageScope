@@ -25,7 +25,7 @@ struct TreeExplorerView: View {
                             store: store
                         )
                     }
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .cardBackground()
                     .onAppear {
                         store.treeExpandedIDs.insert(rootItem.id)
                     }
