@@ -41,6 +41,7 @@
     .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
     .release { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-top: 24px; }
     .release h2 { margin-top: 0; font-size: 1.25rem; }
+    .release h3 { margin-top: 22px; margin-bottom: 6px; font-size: 1rem; color: var(--text); }
     .release .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
     .release ul { margin: 8px 0 0; padding-left: 20px; }
     .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
@@ -64,10 +65,92 @@
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
         <a href="duplicate-file-finder-macos.html">Duplicate finder</a>
         <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative</a>
+        <a href="keyboard-shortcuts.html">Keyboard shortcuts</a>
+        <a href="architecture.html">Architecture</a>
       </nav>
     </header>
     <h1>Changelog</h1>
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
+
+    <section class="release">
+      <h2>v0.4.5 &mdash; UX Polish Release (2026-06-21)</h2>
+      <div class="meta">Released 2026-06-21 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.4.5">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.5/StorageScope-0.4.5.dmg">download .dmg</a></div>
+      <p>This update focused on UX polish and standard macOS conventions. 39 PRs (#33-#72).</p>
+
+      <h3>Filter UX</h3>
+      <ul>
+        <li>Individually dismissible filter chips &mdash; click the x on one pill instead of clearing all (#39)</li>
+        <li>File-type filter separated from search query so the chip reads "Type: mp4" instead of misleading "Search: mp4" (#46), auto-clears on non-applicable view switches (#47), visually focuses the row in Type Breakdown (#62)</li>
+        <li>Instant drop of the search chip when the search field empties (#45)</li>
+        <li>Context-aware toolbar search prompt per active view ("Search folders and paths" on Tree, "Search extensions" on File Types, etc.) (#64)</li>
+        <li>Selected sidebar view now persists across launches (#63)</li>
+        <li>Scan duration formatter shows "1 min 30 sec" instead of "1 min" for sub-10-minute rescans (#54)</li>
+        <li>Recent scan relative timestamps stay current via TimelineView instead of freezing at first paint (#56)</li>
+        <li>Modified column shows relative time for recent files (#66)</li>
+      </ul>
+
+      <h3>Standard macOS menus</h3>
+      <ul>
+        <li>View menu + Cmd+1-8 hotkeys for sidebar Smart Views (#41)</li>
+        <li>Edit menu Find &rarr; Cmd+F focuses the search field (with graceful fallback on macOS 14) (#69)</li>
+        <li>View menu Enter Full Screen &rarr; Cmd+Ctrl+F (#70)</li>
+        <li>Window menu Close &rarr; Cmd+W (#52)</li>
+        <li>Help menu links to GitHub repo + issues (#59)</li>
+      </ul>
+
+      <h3>Item / trash review interactions</h3>
+      <ul>
+        <li>Double-click-to-open across item rows (StorageItemTable, DuplicateCandidatesView, TreeExplorerView) &mdash; opens file in its default app instead of routing only through the context menu (#43)</li>
+        <li>Trash review rows gain an Open button alongside Reveal + Remove so files can be previewed before Trash (#53)</li>
+        <li>Trash review section headers have Reveal All (#50) + Remove All (#67) &mdash; drop an entire section in one tap instead of N per-row clicks</li>
+        <li>Gate the Open button on inaccessible items with explanatory help tag (#60)</li>
+        <li>Expand All / Collapse All in the Folder Tree header (#61)</li>
+        <li>Clickable sortable column headers with chevron direction indicator in StorageItemTable (#65); Modified cycles Newest &harr; Oldest on each click. VoiceOver values speak direction (#68)</li>
+      </ul>
+
+      <h3>Sidebar / welcome / window chrome</h3>
+      <ul>
+        <li>Sidebar scan-entry buttons disabled mid-scan (#40); toolbar Choose Folder + Recent Scans + Volumes gated (#49)</li>
+        <li>Volume free-space surfaced as subtitle ("247 GB free of 1 TB") so picking the right volume doesn't require already knowing (#51)</li>
+        <li>Recent Scans quick-launch on the WelcomeView for returning users (#57)</li>
+        <li>Tappable Overview insight cards (Largest File / Folder / Oldest Large File) select the item in the Inspector (#58)</li>
+        <li>Scan-canceled acknowledgment banner with contextual rescan action, made dismissible (#44, #55)</li>
+        <li>Dynamic window title reflecting the scanned root: "StorageScope &mdash; &lt;folder&gt;" (#48)</li>
+        <li>Reclaim Plan action labels disambiguated (two cards no longer both say "Review") (#42)</li>
+      </ul>
+
+      <h3>ScanStore sub-store extractions (provisional-for-v0.5.0)</h3>
+      <ul>
+        <li>RecentsStore (#34), OnDemandVerificationStore (#35), FilterStore (#38) extracted from ScanStore via lazy-var + closure-injection pattern. See the new <a href="architecture.html">architecture page</a> for details.</li>
+      </ul>
+
+      <h3>Accessibility</h3>
+      <ul>
+        <li>VoiceOver sort direction in column header a11y values (#68)</li>
+        <li>File Type Category Mix rows labeled with category + bytes (#71)</li>
+      </ul>
+
+      <h3>Quality-of-life dead-code / micro-cleanup</h3>
+      <ul>
+        <li>First-run permission card body &rarr; .footnote (#33)</li>
+        <li>Inline StorageFormatless.kindLabel &mdash; remove needless indirection (#36)</li>
+        <li>Remove dead import AppKit from ScanStore (#37)</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2>v0.4.0 &mdash; Foundation Release (2026-04-XX)</h2>
+      <div class="meta">Released April 2026 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.4.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.0/StorageScope-0.4.0.dmg">download .dmg</a></div>
+      <p>Foundation release ahead of v0.4.5 UX polish: shared view modifiers, stale-hash eviction, portability fixes in the audit script, scaffolded notarization pipeline, and contributor docs.</p>
+      <ul>
+        <li><code>.cardBackground()</code> / <code>.selectionBackground()</code> SwiftUI ViewModifier extensions for consistent card styling across views.</li>
+        <li><code>DuplicateHashCache.purgeStale</code> &mdash; auto-evict stale hash cache entries based on file mtime + path.</li>
+        <li><code>script/public_upload_audit.sh</code> &mdash; switched <code>rg</code> to <code>grep</code> for portability + added allowlist for legit URLs in code.</li>
+        <li><code>script/notarize_dmg.sh</code> &mdash; scaffolds the notarization pipeline (NOTE: never actually submitted to Apple's notary service yet &mdash; first submission remains a manual maintainer step).</li>
+        <li>Contributor docs scaffolded.</li>
+        <li>Various foundation cleanups.</li>
+      </ul>
+    </section>
 
     <section class="release">
       <h2>v0.3.0 &mdash; Scan performance and duplicate review completion</h2>
@@ -96,14 +179,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg">Download v0.3.0 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.5/StorageScope-0.4.5.dmg">Download v0.4.5 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.5/StorageScope-0.4.5.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.3.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.4.5 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>
