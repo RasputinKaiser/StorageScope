@@ -135,6 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         }
     }
 
+    @objc private func findInCurrentView() {
+        store.requestSearchFieldFocus()
+    }
+
     @objc private func showSettings() {
         if let settingsWindow {
             settingsWindow.makeKeyAndOrderFront(nil)
@@ -285,7 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(showMainWindow), #selector(showSettings), #selector(showAbout),
-             #selector(openStorageScopeOnGitHub), #selector(reportAnIssue):
+             #selector(openStorageScopeOnGitHub), #selector(reportAnIssue), #selector(findInCurrentView):
             return true
         case #selector(chooseFolder), #selector(scanHome), #selector(scanDocuments), #selector(scanDownloads):
             return !store.isScanning
@@ -334,6 +338,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(menuItem("Find...", action: #selector(findInCurrentView), key: "f"))
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 

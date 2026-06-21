@@ -67,6 +67,17 @@ func setSelectedView(_ view: SmartView) {
     @Published var errorMessage: String?
     @Published var pendingTrashReviewPlan: TrashReviewPlan?
     @Published private(set) var isMovingToTrash = false
+    /// Bumped each time the AppDelegate's Find command (Cmd+F) is invoked. ContentView
+    /// observes this and focuses the search field in response. Using a counter (rather
+    /// than a Bool) so the same command can re-fire after the field is already focused —
+    /// e.g. user dismisses the field, hits Cmd+F again, expected it to re-focus.
+    @Published private(set) var searchFieldFocusRequest: Int = 0
+
+    /// Called by AppDelegate's Find menu item (Cmd+F). Bumps the request counter so
+    /// ContentView's `.onChange` re-focuses the search field.
+    func requestSearchFieldFocus() {
+        searchFieldFocusRequest &+= 1
+    }
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?
     private var selectVerifiedCleanupWhenCurrentScanCompletes = false
