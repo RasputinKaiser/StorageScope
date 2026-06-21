@@ -22,6 +22,11 @@ enum FileActionService {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
+    static func revealAll(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
     static func open(_ url: URL) {
         NSWorkspace.shared.open(url)
     }
