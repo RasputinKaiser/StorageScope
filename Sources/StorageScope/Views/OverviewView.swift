@@ -37,17 +37,23 @@ struct OverviewView: View {
                                 title: isFiltered ? "Largest Matching File" : "Largest File",
                                 item: store.items(for: .largestFiles).first,
                                 systemImage: "doc.fill"
-                            )
+                            ) { item in
+                                store.selectedItemID = item.id
+                            }
                             InsightCard(
                                 title: isFiltered ? "Largest Matching Folder" : "Largest Folder",
                                 item: store.items(for: .largestFolders).first,
                                 systemImage: "folder.fill"
-                            )
+                            ) { item in
+                                store.selectedItemID = item.id
+                            }
                             InsightCard(
                                 title: isFiltered ? "Oldest Matching Large File" : "Oldest Large File",
                                 item: store.oldLargeFiles.first,
                                 systemImage: "clock.fill"
-                            )
+                            ) { item in
+                                store.selectedItemID = item.id
+                            }
                         }
                         .frame(width: 280)
                     }
@@ -288,6 +294,7 @@ private struct InsightCard: View {
     let title: String
     let item: StorageScopeCore.StorageItem?
     let systemImage: String
+    var onTap: ((StorageScopeCore.StorageItem) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -295,6 +302,11 @@ private struct InsightCard: View {
                 Label(title, systemImage: systemImage)
                     .font(.headline)
                 Spacer()
+                if item != nil, onTap != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
 
             if let item {
@@ -316,6 +328,13 @@ private struct InsightCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
         .cardBackground()
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let item, let onTap {
+                onTap(item)
+            }
+        }
+        .accessibilityAddTraits(onTap != nil && item != nil ? .isButton : [])
     }
 }
 
