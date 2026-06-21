@@ -8,6 +8,11 @@ struct ScanSession {
     var appliedOptions: ScanStore.ScanOptionsSnapshot?
     var resultsNeedRefresh = false
     var lastScannedURL: URL?
+    /// Set when a scan is canceled mid-flight so the UI can acknowledge the cancel.
+    /// Cleared the next time `scan(_:)` starts. Previously `cancelScan` wrote a "Scan cancelled"
+    /// string into `progress.currentPath` that the footer never displayed (it only shows
+    /// currentPath during `isScanning`), so users got no visible feedback.
+    var lastCancellationMessage: String?
 
     var canRescan: Bool {
         lastScannedURL != nil && !isScanning
