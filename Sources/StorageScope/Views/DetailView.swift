@@ -14,9 +14,11 @@ struct DetailView: View {
                     ScanHeaderView(store: store)
                     FilterBarView(store: store)
                     if let notice = store.scanNoticeText {
-                        ScanNoticeView(text: notice) {
-                            store.rescan()
-                        }
+                        ScanNoticeView(
+                            text: notice,
+                            rescan: { store.rescan() },
+                            dismissAction: store.scanNoticeIsDismissible ? { store.dismissScanNotice() } : nil
+                        )
                     }
                     if store.activeView == .cleanupReview
                         ? store.hasActiveCleanupFilters
@@ -284,6 +286,7 @@ private struct MetricCard: View {
 private struct ScanNoticeView: View {
     let text: String
     let rescan: () -> Void
+    var dismissAction: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -303,6 +306,18 @@ private struct ScanNoticeView: View {
                 Label("Rescan", systemImage: "arrow.clockwise")
             }
             .controlSize(.small)
+
+            if let dismissAction {
+                Button {
+                    dismissAction()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Dismiss")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)

@@ -240,6 +240,19 @@ final class ScanStore: ObservableObject {
         return nil
     }
 
+    /// Whether the current scan notice is a transient acknowledgment (cancel) that the
+    /// user can dismiss vs. a persistent warning (stale options / results need refresh)
+    /// that requires rescan to clear.
+    var scanNoticeIsDismissible: Bool {
+        session.lastCancellationMessage != nil
+    }
+
+    /// Dismisses a transient scan notice. Only clears the cancel-ack message; the
+    /// stale-options and results-need-refresh notices remain until the user rescans.
+    func dismissScanNotice() {
+        session.lastCancellationMessage = nil
+    }
+
     var activeDisplayFilterDescriptions: [String] { filters.activeDisplayFilterDescriptions }
     var activeCleanupFilterDescriptions: [String] { filters.activeCleanupFilterDescriptions }
     var hasActiveDisplayFilters: Bool { filters.hasActiveDisplayFilters }
