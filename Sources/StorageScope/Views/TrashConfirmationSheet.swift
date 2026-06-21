@@ -6,6 +6,7 @@ import SwiftUI
 struct TrashReviewActions {
     let isMoving: Bool
     let reveal: (TrashReviewPlan.Item) -> Void
+    let revealAll: ([TrashReviewPlan.Item]) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
     let cancel: () -> Void
     let confirm: () -> Void
@@ -51,6 +52,7 @@ struct TrashConfirmationSheet: View {
                             tint: .green,
                             items: plan.verifiedItems,
                             reveal: actions.reveal,
+                            revealAll: actions.revealAll,
                             remove: actions.remove,
                             isMoving: actions.isMoving
                         )
@@ -64,6 +66,7 @@ struct TrashConfirmationSheet: View {
                             tint: .orange,
                             items: plan.reviewItems,
                             reveal: actions.reveal,
+                            revealAll: actions.revealAll,
                             remove: actions.remove,
                             isMoving: actions.isMoving
                         )
@@ -116,6 +119,7 @@ private struct TrashReviewSection: View {
     let tint: Color
     let items: [TrashReviewPlan.Item]
     let reveal: (TrashReviewPlan.Item) -> Void
+    let revealAll: ([TrashReviewPlan.Item]) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
     let isMoving: Bool
 
@@ -131,6 +135,19 @@ private struct TrashReviewSection: View {
                 Text("\(items.count.formatted()) \(items.count == 1 ? "item" : "items")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if items.count > 1 {
+                    Button {
+                        revealAll(items)
+                    } label: {
+                        Label("Reveal All", systemImage: "rectangle.on.rectangle")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .disabled(isMoving)
+                    .help("Reveal all \(items.count.formatted()) items in Finder")
+                }
             }
 
             Text(subtitle)
