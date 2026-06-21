@@ -70,6 +70,9 @@ struct TypeBreakdownView: View {
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 11)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(stat.category.rawValue) category, \(StorageFormat.bytes(stat.totalBytes))")
+                                .accessibilityValue("\(stat.extensionCountLabel), \(stat.fileCountLabel)")
 
                                 Divider()
                             }
