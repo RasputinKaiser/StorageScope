@@ -39,21 +39,29 @@ final class ScanStore: ObservableObject {
 
     let recents = RecentsStore()
 
-    @Published var selectedView: SmartView? = .overview {
-        didSet {
-            invalidateItemsCache()
-            // Clear a stale file-type focus when navigating away from file-bearing views.
-            // On Largest Folders / Overview / Tree / File Types, no item has a file
-            // extension to match against, so the Type chip would silently filter
-            // everything out and present an empty state.
-            if oldValue != selectedView,
-               let newValue = selectedView,
-               !newValue.supportsFileTypeFocus,
-               filters.fileTypeFocus != nil {
-                filters.fileTypeFocus = nil
-            }
-        }
+    /// Persists across launches via UserDefaults so reopen lands the user in their last
+/// session's view — macOS convention. The didSet is gone (AppStorage handles updates),
+/// but we still need cache invalidation + the file-type focus clear so the side effects
+/// move into explicit `setSelectedView(_:)`.
+@AppStorage("StorageScope.selectedView") private var storedSelectedView: String = SmartView.overview.rawValue
+
+var selectedView: SmartView? {
+    get { SmartView(rawValue: storedSelectedView) ?? .overview }
+    set { setSelectedView(newValue ?? .overview) }
+}
+
+func setSelectedView(_ view: SmartView) {
+    let old = selectedView
+    guard old != view else { return }
+    objectWillChange.send()
+    storedSelectedView = view.rawValue
+    invalidateItemsCache()
+    // Clear a stale file-type focus when navigating away from file-bearing views.
+    // See SmartView.supportsFileTypeFocus for the case-by-case policy.
+    if !view.supportsFileTypeFocus, filters.fileTypeFocus != nil {
+        filters.fileTypeFocus = nil
     }
+}
     @Published private(set) var session = ScanSession()
     @Published private var selection = ScanSelection()
     @Published var errorMessage: String?
