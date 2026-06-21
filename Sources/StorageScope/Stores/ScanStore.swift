@@ -33,6 +33,7 @@ final class ScanStore: ObservableObject {
         let sizeFilter: SizeFilter
         let sortOption: ItemSortOption
         let cleanupLaneFilter: CleanupLaneFilter
+        let fileTypeFocus: String?
         let ignoredCleanupCandidateIDs: Set<String>
     }
 
@@ -484,6 +485,7 @@ final class ScanStore: ObservableObject {
             sizeFilter: filters.sizeFilter,
             sortOption: filters.sortOption,
             cleanupLaneFilter: filters.cleanupLaneFilter,
+            fileTypeFocus: filters.fileTypeFocus,
             ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
         )
         if cachedItemsKey == key {
@@ -936,7 +938,7 @@ final class ScanStore: ObservableObject {
     }
 
     func focusFileType(_ stat: FileTypeStat) {
-        filters.query = stat.label == "No Extension" ? "." : stat.label
+        filters.fileTypeFocus = stat.label == "No Extension" ? "" : stat.label
         selectedView = .largestFiles
     }
 
@@ -991,11 +993,23 @@ final class ScanStore: ObservableObject {
 
     private func filtered(_ items: [StorageItem]) -> [StorageItem] {
         let trimmedQuery = filters.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let focusedExtension = filters.fileTypeFocus
 
         return sorted(items.filter { item in
             let passesSize = item.displaySize >= filters.sizeFilter.threshold
             let passesQuery = item.matchesNormalizedSearchQuery(trimmedQuery)
-            return passesSize && passesQuery
+            let passesExtension: Bool
+            if let focusedExtension {
+                // Empty-string focus = "No Extension" (set by focusFileType when stat.label == "No Extension")
+                if focusedExtension.isEmpty {
+                    passesExtension = (item.fileExtension ?? "").isEmpty
+                } else {
+                    passesExtension = (item.fileExtension ?? "").localizedCaseInsensitiveCompare(focusedExtension) == .orderedSame
+                }
+            } else {
+                passesExtension = true
+            }
+            return passesSize && passesQuery && passesExtension
         })
     }
 
