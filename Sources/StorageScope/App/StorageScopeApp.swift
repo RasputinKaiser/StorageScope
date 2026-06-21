@@ -17,11 +17,12 @@ enum StorageScopeApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation, NSMenuDelegate {
     private let store = ScanStore()
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var titleCancellable: AnyCancellable?
+    private var recentScansSubmenu: NSMenu?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         SecurityScopedBookmarkStore().prune()
@@ -137,6 +138,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
 
     @objc private func findInCurrentView() {
         store.requestSearchFieldFocus()
+    }
+
+    @objc private func scanRecentFromMenu(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        store.scanRecentPath(path)
+    }
+
+    @objc private func clearRecentScansMenu(_ sender: Any) {
+        for entry in store.recents.entries {
+            store.recents.forget(path: entry.path)
+        }
+    }
+
+    /// macOS convention. Built once in `buildMainMenu`, repopulated on each
+    /// open via `menuNeedsUpdate` so freshly-scanned paths surface without
+    /// restarting the app. Items route through `store.scanRecentPath(_:)`,
+    /// which preserves the existing security-scoped re-grant flow: if the
+    /// folder's bookmark has expired the user is asked to re-pick the folder
+    /// instead of silently failing.
+    private func openRecentSubmenuItem() -> NSMenuItem {
+        let submenu = NSMenu(title: "Open Recent")
+        submenu.delegate = self
+        recentScansSubmenu = submenu
+        let item = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
     }
 
     @objc private func showSettings() {
@@ -291,8 +318,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         case #selector(showMainWindow), #selector(showSettings), #selector(showAbout),
              #selector(openStorageScopeOnGitHub), #selector(reportAnIssue), #selector(findInCurrentView):
             return true
-        case #selector(chooseFolder), #selector(scanHome), #selector(scanDocuments), #selector(scanDownloads):
+        case #selector(chooseFolder), #selector(scanHome), #selector(scanDocuments), #selector(scanDownloads),
+             #selector(scanRecentFromMenu):
             return !store.isScanning
+        case #selector(clearRecentScansMenu):
+            return !store.recents.entries.isEmpty && !store.isScanning
         case #selector(rescan):
             return store.canRescan
         case #selector(cancelScan):
@@ -312,6 +342,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         }
     }
 
+    // MARK: - NSMenuDelegate
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === recentScansSubmenu else { return }
+        rebuildRecentScansSubmenu()
+    }
+
+    /// Rebuilds the Open Recent submenu in place on each open. Cheap — list is bounded
+    /// by `RecentsStore.maxEntries` (8).
+    private func rebuildRecentScansSubmenu() {
+        guard let submenu = recentScansSubmenu else { return }
+        submenu.removeAllItems()
+
+        if store.recents.entries.isEmpty {
+            let placeholder = NSMenuItem(title: "No Recent Scans", action: nil, keyEquivalent: "")
+            placeholder.isEnabled = false
+            submenu.addItem(placeholder)
+            return
+        }
+
+        for entry in store.recents.entries {
+            let item = NSMenuItem(title: entry.path, action: #selector(scanRecentFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = entry.path
+            item.toolTip = "Re-scan \(entry.path)"
+            submenu.addItem(item)
+        }
+
+        submenu.addItem(NSMenuItem.separator())
+        let clearItem = NSMenuItem(title: "Clear Menu", action: #selector(clearRecentScansMenu(_:)), keyEquivalent: "")
+        clearItem.target = self
+        submenu.addItem(clearItem)
+    }
+
     private func buildMainMenu() {
         let mainMenu = NSMenu()
 
@@ -329,6 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(menuItem("Show Window", action: #selector(showMainWindow), key: "n"))
         fileMenu.addItem(menuItem("Choose Folder...", action: #selector(chooseFolder), key: "o"))
+        fileMenu.addItem(openRecentSubmenuItem())
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)
 
