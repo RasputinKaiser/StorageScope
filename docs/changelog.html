@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Changelog - StorageScope</title>
+  <meta name="description" content="StorageScope release history: summarize what shipped in each tagged version, with links to GitHub releases and DMG downloads.">
+  <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/changelog.html">
+  <meta property="og:title" content="Changelog - StorageScope">
+  <meta property="og:description" content="StorageScope version history and what shipped in each release.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/changelog.html">
+  <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Changelog - StorageScope">
+  <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "StorageScope changelog",
+    "inLanguage": "en",
+    "about": "Release history for the StorageScope macOS storage analyzer.",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "StorageScope",
+      "url": "https://rasputinkaiser.github.io/StorageScope/"
+    }
+  }
+  </script>
+  <style>
+    :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
+    @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; }
+    h2 { margin-top: 36px; }
+    p, li { color: var(--muted); line-height: 1.6; }
+    a { color: var(--accent); }
+    .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .release { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-top: 24px; }
+    .release h2 { margin-top: 0; font-size: 1.25rem; }
+    .release .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
+    .release ul { margin: 8px 0 0; padding-left: 20px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--panel); font-weight: 650; }
+    .primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+    .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
+    .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
+    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; }
+    .site-nav nav a:hover { color:var(--accent); }
+    footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
+    footer.site-footer a { color:inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="site-nav" aria-label="Site navigation">
+      <a class="brand" href="./">StorageScope</a>
+      <nav>
+        <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
+        <a href="mac-storage-cleaner.html">Storage cleaner</a>
+        <a href="duplicate-file-finder-macos.html">Duplicate finder</a>
+        <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative</a>
+      </nav>
+    </header>
+    <h1>Changelog</h1>
+    <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
+
+    <section class="release">
+      <h2>v0.3.0 &mdash; Scan performance and duplicate review completion</h2>
+      <div class="meta">Released 2026-06-21 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.3.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg">download .dmg</a></div>
+      <p>Parallel sibling-directory enumeration, adaptive hash concurrency scaled to available cores, keeper comparison sheet, on-demand "Verify Now" for same-size candidate groups, persisted hash cache management in Settings, and a sweep of Trash flow and review UX improvements folded in from v0.2.0.</p>
+      <ul>
+        <li>Scanner recurses folder children in parallel with deterministic ordering.</li>
+        <li>Duplicate verification scales up to 8 hash workers based on core count.</li>
+        <li>Verified duplicate groups gain a side-by-side keeper comparison sheet.</li>
+        <li>"Verify Now" out-of-band hashes candidate groups beyond the auto budget.</li>
+        <li>Settings gains a duplicate hash cache section with a guarded Clear Cache.</li>
+        <li>Async batch Trash with progress, debounced search, unified trash confirmation.</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2>v0.1.1 &mdash; Trash confirmation sheet and scan slices</h2>
+      <div class="meta">Released 2026-06-18 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.1.1">release notes</a></div>
+      <p>SwiftUI Trash confirmation sheet, focused scan-state slices, localization groundwork, inspector keyboard focus, and extra filesystem safety tests.</p>
+      <ul>
+        <li>SwiftUI trash confirmation sheet for verified-only and mixed-risk batches.</li>
+        <li>Focused scan state slices to narrow observation and re-render scope.</li>
+        <li>Localization groundwork and inspector keyboard focus improvements.</li>
+        <li>Additional filesystem safety tests.</li>
+      </ul>
+    </section>
+
+    <div class="actions">
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg">Download v0.3.0 (.dmg)</a>
+      <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
+    </div>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+
+    <footer class="site-footer">
+      <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a></div>
+      <div>v0.3.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+    </footer>
+  </main>
+</body>
+</html>
