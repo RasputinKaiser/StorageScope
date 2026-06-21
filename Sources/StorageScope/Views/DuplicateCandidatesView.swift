@@ -170,6 +170,10 @@ private struct DuplicateGroupCard: View {
     @ObservedObject var store: ScanStore
     let toggleExpanded: () -> Void
 
+    private var isVerifying: Bool {
+        store.verifyingGroupIDs.contains(group.id)
+    }
+
     private var visibleItems: [StorageItem] {
         isExpanded ? group.items : Array(group.items.prefix(8))
     }
@@ -194,6 +198,24 @@ private struct DuplicateGroupCard: View {
                     .foregroundStyle(.secondary)
                     .help(isExpanded ? "Collapse this same-size group" : "Show every file in this same-size group")
                 }
+
+                Button {
+                    store.verifyOnDemand(group)
+                } label: {
+                    if isVerifying {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Verifying…")
+                        }
+                    } else {
+                        Label("Verify Now", systemImage: "checkmark.seal")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isVerifying || store.isScanning)
+                .help("Hash every file in this group and surface verified duplicate matches")
 
                 Spacer()
 
