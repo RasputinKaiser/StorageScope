@@ -139,7 +139,7 @@ private struct SortableColumnHeader: View {
         .buttonStyle(.plain)
         .help("Sort by \(label)")
         .accessibilityLabel("\(label) column")
-        .accessibilityValue(isActive ? "Active sort" : "Tap to sort")
+        .accessibilityValue(isActive ? "Active sort, \(indicator == .down ? "descending" : "ascending")" : "Tap to sort")
     }
 }
 
