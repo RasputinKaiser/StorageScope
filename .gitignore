@@ -1,6 +1,7 @@
 .build/
 .swiftpm/
 .codex/
+storage_scope
 dist/
 exports/
 DerivedData/
