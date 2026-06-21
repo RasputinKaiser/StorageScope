@@ -261,6 +261,102 @@ struct FileSystemScannerTests {
         #expect(verified.byteSize == unverifiedGroup.byteSize)
     }
 
+    @Test("verifySizeGroup surfaces exact matches across a multi-directory fixture")
+    func verifySizeGroupSurfacesExactMatchesAcrossMultiDirFixture() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        // Five sibling directories; each holds three files of identical 8 KB byte size with
+        // mixed match patterns:
+        //   - A "common" file (0x42) that shares content across all five dirs -> verified
+        //     group of size 5.
+        //   - A "short" file that shares content only in dir0/dir1/dir2 (0x55); dir3 and dir4
+        //     diverge (0x56, 0x57) so they stay unverified -> verified group of size 3.
+        //   - A "unique" file whose content varies per dir (UInt8(dirIndex)) -> never verified.
+        let commonData = Data(repeating: 0x42, count: 8_192)
+        let sharedShortData = Data(repeating: 0x55, count: 8_192)
+        let dir3ShortData = Data(repeating: 0x56, count: 8_192)
+        let dir4ShortData = Data(repeating: 0x57, count: 8_192)
+
+        let dirCount = 5
+        let parentDirNames = (0..<dirCount).map { "dir\($0)" }
+        for index in 0..<dirCount {
+            let dirURL = temporaryRoot.appendingPathComponent(parentDirNames[index], isDirectory: true)
+            try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+
+            try commonData.write(to: dirURL.appendingPathComponent("common-byte-42.bin"))
+
+            let shortData: Data
+            switch index {
+            case 3: shortData = dir3ShortData
+            case 4: shortData = dir4ShortData
+            default: shortData = sharedShortData
+            }
+            try shortData.write(to: dirURL.appendingPathComponent("group-byte.bin"))
+
+            try Data(repeating: UInt8(index), count: 8_192)
+                .write(to: dirURL.appendingPathComponent("unique-per-dir.bin"))
+        }
+
+        // Verify disabled so the 15 same-byte-size files collapse into a single unverified
+        // group; the on-demand path then has all the work to do.
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1,
+                duplicateVerificationByteLimit: 0,
+                maxDuplicateVerificationFiles: 0
+            )
+        )
+
+        #expect(scan.duplicateSizeGroups.count == 1)
+        #expect(scan.verifiedDuplicateGroups.isEmpty)
+
+        let unverifiedGroup = try #require(scan.duplicateSizeGroups.first)
+        #expect(unverifiedGroup.items.count == 15)
+        #expect(unverifiedGroup.byteSize == 8_192)
+
+        let scanner = FileSystemScanner()
+        let verifiedGroups = try scanner.verifySizeGroup(unverifiedGroup)
+
+        // Exactly two verified groups: the 0x42 family and the 0x55/dir0-dir2 family.
+        #expect(verifiedGroups.count == 2)
+
+        // All checksums are distinct and every verified group reports the same byte size.
+        #expect(Set(verifiedGroups.map(\.checksum)).count == verifiedGroups.count)
+        for verified in verifiedGroups {
+            #expect(verified.byteSize == 8_192)
+            #expect(verified.items.allSatisfy { $0.byteSize == 8_192 })
+        }
+
+        func parentDirName(of item: StorageItem) -> String {
+            item.url.deletingLastPathComponent().lastPathComponent
+        }
+
+        // Common group: spans all five sibling dirs.
+        let commonGroup = try #require(
+            verifiedGroups.first { $0.items.contains { $0.name == "common-byte-42.bin" } }
+        )
+        #expect(commonGroup.items.count == 5)
+        let commonParentDirs = Set(commonGroup.items.map(parentDirName))
+        #expect(commonParentDirs == Set(parentDirNames))
+        #expect(commonParentDirs.count == commonGroup.items.count)
+
+        // Short group: exactly the three 0x55 copies in dir0/dir1/dir2.
+        let shortGroup = try #require(
+            verifiedGroups.first { $0.items.contains { $0.name == "group-byte.bin" } }
+        )
+        #expect(shortGroup.items.count == 3)
+        let shortParentDirs = Set(shortGroup.items.map(parentDirName))
+        #expect(shortParentDirs == Set(["dir0", "dir1", "dir2"]))
+
+        // No verified group touches the unique-per-dir files, and the two groups are disjoint.
+        for verified in verifiedGroups {
+            #expect(!verified.items.contains { $0.name == "unique-per-dir.bin" })
+        }
+        #expect(commonGroup.checksum != shortGroup.checksum)
+    }
+
     @Test("surfaces cleanup candidates for cache folders, installers, and compressed archives")
     func cleanupCandidatesIncludeStorageReviewTargets() throws {
         let temporaryRoot = try makeTemporaryRoot()
