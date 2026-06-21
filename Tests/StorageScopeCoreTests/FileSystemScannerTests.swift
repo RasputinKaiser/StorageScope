@@ -202,6 +202,30 @@ struct FileSystemScannerTests {
         #expect(cache.checksum(for: resized) == nil)
     }
 
+    @Test("clear drops entries and removes the on-disk file")
+    func clearDropsEntriesAndRemovesOnDiskFile() throws {
+        let diskCacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StorageScopeHashCacheTests-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: diskCacheURL) }
+
+        let cache = DuplicateHashCache(cacheURL: diskCacheURL)
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let key = DuplicateHashCache.LookupKey(path: "/tmp/x.bin", byteSize: 512, modificationDate: now)
+        cache.record(key, checksum: "deadbeef")
+        cache.persist()
+
+        #expect(cache.entryCount == 1)
+        #expect(cache.lastPersistedAt != nil)
+        #expect(FileManager.default.fileExists(atPath: diskCacheURL.path))
+
+        cache.clear()
+
+        #expect(cache.entryCount == 0)
+        #expect(cache.lastPersistedAt == nil)
+        #expect(!FileManager.default.fileExists(atPath: diskCacheURL.path))
+        #expect(cache.checksum(for: key) == nil)
+    }
+
     @Test("surfaces cleanup candidates for cache folders, installers, and compressed archives")
     func cleanupCandidatesIncludeStorageReviewTargets() throws {
         let temporaryRoot = try makeTemporaryRoot()

@@ -78,6 +78,13 @@ final class ScanStore: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private let bookmarkStore = SecurityScopedBookmarkStore()
     private let hashCache = DuplicateHashCache(cacheURL: ScanStore.defaultHashCacheURL())
+
+    var duplicateHashCacheEntryCount: Int { hashCache.entryCount }
+    var duplicateHashCacheLastPersistedAt: Date? { hashCache.lastPersistedAt }
+
+    func clearDuplicateHashCache() {
+        hashCache.clear()
+    }
     private var activeRootAccess: SecurityScopedResourceAccess?
     private var cachedCleanupCandidatesKey: DerivedCacheKey?
     private var cachedCleanupCandidates: [CleanupCandidate] = []

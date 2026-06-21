@@ -28,11 +28,13 @@ public final class DuplicateHashCache: @unchecked Sendable {
     private let maxEntries: Int
     private(set) var hits = 0
     private(set) var misses = 0
+    private var lastPersistedAtInternal: Date?
 
     public init(cacheURL: URL? = nil, maxEntries: Int = 10_000) {
         self.cacheURL = cacheURL
         self.maxEntries = max(100, maxEntries)
         load()
+        lastPersistedAtInternal = lastPersistedFromFile()
     }
 
     public func checksum(for key: LookupKey) -> String? {
@@ -72,7 +74,37 @@ public final class DuplicateHashCache: @unchecked Sendable {
             at: cacheURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try? data.write(to: cacheURL, options: .atomic)
+        if (try? data.write(to: cacheURL, options: .atomic)) != nil {
+            lock.lock()
+            lastPersistedAtInternal = Date()
+            lock.unlock()
+        }
+    }
+
+    public var entryCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.count
+    }
+
+    public var lastPersistedAt: Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastPersistedAtInternal
+    }
+
+    /// Drops every cached checksum and removes the on-disk cache file. Useful when the user
+    /// wants to force a re-hash on the next scan (e.g. after moving files around) or to
+    /// reclaim the disk footprint.
+    public func clear() {
+        lock.lock()
+        entries.removeAll()
+        lastPersistedAtInternal = nil
+        lock.unlock()
+
+        if let cacheURL {
+            try? FileManager.default.removeItem(at: cacheURL)
+        }
     }
 
     private func load() {
@@ -82,6 +114,14 @@ public final class DuplicateHashCache: @unchecked Sendable {
             return
         }
         entries = decoded
+    }
+
+    private func lastPersistedFromFile() -> Date? {
+        guard let cacheURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: cacheURL.path) else {
+            return nil
+        }
+        return attrs[.modificationDate] as? Date
     }
 
     private func pruneOldest() {
