@@ -1,3 +1,4 @@
+import StorageScopeCore
 import SwiftUI
 
 struct TypeBreakdownView: View {
@@ -81,38 +82,11 @@ struct TypeBreakdownView: View {
                             Button {
                                 store.focusFileType(stat)
                             } label: {
-                                HStack(spacing: 14) {
-                                    Text(stat.label)
-                                        .font(.system(.body, design: .rounded).weight(.semibold))
-                                        .frame(width: 110, alignment: .leading)
-
-                                    Text(stat.category.rawValue)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 86, alignment: .leading)
-
-                                    GeometryReader { geometry in
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(.quaternary)
-                                            .overlay(alignment: .leading) {
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(.blue.opacity(0.72))
-                                                    .frame(width: max(8, geometry.size.width * CGFloat(Double(stat.totalBytes) / Double(maxBytes))))
-                                            }
-                                    }
-                                    .frame(height: 10)
-
-                                    Text(StorageFormat.bytes(stat.totalBytes))
-                                        .font(.system(.body, design: .rounded).monospacedDigit())
-                                        .frame(width: 100, alignment: .trailing)
-
-                                    Text(stat.fileCountLabel)
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 86, alignment: .trailing)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 11)
-                                .contentShape(Rectangle())
+                                FileTypeRowLabel(
+                                    stat: stat,
+                                    maxBytes: maxBytes,
+                                    isFocused: isFocused(fileTypeFocus: store.filters.fileTypeFocus, stat: stat)
+                                )
                             }
                             .buttonStyle(.plain)
                             .accessibilityElement(children: .ignore)
@@ -128,4 +102,56 @@ struct TypeBreakdownView: View {
             .padding(20)
         }
     }
+}
+
+private struct FileTypeRowLabel: View {
+    let stat: FileTypeStat
+    let maxBytes: Int64
+    let isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(stat.label)
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .frame(width: 110, alignment: .leading)
+
+            Text(stat.category.rawValue)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 86, alignment: .leading)
+
+            GeometryReader { geometry in
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(.quaternary)
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(.blue.opacity(0.72))
+                            .frame(width: max(8, geometry.size.width * CGFloat(Double(stat.totalBytes) / Double(maxBytes))))
+                    }
+            }
+            .frame(height: 10)
+
+            Text(StorageFormat.bytes(stat.totalBytes))
+                .font(.system(.body, design: .rounded).monospacedDigit())
+                .frame(width: 100, alignment: .trailing)
+
+            Text(stat.fileCountLabel)
+                .foregroundStyle(.secondary)
+                .frame(width: 86, alignment: .trailing)
+
+            Image(systemName: isFocused ? "checkmark.circle.fill" : "chevron.right")
+                .foregroundStyle(isFocused ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.secondary.opacity(0.5)))
+                .frame(width: 18)
+                .help(isFocused ? "Filtered by this type" : "")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
+        .selectionBackground(isSelected: isFocused)
+    }
+}
+
+private func isFocused(fileTypeFocus: String?, stat: FileTypeStat) -> Bool {
+    let expected = stat.label == "No Extension" ? "" : stat.label
+    return fileTypeFocus == expected
 }

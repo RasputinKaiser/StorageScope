@@ -75,15 +75,22 @@ enum SmartView: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Views whose rows are individual files (rather than folders / categories) and so
-    /// can serve as a destination for the `Type: <ext>` filter chip set from
-    /// TypeBreakdownView. Used by ScanStore.selectedView's didSet to auto-clear a stale
-    /// file-type focus when the user navigates to a view it doesn't apply to.
+    /// Whether the file-type focus chip should *persist* on this view. Used by
+    /// `ScanStore.selectedView`'s didSet to auto-clear a stale `Type: <ext>` chip before
+    /// it silently empties the view. Cases:
+    /// - true for file-bearing views where the chip actively filters (`largestFiles`,
+    ///   `oldLargeFiles`, `duplicateCandidates`) — chip stays.
+    /// - true for File Types listing itself (`typeBreakdown`) — that view lists every
+    ///   extension unconditionally (see `filteredTypeBreakdown`, which filters only by
+    ///   search query), so the chip has nothing to filter; the user navigating back to
+    ///   inspect which type they picked should keep the visual cue.
+    /// - false for folder / category views whose rows lack extensions — empty filter
+    ///   output otherwise.
     var supportsFileTypeFocus: Bool {
         switch self {
-        case .largestFiles, .oldLargeFiles, .duplicateCandidates:
+        case .largestFiles, .oldLargeFiles, .duplicateCandidates, .typeBreakdown:
             return true
-        case .overview, .cleanupReview, .tree, .largestFolders, .typeBreakdown:
+        case .overview, .cleanupReview, .tree, .largestFolders:
             return false
         }
     }
