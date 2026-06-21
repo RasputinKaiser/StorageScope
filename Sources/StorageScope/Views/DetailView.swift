@@ -165,7 +165,7 @@ private struct FirstRunPermissionCard: View {
                 Text("How folder access works")
                     .font(.headline)
                 Text("StorageScope is sandboxed. It only reads folders you choose with the macOS picker, never uploads file names, paths, or contents. Scans of protected locations (Home, Desktop, Documents, Downloads, external volumes) may require you to grant access, or Full Disk Access for whole-disk scans.")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
