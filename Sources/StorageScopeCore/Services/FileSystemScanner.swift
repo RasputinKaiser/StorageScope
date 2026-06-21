@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 
 public enum FileSystemScannerError: LocalizedError {
     case cancelled
@@ -55,6 +56,11 @@ public final class FileSystemScanner {
         return min(8, max(4, cores))
     }()
 
+    /// os_signpost surface for Instruments. Subsystem mirrors the bundle identifier prefix;
+    /// category ties Scanner-only work together so it can be filtered from app-side spans.
+    private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
+    private static let signpostID = OSSignpostID(log: log)
+
     private let fileManager: FileManager
     private let hashCache: DuplicateHashCache?
     private let resourceKeys: Set<URLResourceKey> = [
@@ -86,6 +92,9 @@ public final class FileSystemScanner {
             throw FileSystemScannerError.rootDoesNotExist(rootURL)
         }
 
+        os_signpost(.begin, log: Self.log, name: "scan", signpostID: Self.signpostID,
+                    "root=%{public}@", rootURL.path)
+
         let startedAt = Date()
         let accumulator = ScanAccumulator(options: options, progress: progress)
         let rootItem = try scanItem(
@@ -105,6 +114,9 @@ public final class FileSystemScanner {
         )
         let duplicateVerificationDuration = Date().timeIntervalSince(duplicateVerificationStartedAt)
         let finishedAt = Date()
+
+        os_signpost(.end, log: Self.log, name: "scan", signpostID: Self.signpostID,
+                    "items=%d verified=%d", accumulator.scannedItemCount, verifiedDuplicateGroups.count)
 
         return StorageScan(
             rootURL: rootURL,
@@ -271,6 +283,13 @@ public final class FileSystemScanner {
                     return
                 }
 
+                let enumerateSignpostID = OSSignpostID(log: Self.log, object: index as NSNumber)
+                os_signpost(.begin, log: Self.log, name: "enumerate", signpostID: enumerateSignpostID,
+                            "child=%{public}@", childURLs[index].lastPathComponent)
+                defer {
+                    os_signpost(.end, log: Self.log, name: "enumerate", signpostID: enumerateSignpostID)
+                }
+
                 do {
                     try cancellation?.check()
                     let child = try scanItem(
@@ -379,6 +398,13 @@ public final class FileSystemScanner {
         let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
 
         DispatchQueue.concurrentPerform(iterations: verificationGroups.count) { groupIndex in
+            let verifySignpostID = OSSignpostID(log: Self.log, object: groupIndex as NSNumber)
+            os_signpost(.begin, log: Self.log, name: "verify", signpostID: verifySignpostID,
+                        "group=%d", groupIndex)
+            defer {
+                os_signpost(.end, log: Self.log, name: "verify", signpostID: verifySignpostID)
+            }
+
             do {
                 try cancellation?.check()
                 let sizeGroup = verificationGroups[groupIndex]

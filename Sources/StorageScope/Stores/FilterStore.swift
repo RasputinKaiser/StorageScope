@@ -1,5 +1,6 @@
 import Foundation
 import StorageScopeCore
+import os
 
 /// Owning store for display-filter state: search query (debounced from `searchText`),
 /// size filter, sort option, cleanup lane, hidden-files toggle, old-file-age threshold.
@@ -13,6 +14,12 @@ import StorageScopeCore
 ///   state changes
 @MainActor
 final class FilterStore: ObservableObject {
+
+    /// os_signpost surface for Instruments. Shares the scan subsystem/category so subtree
+    /// rebuilds cluster with the rest of scan-side work in the Instruments timeline.
+    private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
+    private static let signpostID = OSSignpostID(log: log)
+
     /// Identifies a single active filter the user can dismiss individually from the
     /// filter chip bar. `id` routes taps back to the filter to clear; `label` is what
     /// the chip shows.
@@ -203,6 +210,11 @@ final class FilterStore: ObservableObject {
     }
 
     private func rebuildSearchSubtreeMatchIDs() {
+        os_signpost(.begin, log: Self.log, name: "index", signpostID: Self.signpostID)
+        defer {
+            os_signpost(.end, log: Self.log, name: "index", signpostID: Self.signpostID)
+        }
+
         guard let scan = scanLookup() else {
             searchSubtreeMatchIDs = nil
             return

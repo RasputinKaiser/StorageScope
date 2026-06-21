@@ -1,10 +1,16 @@
 import Foundation
 import StorageScopeCore
 import SwiftUI
+import os
 
 @MainActor
 final class ScanStore: ObservableObject {
     private static let overviewItemCap = 100
+
+    /// os_signpost surface for Instruments. Mirrors FileSystemScanner's subsystem so app-side
+    /// and scanner-side spans group together when filtering by subsystem in Instruments.
+    private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
+    private static let signpostID = OSSignpostID(log: log)
 
     private static func defaultHashCacheURL() -> URL? {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
@@ -536,9 +542,14 @@ func setSelectedView(_ view: SmartView) {
                 scan = result
                 let cacheToPersist = hashCache
                 let pathsScanned = Set(result.retainedItems.map { $0.url.standardizedFileURL.path })
+                let persistLog = Self.log
+                let persistSignpostID = Self.signpostID
                 Task.detached(priority: .utility) {
+                    os_signpost(.begin, log: persistLog, name: "persist", signpostID: persistSignpostID,
+                                "entries=%d", cacheToPersist.entryCount)
                     _ = cacheToPersist.purgeStale(except: pathsScanned)
                     cacheToPersist.persist()
+                    os_signpost(.end, log: persistLog, name: "persist", signpostID: persistSignpostID)
                 }
                 recents.remember(url, scannedAt: result.finishedAt, totalBytes: result.totalBytes)
                 treeExpandedIDs = [result.rootItem.id]
