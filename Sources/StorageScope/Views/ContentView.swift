@@ -5,6 +5,29 @@ struct ContentView: View {
     var onOpenSettings: () -> Void = {}
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
+    /// Search-field prompt that reflects what the active view actually filters —
+    /// "files and paths" misleads on Tree (where rows are folders) and on File Types
+    /// (where rows are extension stats). Kept here instead of computed in ScanStore so
+    /// the prompt stays a UI concern, not a store concern.
+    private var searchPrompt: String {
+        switch store.activeView {
+        case .tree:
+            return "Search folders and paths"
+        case .typeBreakdown:
+            return "Search extensions"
+        case .duplicateCandidates:
+            return "Search duplicate paths"
+        case .cleanupReview:
+            return "Search cleanup candidates"
+        case .largestFolders:
+            return "Search largest folders"
+        case .largestFiles, .oldLargeFiles:
+            return "Search files and paths"
+        case .overview:
+            return "Search files and paths"
+        }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(store: store)
@@ -19,7 +42,7 @@ struct ContentView: View {
                     .frame(minWidth: 300, idealWidth: 330, maxWidth: 380)
             }
         }
-        .searchable(text: store.filterBinding(\.searchText), placement: .toolbar, prompt: "Search files and paths")
+        .searchable(text: store.filterBinding(\.searchText), placement: .toolbar, prompt: searchPrompt)
         .toolbar {
             ToolbarItemGroup {
                 Button {
