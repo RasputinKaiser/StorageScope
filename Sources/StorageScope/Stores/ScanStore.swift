@@ -2,18 +2,8 @@ import AppKit
 import Foundation
 import StorageScopeCore
 
-struct RecentScanEntry: Codable, Identifiable, Hashable {
-    let path: String
-    let scannedAt: Date
-    let totalBytes: Int64
-
-    var id: String { path }
-}
-
 @MainActor
 final class ScanStore: ObservableObject {
-    private static let recentScanPathsKey = "StorageScope.recentScanPaths"
-    private static let recentScanEntriesKey = "StorageScope.recentScanEntries"
     private static let overviewItemCap = 100
 
     private static func defaultHashCacheURL() -> URL? {
@@ -46,6 +36,8 @@ final class ScanStore: ObservableObject {
         let ignoredCleanupCandidateIDs: Set<String>
     }
 
+    let recents = RecentsStore()
+
     @Published var selectedView: SmartView? = .overview {
         didSet { invalidateItemsCache() }
     }
@@ -54,7 +46,6 @@ final class ScanStore: ObservableObject {
     @Published private var selection = ScanSelection()
     @Published var errorMessage: String?
     @Published var pendingTrashReviewPlan: TrashReviewPlan?
-    @Published private(set) var recentScanEntries: [RecentScanEntry]
     // searchText is the immediate input bound to .searchable; query is its debounced
     // downstream value that filters read. Keeping them split means per-keystroke
     // recompute is bounded to one publish per ~200ms, not per character.
@@ -103,20 +94,7 @@ final class ScanStore: ObservableObject {
     private var cachedOldLargeFilesKey: DerivedCacheKey?
     private var cachedOldLargeFiles: [StorageItem] = []
 
-    init() {
-        if let data = UserDefaults.standard.data(forKey: Self.recentScanEntriesKey),
-           let decoded = try? JSONDecoder().decode([RecentScanEntry].self, from: data) {
-            recentScanEntries = decoded
-        } else {
-            // One-time migration from the legacy string-array recent-scans list.
-            let legacyPaths = UserDefaults.standard.stringArray(forKey: Self.recentScanPathsKey) ?? []
-            let now = Date()
-            recentScanEntries = legacyPaths.map { RecentScanEntry(path: $0, scannedAt: now, totalBytes: 0) }
-            if !legacyPaths.isEmpty {
-                UserDefaults.standard.removeObject(forKey: Self.recentScanPathsKey)
-            }
-        }
-    }
+    init() {}
 
     var activeView: SmartView {
         selectedView ?? .overview
@@ -399,17 +377,6 @@ final class ScanStore: ObservableObject {
         scan(url)
     }
 
-    func forgetRecentScanPath(_ path: String) {
-        recentScanEntries.removeAll { $0.path == path }
-        persistRecentScanEntries()
-    }
-
-    private func persistRecentScanEntries() {
-        if let data = try? JSONEncoder().encode(recentScanEntries) {
-            UserDefaults.standard.set(data, forKey: Self.recentScanEntriesKey)
-        }
-    }
-
     var mountedVolumes: [URL] {
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsInternalKey]
         return FileManager.default.mountedVolumeURLs(
@@ -476,7 +443,7 @@ final class ScanStore: ObservableObject {
     }
 
     private func scan(_ url: URL) {
-        rememberScanURL(url)
+        recents.remember(url, scannedAt: Date(), totalBytes: 0)
         session.lastScannedURL = url
         selection.resetForNewScan()
         keeperOverridesByChecksum.removeAll()
@@ -544,7 +511,7 @@ final class ScanStore: ObservableObject {
                     _ = cacheToPersist.purgeStale(except: pathsScanned)
                     cacheToPersist.persist()
                 }
-                rememberScanURL(url, scannedAt: result.finishedAt, totalBytes: result.totalBytes)
+                recents.remember(url, scannedAt: result.finishedAt, totalBytes: result.totalBytes)
                 treeExpandedIDs = [result.rootItem.id]
                 session.appliedOptions = optionsSnapshot
                 if markResultsNeedRefreshWhenCurrentScanCompletes {
@@ -1267,15 +1234,6 @@ final class ScanStore: ObservableObject {
             includeHiddenFiles: includeHiddenFiles,
             oldFileAgeDays: oldFileAgeDays
         )
-    }
-
-    private func rememberScanURL(_ url: URL, scannedAt: Date = Date(), totalBytes: Int64 = 0) {
-        let path = url.standardizedFileURL.path
-        let entry = RecentScanEntry(path: path, scannedAt: scannedAt, totalBytes: totalBytes)
-        recentScanEntries.removeAll { $0.path == path }
-        recentScanEntries.insert(entry, at: 0)
-        recentScanEntries = Array(recentScanEntries.prefix(8))
-        persistRecentScanEntries()
     }
 
     private func replaceActiveRootAccess(with access: SecurityScopedResourceAccess) {
