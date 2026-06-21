@@ -15,6 +15,12 @@
   <meta name="twitter:title" content="Open-source Mac storage cleaner - StorageScope">
   <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
   <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"Article","headline":"Open-source Mac storage cleaner","inLanguage":"en","mainEntityOfPage":"https://rasputinkaiser.github.io/StorageScope/mac-storage-cleaner.html","about":"Open-source Mac storage cleaner for reviewing large files, caches, duplicate files, archives, and cleanup targets before moving anything to Trash.","isPartOf":{"@type":"WebSite","name":"StorageScope","url":"https://rasputinkaiser.github.io/StorageScope/"}}
+  </script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"StorageScope","item":"https://rasputinkaiser.github.io/StorageScope/"},{"@type":"ListItem","position":2,"name":"Storage cleaner","item":"https://rasputinkaiser.github.io/StorageScope/mac-storage-cleaner.html"}]}
+  </script>
   <style>
     :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
     @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
@@ -51,6 +57,15 @@
     </header>
     <h1>Open-source Mac storage cleaner</h1>
     <p>StorageScope is a Mac storage cleaner for people who want review-first cleanup instead of black-box deletion. It helps find large folders, stale files, duplicate candidates, caches, installers, archives, disk images, and build artifacts.</p>
+
+    <section class="card">
+      <h2>How to plan Mac storage cleanup</h2>
+      <ol>
+        <li><strong>Scan the folders you care about</strong> &mdash; StorageScope separates verified duplicate reclaim, review-suggested cleanup, and access gaps into different lanes.</li>
+        <li><strong>Mark cleanup candidates</strong> and review the risk disclosure on each batch; mixed-confidence batches spell out what is uncertain before you act.</li>
+        <li><strong>Confirm a batched, transactional move to Trash</strong> &mdash; earlier moves roll back if a later one fails, and nothing is silently deleted.</li>
+      </ol>
+    </section>
 
     <section class="card">
       <h2>Cleanup is review-first</h2>

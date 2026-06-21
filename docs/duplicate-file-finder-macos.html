@@ -15,6 +15,12 @@
   <meta name="twitter:title" content="Duplicate file finder for macOS - StorageScope">
   <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
   <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"Article","headline":"Duplicate file finder for macOS","inLanguage":"en","mainEntityOfPage":"https://rasputinkaiser.github.io/StorageScope/duplicate-file-finder-macos.html","about":"MacOS duplicate file review using same-size candidates and SHA-256 verification to separate verified duplicates from files needing review.","isPartOf":{"@type":"WebSite","name":"StorageScope","url":"https://rasputinkaiser.github.io/StorageScope/"}}
+  </script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"StorageScope","item":"https://rasputinkaiser.github.io/StorageScope/"},{"@type":"ListItem","position":2,"name":"Duplicate finder","item":"https://rasputinkaiser.github.io/StorageScope/duplicate-file-finder-macos.html"}]}
+  </script>
   <style>
     :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
     @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
@@ -51,6 +57,15 @@
     </header>
     <h1>Duplicate file finder for macOS</h1>
     <p>StorageScope includes duplicate file review for macOS. It starts with same-size duplicate candidates, then verifies matches with SHA-256 inside a bounded work budget so cleanup planning can separate verified duplicates from files that still need human review.</p>
+
+    <section class="card">
+      <h2>How to review duplicate files</h2>
+      <ol>
+        <li><strong>Scan your folders</strong> &mdash; StorageScope collects same-size duplicate candidates automatically during the local scan.</li>
+        <li><strong>Verify matches with SHA-256</strong> (auto for groups within budget, or on demand via "Verify Now") and assign a keeper per verified group using the comparison sheet.</li>
+        <li><strong>Send non-keeper copies to Trash</strong> as a batched, transactional move; keepers are excluded automatically.</li>
+      </ol>
+    </section>
 
     <section class="card">
       <h2>How duplicate review works</h2>
