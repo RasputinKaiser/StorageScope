@@ -77,6 +77,7 @@ struct ContentView: View {
                     isMoving: store.isMovingToTrash,
                     reveal: { store.revealTrashReviewItem($0) },
                     revealAll: { store.revealAllTrashReviewItems($0) },
+                    open: { store.openTrashReviewItem($0) },
                     remove: { store.removePendingTrashReviewItem($0) },
                     cancel: { store.cancelPendingTrashReview() },
                     confirm: { store.confirmPendingTrashReview() }
