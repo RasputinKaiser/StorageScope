@@ -215,6 +215,9 @@ final class ScanStore: ObservableObject {
     }
 
     var scanNoticeText: String? {
+        if let cancellation = session.lastCancellationMessage {
+            return cancellation
+        }
         if scanOptionsAreStale {
             return "Scan options changed. Current results still reflect the previous hidden-file and age settings."
         }
@@ -328,6 +331,10 @@ final class ScanStore: ObservableObject {
         scanTask?.cancel()
 
         if activeScanID == cancelledScanID {
+            let pathLabel = session.lastScannedURL?.lastPathComponent ?? "Scan"
+            session.lastCancellationMessage = scan != nil
+                ? "Scan of \(pathLabel) was canceled. Previous results are still shown; rescan when you are ready."
+                : "Scan of \(pathLabel) was canceled. Rescan or pick another folder when ready."
             activeScanID = nil
             cancellation = nil
             scanTask = nil
@@ -354,6 +361,7 @@ final class ScanStore: ObservableObject {
     private func scan(_ url: URL) {
         recents.remember(url, scannedAt: Date(), totalBytes: 0)
         session.lastScannedURL = url
+        session.lastCancellationMessage = nil
         selection.resetForNewScan()
         keeperOverridesByChecksum.removeAll()
         onDemandVerification.clear()
@@ -1058,6 +1066,9 @@ final class ScanStore: ObservableObject {
 
     private func markResultsNeedRefresh() {
         session.resultsNeedRefresh = true
+        // Trash changes are more actionable than a stale cancel notice — let the
+        // resultsNeedRefresh notice take the banner.
+        session.lastCancellationMessage = nil
         progress = ScanProgress(
             scannedItemCount: scan?.scannedItemCount ?? progress.scannedItemCount,
             totalBytes: scan?.totalBytes ?? progress.totalBytes,
