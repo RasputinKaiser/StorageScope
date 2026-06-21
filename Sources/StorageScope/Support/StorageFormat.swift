@@ -72,3 +72,11 @@ enum StorageFormat {
         }
     }
 }
+
+extension String {
+    /// Returns `self` when non-empty, otherwise `nil`. Shared so view files do not
+    /// each declare their own private duplicate.
+    var nonEmpty: String? {
+        isEmpty ? nil : self
+    }
+}

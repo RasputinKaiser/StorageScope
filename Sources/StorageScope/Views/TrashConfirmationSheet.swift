@@ -1,13 +1,19 @@
 import StorageScopeCore
 import SwiftUI
 
-struct TrashConfirmationSheet: View {
-    let plan: TrashReviewPlan
+/// Bundles the closures + lifecycle state `TrashConfirmationSheet` needs from the store.
+/// Keeps the sheet's initializer to two parameters (plan + actions) instead of six.
+struct TrashReviewActions {
     let isMoving: Bool
     let reveal: (TrashReviewPlan.Item) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
     let cancel: () -> Void
     let confirm: () -> Void
+}
+
+struct TrashConfirmationSheet: View {
+    let plan: TrashReviewPlan
+    let actions: TrashReviewActions
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,7 +26,7 @@ struct TrashConfirmationSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if isMoving {
+                if actions.isMoving {
                     HStack(spacing: 10) {
                         ProgressView()
                             .controlSize(.small)
@@ -44,9 +50,9 @@ struct TrashConfirmationSheet: View {
                             systemImage: "checkmark.seal.fill",
                             tint: .green,
                             items: plan.verifiedItems,
-                            reveal: reveal,
-                            remove: remove,
-                            isMoving: isMoving
+                            reveal: actions.reveal,
+                            remove: actions.remove,
+                            isMoving: actions.isMoving
                         )
                     }
 
@@ -57,16 +63,16 @@ struct TrashConfirmationSheet: View {
                             systemImage: "exclamationmark.octagon.fill",
                             tint: .orange,
                             items: plan.reviewItems,
-                            reveal: reveal,
-                            remove: remove,
-                            isMoving: isMoving
+                            reveal: actions.reveal,
+                            remove: actions.remove,
+                            isMoving: actions.isMoving
                         )
                     }
                 }
                 .padding(20)
             }
             .frame(minHeight: 260)
-            .disabled(isMoving)
+            .disabled(actions.isMoving)
 
             Divider()
 
@@ -78,16 +84,16 @@ struct TrashConfirmationSheet: View {
                 Spacer()
 
                 Button(L10n.string("Cancel"), role: .cancel) {
-                    cancel()
+                    actions.cancel()
                 }
                 .keyboardShortcut(.cancelAction)
-                .disabled(isMoving)
+                .disabled(actions.isMoving)
 
                 Button(L10n.string("Move to Trash"), role: .destructive) {
-                    confirm()
+                    actions.confirm()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isMoving)
+                .disabled(actions.isMoving)
             }
             .padding(20)
         }
