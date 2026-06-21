@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frequently Asked Questions - StorageScope</title>
+  <meta name="description" content="StorageScope FAQ: is it free, does it upload data, is it an App Store app, how duplicates are verified, whether it deletes files, and which macOS versions are supported.">
+  <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/faq.html">
+  <meta property="og:title" content="Frequently Asked Questions - StorageScope">
+  <meta property="og:description" content="Answers to common questions about StorageScope: pricing, privacy, duplicate verification, Trash safety, and macOS support.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/faq.html">
+  <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Frequently Asked Questions - StorageScope">
+  <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "inLanguage": "en",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "StorageScope",
+      "url": "https://rasputinkaiser.github.io/StorageScope/"
+    },
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is StorageScope free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. StorageScope is open-source software released under the MIT License. There is no cost, no in-app purchase, no advertising, and no account required to use any feature."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does StorageScope upload my scan data anywhere?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. StorageScope is local-first. Scan results, file names, paths, sizes, modification dates, and the SHA-256 hashes computed for duplicate verification all stay on your Mac. The binary contains no analytics, telemetry, or advertising identifiers."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does StorageScope delete files permanently?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. File actions move items to the macOS Trash using sandboxed FileManager APIs, never silent permanent deletion. Batched moves are transactional: if a later move fails, earlier moves in the batch roll back so you can inspect what happened. Anything moved to Trash can be restored from Finder."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How are duplicates verified?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "During a scan, StorageScope groups files of the same size as duplicate candidates. Candidates within an automatic budget are hashed with SHA-256 to confirm they are byte-for-byte identical before being marked as verified duplicates. Larger groups can be verified on demand with the Verify Now button, which hashes the group out-of-band using the persisted hash cache so unchanged files are skipped on rescan."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is a keeper, and can I change it?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Each verified duplicate group has one keeper copy that is excluded from cleanup by default. The keeper starts as the first file in the group and can be reassigned at any time from the context menu or the side-by-side keeper comparison sheet, which shows size, modification date, and full path for each candidate."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which macOS versions are supported?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "StorageScope requires macOS 14 (Sonoma) or later. It is a native SwiftUI and AppKit app, sandboxed, and signed with the project App Sandbox entitlements."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is there a Mac App Store version?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Not yet. StorageScope is currently distributed as source and as signed DMG downloads on GitHub Releases. A Mac App Store submission is possible using the included package_app_store.sh script with Apple distribution identities, but no App Store listing is published at this time."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How is StorageScope different from paid cleaners like CleanMyMac?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "StorageScope is open-source and local-first, so you can read the scanner, duplicate verifier, and Trash mover before running anything. It is deliberately not a one-click automatic cleaner: cleanup is review-first, with verified duplicate reclaim, review-suggested cleanup, and access gaps kept in separate lanes, and every action goes to Trash with transactional rollback rather than silent deletion."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need Full Disk Access?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Only for folder-level scanning of locations outside what a sandboxed app can read by default. For most folders you select through the macOS folder picker, no Full Disk Access is needed. The first-run card links directly to System Settings so you can grant it only if a scan reports an access gap."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Where do bug reports and feature requests go?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Issues and pull requests are welcome on the GitHub repository at https://github.com/RasputinKaiser/StorageScope. The full release history with notes and download checksums is on the GitHub Releases page."
+        }
+      }
+    ]
+  }
+  </script>
+  <style>
+    :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
+    @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; }
+    h2 { margin-top: 36px; font-size: 1.15rem; }
+    p, li { color: var(--muted); line-height: 1.6; }
+    a { color: var(--accent); }
+    .qa { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 22px; margin-top: 16px; }
+    .qa h2 { margin-top: 0; }
+    .qa p { margin: 0; }
+    .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+    .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
+    .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
+    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; }
+    .site-nav nav a:hover { color:var(--accent); }
+    footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
+    footer.site-footer a { color:inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="site-nav" aria-label="Site navigation">
+      <a class="brand" href="./">StorageScope</a>
+      <nav>
+        <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
+        <a href="mac-storage-cleaner.html">Storage cleaner</a>
+        <a href="duplicate-file-finder-macos.html">Duplicate finder</a>
+        <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative</a>
+      </nav>
+    </header>
+    <h1>Frequently asked questions</h1>
+    <p>Common questions about StorageScope: pricing, privacy, duplicate verification, Trash safety, and macOS support.</p>
+
+    <section class="qa"><h2>Is StorageScope free?</h2><p>Yes. StorageScope is open-source software released under the MIT License. There is no cost, no in-app purchase, no advertising, and no account required to use any feature.</p></section>
+    <section class="qa"><h2>Does StorageScope upload my scan data anywhere?</h2><p>No. StorageScope is local-first. Scan results, file names, paths, sizes, modification dates, and the SHA-256 hashes computed for duplicate verification all stay on your Mac. The binary contains no analytics, telemetry, or advertising identifiers. See the <a href="privacy.html">privacy page</a> for the full posture.</p></section>
+    <section class="qa"><h2>Does StorageScope delete files permanently?</h2><p>No. File actions move items to the macOS Trash using sandboxed FileManager APIs, never silent permanent deletion. Batched moves are transactional: if a later move fails, earlier moves in the batch roll back so you can inspect what happened. Anything moved to Trash can be restored from Finder.</p></section>
+    <section class="qa"><h2>How are duplicates verified?</h2><p>During a scan, StorageScope groups files of the same size as duplicate candidates. Candidates within an automatic budget are hashed with SHA-256 to confirm they are byte-for-byte identical before being marked as verified duplicates. Larger groups can be verified on demand with the <em>Verify Now</em> button, which hashes the group out-of-band using the persisted hash cache so unchanged files are skipped on rescan.</p></section>
+    <section class="qa"><h2>What is a keeper, and can I change it?</h2><p>Each verified duplicate group has one keeper copy that is excluded from cleanup by default. The keeper starts as the first file in the group and can be reassigned at any time from the context menu or the side-by-side keeper comparison sheet, which shows size, modification date, and full path for each candidate.</p></section>
+    <section class="qa"><h2>Which macOS versions are supported?</h2><p>StorageScope requires macOS 14 (Sonoma) or later. It is a native SwiftUI and AppKit app, sandboxed, and signed with the project App Sandbox entitlements.</p></section>
+    <section class="qa"><h2>Is there a Mac App Store version?</h2><p>Not yet. StorageScope is currently distributed as source and as signed DMG downloads on <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>. A Mac App Store submission is possible using the included <code>package_app_store.sh</code> script with Apple distribution identities, but no App Store listing is published at this time.</p></section>
+    <section class="qa"><h2>How is StorageScope different from paid cleaners like CleanMyMac?</h2><p>StorageScope is open-source and local-first, so you can read the scanner, duplicate verifier, and Trash mover before running anything. It is deliberately not a one-click automatic cleaner: cleanup is review-first, with verified duplicate reclaim, review-suggested cleanup, and access gaps kept in separate lanes, and every action goes to Trash with transactional rollback rather than silent deletion. See the <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative page</a>.</p></section>
+    <section class="qa"><h2>Do I need Full Disk Access?</h2><p>Only for folder-level scanning of locations outside what a sandboxed app can read by default. For most folders you select through the macOS folder picker, no Full Disk Access is needed. The first-run card links directly to System Settings so you can grant it only if a scan reports an access gap.</p></section>
+    <section class="qa"><h2>Where do bug reports and feature requests go?</h2><p>Issues and pull requests are welcome on the <a href="https://github.com/RasputinKaiser/StorageScope">GitHub repository</a>. The full release history with notes and download checksums is on the <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a> page.</p></section>
+
+    <p class="actions-note"><a href="privacy.html">Privacy</a> &middot; <a href="changelog.html">Changelog</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg">Download v0.3.0 (.dmg)</a></p>
+
+    <footer class="site-footer">
+      <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="changelog.html">Changelog</a> &middot; <a href="faq.html">FAQ</a></div>
+      <div>v0.3.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+    </footer>
+  </main>
+</body>
+</html>
