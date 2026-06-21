@@ -27,6 +27,7 @@ struct ContentView: View {
                 } label: {
                     Label(L10n.string("Choose Folder"), systemImage: "folder.badge.plus")
                 }
+                .disabled(store.isScanning)
 
                 Button {
                     store.rescan()
