@@ -834,6 +834,11 @@ final class ScanStore: ObservableObject {
         FileActionService.reveal(item.url)
     }
 
+    func revealAllTrashReviewItems(_ items: [TrashReviewPlan.Item]) {
+        let urls = items.map(\.url)
+        FileActionService.revealAll(urls)
+    }
+
     func removePendingTrashReviewItem(_ item: TrashReviewPlan.Item) {
         selectedCleanupCandidateIDs.remove(item.id)
         let remaining = selectedCleanupBatchCandidates
