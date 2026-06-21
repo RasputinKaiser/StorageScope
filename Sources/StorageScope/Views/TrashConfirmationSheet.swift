@@ -9,6 +9,7 @@ struct TrashReviewActions {
     let revealAll: ([TrashReviewPlan.Item]) -> Void
     let open: (TrashReviewPlan.Item) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
+    let removeAll: ([TrashReviewPlan.Item]) -> Void
     let cancel: () -> Void
     let confirm: () -> Void
 }
@@ -56,6 +57,7 @@ struct TrashConfirmationSheet: View {
                             revealAll: actions.revealAll,
                             open: actions.open,
                             remove: actions.remove,
+                            removeAll: actions.removeAll,
                             isMoving: actions.isMoving
                         )
                     }
@@ -71,6 +73,7 @@ struct TrashConfirmationSheet: View {
                             revealAll: actions.revealAll,
                             open: actions.open,
                             remove: actions.remove,
+                            removeAll: actions.removeAll,
                             isMoving: actions.isMoving
                         )
                     }
@@ -125,6 +128,7 @@ private struct TrashReviewSection: View {
     let revealAll: ([TrashReviewPlan.Item]) -> Void
     let open: (TrashReviewPlan.Item) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
+    let removeAll: ([TrashReviewPlan.Item]) -> Void
     let isMoving: Bool
 
     var body: some View {
@@ -151,6 +155,17 @@ private struct TrashReviewSection: View {
                     .controlSize(.small)
                     .disabled(isMoving)
                     .help("Reveal all \(items.count.formatted()) items in Finder")
+
+                    Button(role: .destructive) {
+                        removeAll(items)
+                    } label: {
+                        Label("Remove All", systemImage: "minus.circle.fill")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .disabled(isMoving)
+                    .help("Remove all \(items.count.formatted()) \(items.count == 1 ? "item" : "items") from this batch")
                 }
             }
 
