@@ -132,6 +132,10 @@ private struct TreeNodeRow: View {
             .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint(item.isContainer ? "Selects and toggles this folder" : "Selects this item")
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                store.selectedItemID = item.id
+                store.openSelectedItem()
+            })
             .contextMenu {
                 Button("Reveal in Finder") {
                     store.selectedItemID = item.id

@@ -133,6 +133,10 @@ private struct StorageItemRow: View {
         .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint("Selects this storage item")
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            store.selectedItemID = item.id
+            store.openSelectedItem()
+        })
         .contextMenu {
             Button("Reveal in Finder") {
                 store.selectedItemID = item.id
