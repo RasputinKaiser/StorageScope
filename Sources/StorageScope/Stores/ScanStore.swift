@@ -52,11 +52,13 @@ var selectedView: SmartView? {
 
 func setSelectedView(_ view: SmartView) {
     let old = selectedView
+    guard old != view else { return }
+    objectWillChange.send()
     storedSelectedView = view.rawValue
     invalidateItemsCache()
     // Clear a stale file-type focus when navigating away from file-bearing views.
     // See SmartView.supportsFileTypeFocus for the case-by-case policy.
-    if old != view, !view.supportsFileTypeFocus, filters.fileTypeFocus != nil {
+    if !view.supportsFileTypeFocus, filters.fileTypeFocus != nil {
         filters.fileTypeFocus = nil
     }
 }
