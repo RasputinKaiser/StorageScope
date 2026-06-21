@@ -30,6 +30,14 @@ final class FilterStore: ObservableObject {
     @Published var searchText: String = "" {
         didSet {
             guard oldValue != searchText else { return }
+            if searchText.isEmpty {
+                // Clearing the field should drop the chip instantly — don't make the
+                // user wait 200ms for the debounce to fire on an empty string.
+                searchTextDebounceTask?.cancel()
+                searchTextDebounceTask = nil
+                if !query.isEmpty { query = "" }
+                return
+            }
             scheduleSearchTextDebounce()
         }
     }
