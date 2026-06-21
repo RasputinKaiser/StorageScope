@@ -17,7 +17,7 @@ final class FilterStore: ObservableObject {
     /// filter chip bar. `id` routes taps back to the filter to clear; `label` is what
     /// the chip shows.
     struct ActiveFilter: Identifiable, Hashable {
-        enum Kind: Hashable { case query, size, lane }
+        enum Kind: Hashable { case query, size, lane, fileType }
         let id: Kind
         let label: String
 
@@ -45,6 +45,10 @@ final class FilterStore: ObservableObject {
     @Published var query: String = "" {
         didSet {
             guard oldValue != query else { return }
+            // Free-text search and file-type focus are parallel concerns — typing in
+            // the search field shouldn't retain a stale file-type filter, and clicking
+            // a new file-type row in TypeBreakdownView shouldn't carry an old query.
+            if !query.isEmpty, fileTypeFocus != nil { fileTypeFocus = nil }
             coordinateInvalidate()
             rebuildSearchSubtreeMatchIDs()
         }
@@ -64,6 +68,19 @@ final class FilterStore: ObservableObject {
     }
     @Published var oldFileAgeDays: Int = 180 {
         didSet { coordinateInvalidate() }
+    }
+
+    /// Set when the user clicks a row on `TypeBreakdownView` — narrows downstream views
+    /// (currently `.largestFiles`) to files whose `fileExtension` matches. Cleared on its own
+    /// when the user dismisses the corresponding chip, or anytime `query` changes so the user
+    /// typing a free-text search doesn't carry a stale type filter along. Distinct from the
+    /// search query so the chip bar can render `Type: mp4` instead of the misleading
+    /// `Search: mp4` that focusFileType used before.
+    @Published var fileTypeFocus: String? {
+        didSet {
+            guard oldValue != fileTypeFocus else { return }
+            coordinateInvalidate()
+        }
     }
 
     @Published private(set) var searchSubtreeMatchIDs: Set<String>?
@@ -89,6 +106,9 @@ final class FilterStore: ObservableObject {
         if sizeFilter != .all {
             descriptions.append("Size: \(sizeFilter.title)")
         }
+        if let fileTypeFocus {
+            descriptions.append("Type: \(fileTypeFocus)")
+        }
         return descriptions
     }
 
@@ -108,8 +128,9 @@ final class FilterStore: ObservableObject {
         !activeCleanupFilterDescriptions.isEmpty
     }
 
-    /// Tappable chip list for the display filter bar (search + size). Lane is excluded
-    /// because it only affects cleanup review, which maintains its own chip list below.
+    /// Tappable chip list for the display filter bar (search + size + file type).
+    /// Lane is excluded because it only affects cleanup review, which maintains its own
+    /// chip list below.
     var activeDisplayChips: [ActiveFilter] {
         var chips: [ActiveFilter] = []
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -118,6 +139,9 @@ final class FilterStore: ObservableObject {
         }
         if sizeFilter != .all {
             chips.append(.init(.size, "Size: \(sizeFilter.title)"))
+        }
+        if let fileTypeFocus {
+            chips.append(.init(.fileType, "Type: \(fileTypeFocus)"))
         }
         return chips
     }
@@ -143,12 +167,15 @@ final class FilterStore: ObservableObject {
             sizeFilter = .all
         case .lane:
             cleanupLaneFilter = .all
+        case .fileType:
+            fileTypeFocus = nil
         }
     }
 
     func resetDisplayFilters() {
         query = ""
         sizeFilter = .all
+        fileTypeFocus = nil
     }
 
     func resetCleanupFilters() {
