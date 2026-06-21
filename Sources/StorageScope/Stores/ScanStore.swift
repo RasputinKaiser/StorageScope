@@ -40,7 +40,19 @@ final class ScanStore: ObservableObject {
     let recents = RecentsStore()
 
     @Published var selectedView: SmartView? = .overview {
-        didSet { invalidateItemsCache() }
+        didSet {
+            invalidateItemsCache()
+            // Clear a stale file-type focus when navigating away from file-bearing views.
+            // On Largest Folders / Overview / Tree / File Types, no item has a file
+            // extension to match against, so the Type chip would silently filter
+            // everything out and present an empty state.
+            if oldValue != selectedView,
+               let newValue = selectedView,
+               !newValue.supportsFileTypeFocus,
+               filters.fileTypeFocus != nil {
+                filters.fileTypeFocus = nil
+            }
+        }
     }
     @Published private var session = ScanSession()
     @Published private var selection = ScanSelection()
