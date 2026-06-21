@@ -27,6 +27,56 @@ Keep generated app bundles, DMGs, packages, local scan outputs, Codex state, sig
 - Add tests for scanner, cleanup, duplicate detection, or file-operation safety changes.
 - Avoid adding network calls, analytics, or telemetry without a clear user-facing design and privacy update.
 
+## Developer Fixtures
+
+`./script/build_and_run.sh --fixture-scan` launches the app with a synthetic fixture root so you can exercise scan views, cleanup review, duplicate verification, and the trash-flow sheets without granting access to real folders or waiting on a real scan.
+
+The fixture root is under `$HOME/Library/Containers/com.rasputinkaiser.StorageScope/Data/tmp/StorageScope/fixture-scan/` (or `$STORAGESCOPE_FIXTURE_ROOT` if you set it). On each run the fixture is regenerated with this layout:
+
+```
+fixture-scan/
+  Media Projects/         interview-master.mov (1.45 GB, mtime 2024-01-01 — forces old-large-file classification)
+                          render-preview.mov  (560 MB)
+  Caches/BuildCache/      module-cache.bin    (240 MB, buildArtifact candidate)
+  Downloads/              StorageScope-demo.dmg (320 MB, diskImage candidate)
+  Archives/               release-backup.zip  (180 MB, archive candidate)
+  Duplicates/             copy-a.bin + copy-b.bin (125 MB each, identical content — a verified duplicate pair)
+```
+
+Optional flags customize the scan state the launched app starts in:
+
+| Flag | Effect |
+|------|--------|
+| `--duplicates` | Adds 10 same-size files to a `Same Size Leads/` directory, exercising the duplicate-candidate retention cap |
+| `--mark-stale` | Sets the post-scan "results need refresh" notice so you can review the rescan-prompt UI |
+| `--view <SmartView rawValue>` | Switches to a specific view on launch (e.g. `cleanupReview`, `duplicateCandidates`, `tree`, `largestFiles`) |
+| `--select-verified-cleanup` | Pre-selects the verified-duplicate cleanup candidates so the trash review sheet is one click away |
+| `--query "<text>"` | Pre-fills the toolbar search with the given text |
+| `--size-filter all|100mb|1gb|10gb` | Pre-selects the size filter |
+| `--sort size|name|newest|oldest|kind` | Pre-selects the sort order |
+| `--cleanup-lane all|verified|suggestions` | Pre-selects the cleanup review lane |
+
+Example workflows:
+
+```bash
+# Launch at the cleanup-review surface with verified duplicates pre-selected — fastest path
+# to the trash confirmation sheet.
+./script/build_and_run.sh --fixture-scan --view cleanupReview --select-verified-cleanup
+
+# Force the duplicate-cap cap with 10 same-size leads and exercise same-size candidate review.
+./script/build_and_run.sh --fixture-scan --duplicates --view duplicateCandidates
+
+# Verify the rescan-prompt banner in the overview after a stale-trash result.
+./script/build_and_run.sh --fixture-scan --mark-stale
+
+# Pre-filter the cleanup review to installers and archives via search, lane filtered to suggestions.
+./script/build_and_run.sh --fixture-scan --view cleanupReview --cleanup-lane suggestions --query ".dmg"
+```
+
+Under the hood the fixture flags translate to `STORAGESCOPE_DEVELOPER_*` environment variables consumed by `Sources/StorageScope/App/StorageScopeApp.swift` on launch. You rarely need to set them by hand — use the flags. The flag names map 1:1 to `applyDeveloperFixtureFilters()` in that file if you want to extend the surface.
+
+Valid `--view` values are the `SmartView` enum's raw values: `overview`, `cleanupReview`, `tree`, `largestFolders`, `largestFiles`, `oldLargeFiles`, `typeBreakdown`, `duplicateCandidates`.
+
 ## Reporting Issues
 
 Please include macOS version, StorageScope build source, scan scope, expected behavior, actual behavior, and whether the app had folder access or Full Disk Access.
