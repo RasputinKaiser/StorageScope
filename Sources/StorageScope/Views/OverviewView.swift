@@ -360,7 +360,7 @@ private extension ReclaimPlanAction {
         case .reviewVerifiedDuplicates:
             return "Review"
         case .reviewCleanupSuggestions:
-            return "Review"
+            return "Suggestions"
         case .inspectInaccessibleItems:
             return "Inspect"
         }
