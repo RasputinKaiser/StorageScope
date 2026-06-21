@@ -13,6 +13,20 @@ import StorageScopeCore
 ///   state changes
 @MainActor
 final class FilterStore: ObservableObject {
+    /// Identifies a single active filter the user can dismiss individually from the
+    /// filter chip bar. `id` routes taps back to the filter to clear; `label` is what
+    /// the chip shows.
+    struct ActiveFilter: Identifiable, Hashable {
+        enum Kind: Hashable { case query, size, lane }
+        let id: Kind
+        let label: String
+
+        init(_ id: Kind, _ label: String) {
+            self.id = id
+            self.label = label
+        }
+    }
+
     @Published var searchText: String = "" {
         didSet {
             guard oldValue != searchText else { return }
@@ -84,6 +98,44 @@ final class FilterStore: ObservableObject {
 
     var hasActiveCleanupFilters: Bool {
         !activeCleanupFilterDescriptions.isEmpty
+    }
+
+    /// Tappable chip list for the display filter bar (search + size). Lane is excluded
+    /// because it only affects cleanup review, which maintains its own chip list below.
+    var activeDisplayChips: [ActiveFilter] {
+        var chips: [ActiveFilter] = []
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty {
+            chips.append(.init(.query, "Search: \(trimmedQuery)"))
+        }
+        if sizeFilter != .all {
+            chips.append(.init(.size, "Size: \(sizeFilter.title)"))
+        }
+        return chips
+    }
+
+    /// Tappable chip list for the cleanup review filter bar — display filters plus the
+    /// cleanup lane, since the lane picker lives inside CleanupReviewView.
+    var activeCleanupChips: [ActiveFilter] {
+        var chips = activeDisplayChips
+        if cleanupLaneFilter != .all {
+            chips.append(.init(.lane, "Lane: \(cleanupLaneFilter.title)"))
+        }
+        return chips
+    }
+
+    /// Dismiss a single active filter from the chip bar. Used by `ActiveDisplayFiltersView`
+    /// so the user doesn't have to `Reset all` to drop just one filter.
+    func clearActiveFilter(_ kind: ActiveFilter.Kind) {
+        switch kind {
+        case .query:
+            searchText = ""
+            query = ""
+        case .size:
+            sizeFilter = .all
+        case .lane:
+            cleanupLaneFilter = .all
+        }
     }
 
     func resetDisplayFilters() {

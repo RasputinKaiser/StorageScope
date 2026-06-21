@@ -18,7 +18,9 @@ struct DetailView: View {
                             store.rescan()
                         }
                     }
-                    if store.hasActiveDisplayFilters {
+                    if store.activeView == .cleanupReview
+                        ? store.hasActiveCleanupFilters
+                        : store.hasActiveDisplayFilters {
                         ActiveDisplayFiltersView(store: store)
                     }
                     Divider()
@@ -445,28 +447,52 @@ private struct ControlGroupLabel: View {
 private struct ActiveDisplayFiltersView: View {
     @ObservedObject var store: ScanStore
 
+    private var chips: [FilterStore.ActiveFilter] {
+        store.activeView == .cleanupReview
+            ? store.filters.activeCleanupChips
+            : store.filters.activeDisplayChips
+    }
+
+    private var resetAction: () -> Void {
+        store.activeView == .cleanupReview
+            ? { store.resetCleanupFilters() }
+            : { store.resetDisplayFilters() }
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Label("Filtering", systemImage: "line.3.horizontal.decrease.circle")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            ForEach(store.activeDisplayFilterDescriptions, id: \.self) { filter in
-                Text(filter)
-                    .font(.caption)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            ForEach(chips) { chip in
+                Button {
+                    store.filters.clearActiveFilter(chip.id)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(chip.label)
+                            .font(.caption)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.secondary)
+                    }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(.quaternary, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Remove \(chip.label)")
+                .accessibilityLabel("Remove \(chip.label) filter")
             }
 
             Spacer(minLength: 0)
 
             Button {
-                store.resetDisplayFilters()
+                resetAction()
             } label: {
-                Label("Clear", systemImage: "xmark.circle")
+                Label("Clear All", systemImage: "xmark.circle")
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
