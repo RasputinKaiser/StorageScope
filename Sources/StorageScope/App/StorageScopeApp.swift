@@ -163,20 +163,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
 
     private func applyDeveloperFixtureFilters(_ environment: [String: String]) {
         if let query = environment["STORAGESCOPE_DEVELOPER_QUERY"]?.trimmingCharacters(in: .whitespacesAndNewlines) {
-            store.query = query
-            store.searchText = query
+            store.filters.query = query
+            store.filters.searchText = query
         }
         if let value = environment["STORAGESCOPE_DEVELOPER_SIZE_FILTER"],
            let sizeFilter = SizeFilter(developerFixtureValue: value) {
-            store.sizeFilter = sizeFilter
+            store.filters.sizeFilter = sizeFilter
         }
         if let value = environment["STORAGESCOPE_DEVELOPER_SORT"],
            let sortOption = ItemSortOption(developerFixtureValue: value) {
-            store.sortOption = sortOption
+            store.filters.sortOption = sortOption
         }
         if let value = environment["STORAGESCOPE_DEVELOPER_CLEANUP_LANE"],
            let cleanupLane = CleanupLaneFilter(developerFixtureValue: value) {
-            store.cleanupLaneFilter = cleanupLane
+            store.filters.cleanupLaneFilter = cleanupLane
         }
     }
 
