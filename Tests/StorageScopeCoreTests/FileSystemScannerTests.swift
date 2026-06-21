@@ -226,6 +226,41 @@ struct FileSystemScannerTests {
         #expect(cache.checksum(for: key) == nil)
     }
 
+    @Test("verifySizeGroup hashes a same-size group out-of-band and reports verified matches")
+    func verifySizeGroupSurfacesVerifiedMatchesOutOfBand() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let sameData = Data(repeating: 0x99, count: 4_096)
+        try sameData.write(to: temporaryRoot.appendingPathComponent("a-match.bin"))
+        try sameData.write(to: temporaryRoot.appendingPathComponent("b-match.bin"))
+        try Data(repeating: 0x01, count: 4_096).write(to: temporaryRoot.appendingPathComponent("c-nomatch.bin"))
+
+        // Run with verification disabled so the same-size group surfaces as unverified. The
+        // on-demand path then has work to do.
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1,
+                duplicateVerificationByteLimit: 0,
+                maxDuplicateVerificationFiles: 0
+            )
+        )
+
+        #expect(scan.duplicateSizeGroups.count == 1)
+        #expect(scan.verifiedDuplicateGroups.isEmpty)
+
+        let unverifiedGroup = try #require(scan.duplicateSizeGroups.first)
+        let scanner = FileSystemScanner()
+        let verifiedGroups = try scanner.verifySizeGroup(unverifiedGroup)
+
+        #expect(verifiedGroups.count == 1)
+        let verified = try #require(verifiedGroups.first)
+        #expect(verified.items.map(\.name).sorted() == ["a-match.bin", "b-match.bin"])
+        #expect(!verified.items.contains { $0.name == "c-nomatch.bin" })
+        #expect(verified.byteSize == unverifiedGroup.byteSize)
+    }
+
     @Test("surfaces cleanup candidates for cache folders, installers, and compressed archives")
     func cleanupCandidatesIncludeStorageReviewTargets() throws {
         let temporaryRoot = try makeTemporaryRoot()

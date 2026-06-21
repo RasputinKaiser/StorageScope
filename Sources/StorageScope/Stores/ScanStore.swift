@@ -73,6 +73,12 @@ final class ScanStore: ObservableObject {
 
     private var keeperOverridesByChecksum: [String: String] = [:]
 
+    /// Verified duplicate groups discovered via user-triggered "Verify Now" actions, layered on
+    /// top of the scan-time `scan.verifiedDuplicateGroups`. Keyed by checksum for dedupe so a
+    /// re-verify of the same group replaces rather than duplicates the entry.
+    @Published private var onDemandVerifiedGroupsByChecksum: [String: VerifiedDuplicateGroup] = [:]
+    @Published private(set) var verifyingGroupIDs: Set<String> = []
+
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
     private var scanTask: Task<Void, Never>?
@@ -474,6 +480,8 @@ final class ScanStore: ObservableObject {
         session.lastScannedURL = url
         selection.resetForNewScan()
         keeperOverridesByChecksum.removeAll()
+        onDemandVerifiedGroupsByChecksum.removeAll()
+        verifyingGroupIDs.removeAll()
         invalidateDerivedCaches()
         errorMessage = nil
         session.resultsNeedRefresh = false
@@ -641,9 +649,13 @@ final class ScanStore: ObservableObject {
         guard let scan else {
             return []
         }
+        // Layer scan-time verified groups with on-demand ones so items that became verified
+        // via "Verify Now" disappear from the same-size candidate list.
+        var mergedVerifiedGroups = scan.verifiedDuplicateGroups
+        mergedVerifiedGroups.append(contentsOf: onDemandVerifiedGroupsByChecksum.values)
         return DuplicateReviewPlanner.unverifiedSizeGroups(
             sizeGroups: scan.duplicateSizeGroups,
-            verifiedGroups: scan.verifiedDuplicateGroups
+            verifiedGroups: mergedVerifiedGroups
         )
             .filter { $0.byteSize >= max(sizeFilter.threshold, 100_000_000) }
             .map { group in
@@ -654,9 +666,37 @@ final class ScanStore: ObservableObject {
 
     var verifiedDuplicateGroups: [VerifiedDuplicateGroup] {
         guard let scan else {
-            return []
+            return onDemandVerifiedGroupsByChecksum.isEmpty
+                ? []
+                : Array(onDemandVerifiedGroupsByChecksum.values).filter { $0.byteSize >= sizeFilter.threshold }
+                    .map { group in
+                        VerifiedDuplicateGroup(
+                            checksum: group.checksum,
+                            byteSize: group.byteSize,
+                            items: filtered(group.items)
+                        )
+                    }
+                    .filter { $0.items.count > 1 }
+                    .sorted { lhs, rhs in
+                        if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                            return lhs.byteSize > rhs.byteSize
+                        }
+                        return lhs.reclaimableBytes > rhs.reclaimableBytes
+                    }
         }
-        return scan.verifiedDuplicateGroups
+
+        // Merge scan-time verified groups with on-demand ones, keyed by checksum. On-demand wins
+        // in case of a checksum collision so a manual re-verify (e.g. with cache cleared) is
+        // reflected immediately.
+        var merged: [String: VerifiedDuplicateGroup] = [:]
+        for group in scan.verifiedDuplicateGroups {
+            merged[group.checksum] = group
+        }
+        for (checksum, group) in onDemandVerifiedGroupsByChecksum {
+            merged[checksum] = group
+        }
+
+        return merged.values
             .filter { $0.byteSize >= sizeFilter.threshold }
             .map { group in
                 VerifiedDuplicateGroup(
@@ -666,6 +706,12 @@ final class ScanStore: ObservableObject {
                 )
             }
             .filter { $0.items.count > 1 }
+            .sorted { lhs, rhs in
+                if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                    return lhs.byteSize > rhs.byteSize
+                }
+                return lhs.reclaimableBytes > rhs.reclaimableBytes
+            }
     }
 
     func keeperItemID(for group: VerifiedDuplicateGroup) -> String? {
@@ -683,13 +729,72 @@ final class ScanStore: ObservableObject {
         // invalidateDerivedCaches() is needed here.
     }
 
-    private var currentKeeperItemIDs: Set<String> {
-        guard let scan else {
-            return []
+    /// Hashes every file in a same-size candidate group and merges the result (if any items
+    /// share a SHA-256 checksum) into the verified-duplicate view. Uses the same persisted
+    /// `hashCache` as the scan, so cached hits are cheap. Reset on every new scan.
+    func verifyOnDemand(_ group: DuplicateSizeGroup) {
+        guard !isGroupAlreadyVerified(group) else { return }
+        guard !verifyingGroupIDs.contains(group.id) else { return }
+        verifyingGroupIDs.insert(group.id)
+
+        let cache = hashCache
+        Task { [weak self] in
+            let result: Result<[VerifiedDuplicateGroup], Error>
+            do {
+                let groups = try await Task.detached(priority: .userInitiated) {
+                    let scanner = FileSystemScanner(hashCache: cache)
+                    return try scanner.verifySizeGroup(group, cancellation: nil)
+                }.value
+                result = .success(groups)
+            } catch {
+                result = .failure(error)
+            }
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.verifyingGroupIDs.remove(group.id)
+
+                switch result {
+                case .success(let groups):
+                    for verifiedGroup in groups {
+                        self.onDemandVerifiedGroupsByChecksum[verifiedGroup.checksum] = verifiedGroup
+                    }
+                    self.invalidateDerivedCaches()
+                    let cacheToPersist = self.hashCache
+                    Task.detached(priority: .utility) { cacheToPersist.persist() }
+                case .failure(let error):
+                    self.errorMessage = "Verification failed: \(error.localizedDescription)"
+                }
+            }
         }
-        return Set(scan.verifiedDuplicateGroups.compactMap { group -> String? in
-            keeperOverridesByChecksum[group.checksum] ?? group.items.first?.id
-        })
+    }
+
+    /// `true` when every item in `group` is already covered by a verified duplicate group
+    /// (scan-time or on-demand) at the same byte size. Used to skip no-op Verify Now taps.
+    private func isGroupAlreadyVerified(_ group: DuplicateSizeGroup) -> Bool {
+        let targetIDs = Set(group.items.map(\.id))
+        let candidates = (scan?.verifiedDuplicateGroups ?? []) + Array(onDemandVerifiedGroupsByChecksum.values)
+        return candidates.contains { verified in
+            verified.byteSize == group.byteSize &&
+                targetIDs.isSubset(of: Set(verified.items.map(\.id)))
+        }
+    }
+
+    private var currentKeeperItemIDs: Set<String> {
+        var ids = Set<String>()
+        if let scan {
+            for group in scan.verifiedDuplicateGroups {
+                if let keeperID = keeperOverridesByChecksum[group.checksum] ?? group.items.first?.id {
+                    ids.insert(keeperID)
+                }
+            }
+        }
+        for group in onDemandVerifiedGroupsByChecksum.values {
+            if let keeperID = keeperOverridesByChecksum[group.checksum] ?? group.items.first?.id {
+                ids.insert(keeperID)
+            }
+        }
+        return ids
     }
 
     var cleanupCandidates: [CleanupCandidate] {

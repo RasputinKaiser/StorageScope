@@ -135,6 +135,52 @@ public final class FileSystemScanner {
         )
     }
 
+    /// Hashes every item in `group` and returns verified duplicate groups (matching SHA-256,
+    /// count > 1). Use after a scan to verify a same-size candidate group that fell outside
+    /// the auto-verification budget. Hits the persisted `hashCache` when items are unchanged,
+    /// so a re-verify is cheap. Cancellation cooperates with `ScanCancellation.check()`.
+    public func verifySizeGroup(
+        _ group: DuplicateSizeGroup,
+        cancellation: ScanCancellation? = nil
+    ) throws -> [VerifiedDuplicateGroup] {
+        try cancellation?.check()
+
+        let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
+        let cacheLock = NSLock()
+
+        let hashedItems: [HashedStorageItem] = group.items.compactMap { item in
+            try? cancellation?.check()
+            let cacheKey = DuplicateHashCache.LookupKey(item: item)
+
+            if let cached = hashCache?.checksum(for: cacheKey) {
+                return HashedStorageItem(checksum: cached, item: item)
+            }
+
+            ioSemaphore.wait()
+            defer { ioSemaphore.signal() }
+            guard let checksum = try? sha256Checksum(for: item.url, cancellation: cancellation) else {
+                return nil
+            }
+            if let hashCache {
+                cacheLock.lock()
+                defer { cacheLock.unlock() }
+                hashCache.record(cacheKey, checksum: checksum)
+            }
+            return HashedStorageItem(checksum: checksum, item: item)
+        }
+
+        let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
+        return groupedByHash.compactMap { checksum, hashedItems in
+            let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
+            return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: group.byteSize, items: items) : nil
+        }.sorted { lhs, rhs in
+            if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                return lhs.byteSize > rhs.byteSize
+            }
+            return lhs.reclaimableBytes > rhs.reclaimableBytes
+        }
+    }
+
     private func scanItem(
         at url: URL,
         options: ScanOptions,
