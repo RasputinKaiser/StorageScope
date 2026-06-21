@@ -1,4 +1,6 @@
 import AppKit
+import Combine
+import StorageScopeCore
 import SwiftUI
 
 @main
@@ -19,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     private let store = ScanStore()
     private var mainWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var titleCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         SecurityScopedBookmarkStore().prune()
@@ -45,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             backing: .buffered,
             defer: false
         )
-        window.title = "StorageScope"
+        window.title = windowTitle(for: store.scan)
         window.minSize = NSSize(width: 1180, height: 760)
         window.center()
         window.setFrameAutosaveName("StorageScopeMainWindow")
@@ -54,6 +57,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         window.toolbarStyle = .unified
         window.makeKeyAndOrderFront(nil)
         mainWindow = window
+
+        // Keep the title in sync with the active scan's root — macOS convention is for
+        // the document/window title to reflect the open document. Scan changes are the
+        // only meaningful transitions for the title, so we subscribe at window creation
+        // and drop on dealloc.
+        titleCancellable = store.$session
+            .map(\.scan)
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak window] scan in
+                window?.title = self?.windowTitle(for: scan) ?? "StorageScope"
+            }
+    }
+
+    private func windowTitle(for scan: StorageScan?) -> String {
+        guard let scan else {
+            return "StorageScope"
+        }
+        let root = scan.rootURL.lastPathComponent.nonEmpty ?? scan.rootURL.path
+        return "StorageScope — \(root)"
     }
 
     @objc private func chooseFolder() {
