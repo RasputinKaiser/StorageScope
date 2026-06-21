@@ -29,11 +29,26 @@
     .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--panel); font-weight: 650; }
     .primary { background: var(--accent); border-color: var(--accent); color: white; }
     .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+    .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
+    .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
+    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; }
+    .site-nav nav a:hover { color:var(--accent); }
+    footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
+    footer.site-footer a { color:inherit; }
   </style>
 </head>
 <body>
   <main>
-    <p><a href="./">StorageScope</a></p>
+    <header class="site-nav" aria-label="Site navigation">
+      <a class="brand" href="./">StorageScope</a>
+      <nav>
+        <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
+        <a href="mac-storage-cleaner.html">Storage cleaner</a>
+        <a href="duplicate-file-finder-macos.html">Duplicate finder</a>
+        <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative</a>
+      </nav>
+    </header>
     <h1>Open-source Mac storage cleaner</h1>
     <p>StorageScope is a Mac storage cleaner for people who want review-first cleanup instead of black-box deletion. It helps find large folders, stale files, duplicate candidates, caches, installers, archives, disk images, and build artifacts.</p>
 
@@ -63,6 +78,10 @@
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
     </div>
     <p class="actions-note">Requires macOS 14 or later · <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg.sha256">verify with SHA-256</a> · <a href="https://github.com/RasputinKaiser/StorageScope/releases">all releases</a></p>
+  <footer class="site-footer">
+      <div>StorageScope · MIT License · <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> · <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a></div>
+      <div>v0.3.0 · macOS 14+ · SwiftUI/AppKit</div>
+    </footer>
   </main>
 </body>
 </html>
