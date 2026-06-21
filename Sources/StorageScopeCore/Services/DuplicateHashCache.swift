@@ -107,6 +107,32 @@ public final class DuplicateHashCache: @unchecked Sendable {
         }
     }
 
+    /// Drops cache entries for files that no longer exist on disk (or that have become
+    /// unreadable). Pass `except` for paths the caller just scanned — those are preserved
+    /// unconditionally so the verifier still finds their cached checksum on the next lookup.
+    /// Returns the number of entries dropped. Does not touch entries for files that still
+    /// exist, even if their size/mtime has shifted (that's handled by `checksum(for:)`).
+    public func purgeStale(except itemPaths: Set<String> = []) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        var dropped = 0
+        for path in Array(entries.keys) {
+            if itemPaths.contains(path) {
+                continue
+            }
+            if !FileManager.default.fileExists(atPath: path) {
+                entries.removeValue(forKey: path)
+                dropped += 1
+                continue
+            }
+            if (try? FileManager.default.attributesOfItem(atPath: path)) == nil {
+                entries.removeValue(forKey: path)
+                dropped += 1
+            }
+        }
+        return dropped
+    }
+
     private func load() {
         guard let cacheURL,
               let data = try? Data(contentsOf: cacheURL),

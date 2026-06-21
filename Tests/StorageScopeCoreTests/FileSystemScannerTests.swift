@@ -226,6 +226,50 @@ struct FileSystemScannerTests {
         #expect(cache.checksum(for: key) == nil)
     }
 
+    @Test("purgeStale drops entries for deleted files and keeps the rest")
+    func purgeStaleDropsDeletedFileEntriesAndKeepsRest() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let survivingFile = temporaryRoot.appendingPathComponent("survives.bin")
+        let deletedFile = temporaryRoot.appendingPathComponent("deleted.bin")
+        try Data("survivor".utf8).write(to: survivingFile)
+        try Data("gone".utf8).write(to: deletedFile)
+
+        let survivingPath = survivingFile.standardizedFileURL.path
+        let deletedPath = deletedFile.standardizedFileURL.path
+        let survivingAttrs = try FileManager.default.attributesOfItem(atPath: survivingPath)
+        let deletedAttrs = try FileManager.default.attributesOfItem(atPath: deletedPath)
+
+        let diskCacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StorageScopeHashCacheTests-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: diskCacheURL) }
+
+        let cache = DuplicateHashCache(cacheURL: diskCacheURL)
+        let survivingKey = DuplicateHashCache.LookupKey(
+            path: survivingPath,
+            byteSize: 1_024,
+            modificationDate: survivingAttrs[.modificationDate] as? Date
+        )
+        let deletedKey = DuplicateHashCache.LookupKey(
+            path: deletedPath,
+            byteSize: 1_024,
+            modificationDate: deletedAttrs[.modificationDate] as? Date
+        )
+        cache.record(survivingKey, checksum: "survivor-hash")
+        cache.record(deletedKey, checksum: "deleted-hash")
+        #expect(cache.entryCount == 2)
+
+        try FileManager.default.removeItem(at: deletedFile)
+
+        let droppedCount = cache.purgeStale()
+
+        #expect(droppedCount == 1)
+        #expect(cache.entryCount == 1)
+        #expect(cache.checksum(for: deletedKey) == nil)
+        #expect(cache.checksum(for: survivingKey) == "survivor-hash")
+    }
+
     @Test("verifySizeGroup hashes a same-size group out-of-band and reports verified matches")
     func verifySizeGroupSurfacesVerifiedMatchesOutOfBand() throws {
         let temporaryRoot = try makeTemporaryRoot()
