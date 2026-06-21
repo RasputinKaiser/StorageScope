@@ -12,6 +12,9 @@
   <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/">
   <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="StorageScope - Free macOS disk space analyzer">
+  <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <link rel="icon" type="image/png" href="images/storagescope-overview.png">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -19,7 +22,9 @@
     "name": "StorageScope",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "macOS 14+",
-    "softwareVersion": "0.1.0",
+    "softwareVersion": "0.3.0",
+    "datePublished": "2026-06-21",
+    "dateModified": "2026-06-21",
     "programmingLanguage": "Swift",
     "license": "https://opensource.org/license/mit",
     "description": "Free open-source macOS disk space analyzer and Mac storage cleaner for large folders, stale files, duplicate review, and local-first cleanup planning.",
@@ -95,6 +100,16 @@
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
+    }
+
+    .actions-note {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .actions-note a {
+      color: var(--accent);
     }
 
     a.button {
@@ -194,9 +209,11 @@
           stale files, verified duplicates, caches, and review-only cleanup targets without uploading your scan data.
         </p>
         <div class="actions">
-          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope">View on GitHub</a>
+          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg">Download v0.3.0 (.dmg)</a>
+          <a class="button" href="https://github.com/RasputinKaiser/StorageScope">View on GitHub</a>
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
         </div>
+        <p class="actions-note">Requires macOS 14 or later · <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.3.0/StorageScope-0.3.0.dmg.sha256">verify with SHA-256</a> · <a href="https://github.com/RasputinKaiser/StorageScope/releases">all releases</a></p>
       </div>
       <img class="screenshot" src="images/storagescope-overview.png" alt="StorageScope macOS disk space analyzer showing storage views, cleanup review, folder tree, and inspector panes">
     </div>
