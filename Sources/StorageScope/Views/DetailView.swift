@@ -147,7 +147,7 @@ private struct WelcomeCapabilityCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground()
     }
 }
 
@@ -192,7 +192,7 @@ private struct FirstRunPermissionCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground(.thin)
     }
 }
 
@@ -275,7 +275,7 @@ private struct MetricCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground(.thin)
     }
 }
 
@@ -304,7 +304,7 @@ private struct ScanNoticeView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground()
         .padding(.horizontal, 20)
         .padding(.bottom, 12)
     }

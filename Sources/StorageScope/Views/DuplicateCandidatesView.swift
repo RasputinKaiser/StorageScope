@@ -81,7 +81,7 @@ private struct DuplicateCandidateLimitNotice: View {
         .foregroundStyle(.secondary)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground(.thin)
     }
 }
 
@@ -152,7 +152,7 @@ private struct VerifiedDuplicateGroupCard: View {
             )
         }
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground()
         .sheet(isPresented: $showingComparison) {
             KeeperComparisonSheet(
                 group: group,
@@ -231,7 +231,7 @@ private struct DuplicateGroupCard: View {
             DuplicateItemList(items: visibleItems, store: store, keeperItemID: nil, onSetKeeper: nil)
         }
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground()
     }
 }
 

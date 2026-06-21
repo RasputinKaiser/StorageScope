@@ -59,7 +59,7 @@ struct StorageItemTable: View {
                     .frame(minHeight: compact ? 320 : 420)
                 }
             }
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .cardBackground()
         }
     }
 }

@@ -30,7 +30,7 @@ struct TypeBreakdownView: View {
                         store.resetDisplayFilters()
                     }
                     .frame(minHeight: 320)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .cardBackground()
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Category Mix")
@@ -73,7 +73,7 @@ struct TypeBreakdownView: View {
                                 Divider()
                             }
                         }
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .cardBackground()
                     }
 
                     VStack(spacing: 0) {
@@ -122,7 +122,7 @@ struct TypeBreakdownView: View {
                             Divider()
                         }
                     }
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .cardBackground()
                 }
             }
             .padding(20)

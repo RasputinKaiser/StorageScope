@@ -269,7 +269,7 @@ private struct CleanupLaneStat: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground(.thin)
     }
 }
 
@@ -424,6 +424,6 @@ private struct IgnoredCleanupSection: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .cardBackground(.thin)
     }
 }

@@ -146,7 +146,7 @@ private struct TrashReviewSection: View {
                     }
                 }
             }
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .cardBackground()
         }
     }
 }
