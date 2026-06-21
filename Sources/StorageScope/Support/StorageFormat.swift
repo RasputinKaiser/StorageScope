@@ -16,6 +16,11 @@ enum StorageFormat {
     // background formatting paths can hit this concurrently.
     private static let formatDateStyle = Date.FormatStyle.dateTime.year().month().day()
 
+    /// Cutoff for switching from "2 hours ago" to "Jun 18, 2026". Anything inside
+    /// a week is recent enough that the relative time is more informative than the
+    /// date, which keeps same-day files distinguishable.
+    private static let relativeCutoff: TimeInterval = 7 * 24 * 60 * 60
+
     static func bytes(_ value: Int64) -> String {
         byteFormatter.string(fromByteCount: value)
     }
@@ -23,6 +28,25 @@ enum StorageFormat {
     static func date(_ date: Date?) -> String {
         guard let date else {
             return "Unknown"
+        }
+        return date.formatted(formatDateStyle)
+    }
+
+    /// Renders `date` as a relative phrase ("2 hours ago") when within the last week,
+    /// otherwise falls back to the absolute date. Nil falls back to "Unknown", matching
+    /// `date(_:)` for callers that need a stable fallback in the same column.
+    static func relativeOrAbsoluteDate(_ date: Date?, relativeTo now: Date = .now) -> String {
+        guard let date else {
+            return "Unknown"
+        }
+        let age = now.timeIntervalSince(date)
+        if age < 0 {
+            // Future-dated (clock skew / time zone). Show the date — relative phrasing
+            // for "in 5 hours" is technically correct but reads weird in a storage tool.
+            return date.formatted(formatDateStyle)
+        }
+        if age < relativeCutoff {
+            return date.formatted(.relative(presentation: .named))
         }
         return date.formatted(formatDateStyle)
     }

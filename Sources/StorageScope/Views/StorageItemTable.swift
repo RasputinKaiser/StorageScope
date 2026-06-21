@@ -179,7 +179,7 @@ private struct StorageItemRow: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 94, alignment: .leading)
 
-                Text(StorageFormat.date(item.modifiedAt))
+                Text(StorageFormat.relativeOrAbsoluteDate(item.modifiedAt))
                     .foregroundStyle(.secondary)
                     .frame(width: 112, alignment: .leading)
             }
