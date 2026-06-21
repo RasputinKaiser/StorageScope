@@ -126,6 +126,40 @@ private struct WelcomeView: View {
                 )
             }
             .frame(maxWidth: 760)
+
+            if !store.recents.entries.isEmpty {
+                VStack(spacing: 8) {
+                    Text("Recent Scans")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(store.recents.entries.prefix(8)) { entry in
+                                Button {
+                                    store.scanRecentPath(entry.path)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "clock.arrow.circlepath")
+                                            .font(.caption)
+                                        Text(URL(fileURLWithPath: entry.path).lastPathComponent)
+                                            .lineLimit(1)
+                                    }
+                                    .font(.callout)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(.quaternary, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(store.isScanning)
+                                .help(entry.path)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 760)
+                }
+            }
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
