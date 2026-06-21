@@ -68,7 +68,7 @@ while IFS= read -r candidate; do
   fi
 
   if [[ -f "$candidate" ]]; then
-    rg --with-filename -n -i "$sensitive_pattern" "$candidate" >>"$secret_hits" || true
+    grep -E -H -n -i "$sensitive_pattern" "$candidate" >>"$secret_hits" || true
   fi
 done <"$candidate_file"
 
