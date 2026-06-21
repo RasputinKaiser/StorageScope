@@ -84,8 +84,55 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
             return true
         }
 
-        return name.localizedCaseInsensitiveContains(query) ||
-            url.path.localizedCaseInsensitiveContains(query)
+        // Multi-word AND: every whitespace-delimited term must match either the
+        // name, the contiguous URL path string, OR a `/`-split path segment
+        // (so "Documents foo" matches a path like `/tmp/work/Documents/foo.txt`
+        // via "Documents" segment + "foo" contiguous name substring). Single-term
+        // queries degenerate to the v0.4.5 single-contains behavior on each of
+        // name / path / path-segments.
+        let terms = query.split(separator: " ", omittingEmptySubsequences: true)
+        return terms.allSatisfy { term in
+            matchesTerm(String(term))
+        }
+    }
+
+    private func matchesTerm(_ term: String) -> Bool {
+        if name.localizedCaseInsensitiveContains(term) {
+            return true
+        }
+        if url.path.localizedCaseInsensitiveContains(term) {
+            return true
+        }
+        // Path-segment awareness: term matches if it equals (case-insensitively) any
+        // segment of the `/`-split path. Segment-aware, NOT substring-across-segments —
+        // "xDoc" must NOT match `/tmp/Doc/file.txt` even though it's a substring of
+        // the contiguous string "/tmpDocfile".
+        return url.pathComponents.contains { $0.localizedCaseInsensitiveCompare(term) == .orderedSame }
+    }
+
+    /// Matched ranges of `name` for the given query, suitable for `Text(...)` highlight
+    /// rendering. Returns ranges across every whitespace term in `query` whose
+    /// case-insensitive substring is found in `name`. Empty when no term matches.
+    public func searchHighlightRanges(for query: String) -> [Range<String.Index>] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let terms = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+        var ranges: [Range<String.Index>] = []
+        for term in terms {
+            let termStr = String(term)
+            var searchStart = name.startIndex
+            while searchStart < name.endIndex,
+                  let range = name.range(of: termStr, options: .caseInsensitive, range: searchStart..<name.endIndex) {
+                ranges.append(range)
+                if range.upperBound < name.endIndex {
+                    searchStart = range.upperBound
+                } else {
+                    break
+                }
+            }
+        }
+        return ranges
     }
 
     public func retainedTreeContainsNormalizedSearchMatch(_ query: String) -> Bool {
