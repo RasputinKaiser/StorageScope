@@ -124,14 +124,14 @@ STORAGESCOPE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 ```
 
 The script prints the path to the resulting DMG (e.g.
-`exports/StorageScope-0.3.0.dmg`).
+`exports/StorageScope-0.4.0.dmg`).
 
 ### Submitting to Apple's notary service
 
 With credentials exported and a Developer ID-signed DMG in hand:
 
 ```bash
-./script/notarize_dmg.sh exports/StorageScope-0.3.0.dmg
+./script/notarize_dmg.sh exports/StorageScope-0.4.0.dmg
 ```
 
 The script will:

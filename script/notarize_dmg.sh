@@ -5,7 +5,7 @@ set -euo pipefail
 # and staple the resulting ticket to the DMG.
 #
 # Usage:
-#   ./script/notarize_dmg.sh exports/StorageScope-0.3.0.dmg
+#   ./script/notarize_dmg.sh exports/StorageScope-0.4.0.dmg
 #
 # Required environment variables (export them in your shell — never commit):
 #   APP_STORE_CONNECT_API_KEY_ID       App Store Connect API key id (UUID-shaped)
