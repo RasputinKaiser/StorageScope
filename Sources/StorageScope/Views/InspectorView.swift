@@ -66,6 +66,8 @@ struct InspectorView: View {
                                 Label("Open", systemImage: "arrow.up.right.square")
                                     .frame(maxWidth: .infinity)
                             }
+                            .disabled(!store.canOpenSelectedItem)
+                            .help(item.isReadable ? "Open in default app" : "File is not readable; try Reveal in Finder instead")
                             .focused($focusedAction, equals: .open)
 
                             Button {
