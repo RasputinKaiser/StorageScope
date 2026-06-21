@@ -126,7 +126,7 @@ private struct StorageItemRow: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .contentShape(Rectangle())
-            .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+            .selectionBackground(isSelected: isSelected)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)

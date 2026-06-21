@@ -326,7 +326,7 @@ private struct CleanupCandidateRow: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(store.selectedItemID == candidate.item.id ? Color.accentColor.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            .selectionBackground(isSelected: store.selectedItemID == candidate.item.id, radius: 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
