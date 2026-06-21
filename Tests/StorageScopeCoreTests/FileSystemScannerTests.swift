@@ -938,6 +938,49 @@ struct FileSystemScannerTests {
         #expect(plan.reviewItems.first?.isVerified == false)
     }
 
+    @Test("parallel sibling enumeration produces deterministic results across runs")
+    func parallelEnumerationIsDeterministicAcrossRuns() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        // Three sibling directories with a mix of file sizes, plus one verified duplicate
+        // pair spanning two siblings so the verify path is exercised too.
+        let media = temporaryRoot.appendingPathComponent("Media", isDirectory: true)
+        let cache = temporaryRoot.appendingPathComponent("Cache", isDirectory: true)
+        let drivers = temporaryRoot.appendingPathComponent("Drivers", isDirectory: true)
+        try FileManager.default.createDirectory(at: media, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: drivers, withIntermediateDirectories: true)
+
+        try writeFile(named: "render.mov", bytes: 40_000, in: media)
+        try writeFile(named: "thumbnail.jpg", bytes: 8_000, in: media)
+        try writeFile(named: "blob.sqlite", bytes: 12_000, in: cache)
+        try writeFile(named: "driver.kext", bytes: 25_000, in: drivers)
+
+        let duplicateData = Data(repeating: 0xAB, count: 9_000)
+        try duplicateData.write(to: media.appendingPathComponent("asset.bin"))
+        try duplicateData.write(to: drivers.appendingPathComponent("asset-copy.bin"))
+
+        let scanner = FileSystemScanner()
+        let options = ScanOptions(duplicateCandidateThreshold: 5_000, maxChildrenPerDirectory: 50, maxRetainedItems: 200)
+
+        let first = try scanner.scan(root: temporaryRoot, options: options)
+        let second = try scanner.scan(root: temporaryRoot, options: options)
+
+        #expect(first.scannedItemCount == second.scannedItemCount)
+        #expect(first.totalBytes == second.totalBytes)
+        #expect(first.largestFiles.map(\.id) == second.largestFiles.map(\.id))
+        #expect(first.largestFolders.map(\.id) == second.largestFolders.map(\.id))
+        #expect(first.verifiedDuplicateGroups.count == second.verifiedDuplicateGroups.count)
+        #expect(first.verifiedDuplicateGroups.map(\.checksum) == second.verifiedDuplicateGroups.map(\.checksum))
+        #expect(first.verifiedDuplicateGroups.flatMap(\.items).map(\.id)
+                   == second.verifiedDuplicateGroups.flatMap(\.items).map(\.id))
+
+        // Sanity: the duplicate pair was actually found through the parallel path.
+        #expect(first.verifiedDuplicateGroups.count == 1)
+        #expect(first.verifiedDuplicateGroups.first?.items.count == 2)
+    }
+
     private func makeTemporaryRoot() throws -> URL {
         let temporaryRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("StorageScopeTests-\(UUID().uuidString)", isDirectory: true)
