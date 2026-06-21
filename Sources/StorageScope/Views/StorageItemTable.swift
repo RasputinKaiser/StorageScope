@@ -28,7 +28,7 @@ struct StorageItemTable: View {
             }
 
             VStack(spacing: 0) {
-                StorageItemHeader()
+                StorageItemHeader(sortOption: store.filters.sortOption) { store.filters.sortOption = $0 }
 
                 Divider()
 
@@ -65,21 +65,81 @@ struct StorageItemTable: View {
 }
 
 private struct StorageItemHeader: View {
+    let sortOption: ItemSortOption
+    let onSortChange: (ItemSortOption) -> Void
+
     var body: some View {
         HStack(spacing: 12) {
-            Text("Name")
-                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
-            Text("Size")
-                .frame(width: 96, alignment: .trailing)
-            Text("Kind")
-                .frame(width: 94, alignment: .leading)
-            Text("Modified")
-                .frame(width: 112, alignment: .leading)
+            SortableColumnHeader(label: "Name", width: nil, alignment: .leading, minWidth: 220, isActive: sortOption == .nameAscending, indicator: .down) {
+                onSortChange(.nameAscending)
+            }
+            SortableColumnHeader(label: "Size", width: 96, alignment: .trailing, isActive: sortOption == .sizeDescending, indicator: .down) {
+                onSortChange(.sizeDescending)
+            }
+            SortableColumnHeader(label: "Kind", width: 94, alignment: .leading, isActive: sortOption == .kind, indicator: .up) {
+                onSortChange(.kind)
+            }
+            SortableColumnHeader(label: "Modified", width: 112, alignment: .leading, isActive: isModifiedActive, indicator: sortOption == .modifiedNewest ? .down : .up) {
+                onSortChange(toggleModified)
+            }
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+    }
+
+    private var isModifiedActive: Bool {
+        sortOption == .modifiedNewest || sortOption == .modifiedOldest
+    }
+
+    private var toggleModified: ItemSortOption {
+        // Clicking Modified cycles Newest → Oldest → Newest. Gives the user both
+        // directions from a single column header without needing a separate menu.
+        return sortOption == .modifiedNewest ? .modifiedOldest : .modifiedNewest
+    }
+}
+
+private struct SortableColumnHeader: View {
+    enum Direction { case up, down }
+
+    let label: String
+    let width: CGFloat?
+    let alignment: Alignment
+    var minWidth: CGFloat? = nil
+    let isActive: Bool
+    let indicator: Direction
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 3) {
+                if alignment == .trailing {
+                    if isActive {
+                        Image(systemName: indicator == .down ? "chevron.down" : "chevron.up")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.tint)
+                    }
+                    Text(label)
+                    Spacer(minLength: 0)
+                } else {
+                    Text(label)
+                    Spacer(minLength: 0)
+                    if isActive {
+                        Image(systemName: indicator == .down ? "chevron.down" : "chevron.up")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.tint)
+                    }
+                }
+            }
+            .frame(minWidth: minWidth, maxWidth: width == nil ? .infinity : nil, alignment: alignment)
+            .frame(width: width, alignment: alignment)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Sort by \(label)")
+        .accessibilityLabel("\(label) column")
+        .accessibilityValue(isActive ? "Active sort" : "Tap to sort")
     }
 }
 
