@@ -4,6 +4,7 @@ struct ContentView: View {
     @ObservedObject var store: ScanStore
     var onOpenSettings: () -> Void = {}
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @FocusState private var searchFieldFocused: Bool
 
     /// Search-field prompt that reflects what the active view actually filters —
     /// "files and paths" misleads on Tree (where rows are folders) and on File Types
@@ -43,6 +44,13 @@ struct ContentView: View {
             }
         }
         .searchable(text: store.filterBinding(\.searchText), placement: .toolbar, prompt: searchPrompt)
+        .modifier(SearchFocusModifier(focused: $searchFieldFocused))
+        .onChange(of: store.searchFieldFocusRequest) { _, _ in
+            // AppDelegate's Find command (Cmd+F) bumps the request counter; the
+            // counter is a counter rather than a Bool so Cmd+F re-fires even after
+            // the field is already focused (a la Mail / Finder).
+            searchFieldFocused = true
+        }
         .toolbar {
             ToolbarItemGroup {
                 Button {
@@ -107,6 +115,25 @@ struct ContentView: View {
                     confirm: { store.confirmPendingTrashReview() }
                 )
             )
+        }
+    }
+}
+
+/// Bridges `.searchFocused(_:)` (macOS 15+) to a macOS 14 deployment target via
+/// `if #available`. The Find command (Cmd+F) writes `true` to the focus state via
+/// `-onChange(of: store.searchFieldFocusRequest)`; this modifier applies the actual
+/// `.searchFocused` modifier when the running OS supports it. On macOS 14 the focus
+/// state is tracked but doesn't drive `.searchable`'s internal field — acceptable
+/// fallback since macOS 14 is now an older release and the Finder-style keyboard
+/// cheat-sheet still surfaces "Find... F" as a menu hint.
+private struct SearchFocusModifier: ViewModifier {
+    @FocusState.Binding var focused: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.searchFocused($focused)
+        } else {
+            content
         }
     }
 }
