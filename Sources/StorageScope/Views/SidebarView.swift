@@ -37,15 +37,15 @@ struct SidebarView: View {
                         }
                     }
 
-                    if !store.recentScanEntries.isEmpty {
+                    if !store.recents.entries.isEmpty {
                         SidebarSectionTitle("Recent Scans")
 
                         VStack(spacing: 2) {
-                            ForEach(store.recentScanEntries) { entry in
+                            ForEach(store.recents.entries) { entry in
                                 RecentScanRow(entry: entry) {
                                     store.scanRecentPath(entry.path)
                                 } forgetAction: {
-                                    store.forgetRecentScanPath(entry.path)
+                                    store.recents.forget(path: entry.path)
                                 }
                             }
                         }

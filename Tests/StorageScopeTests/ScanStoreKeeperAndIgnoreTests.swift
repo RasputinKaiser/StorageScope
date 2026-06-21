@@ -62,9 +62,9 @@ struct ScanStoreKeeperAndIgnoreTests {
             return
         }
         #expect(store.scanStage == .complete)
-        #expect(store.recentScanEntries.first?.path == root.standardizedFileURL.path)
-        #expect(store.recentScanEntries.first?.totalBytes == scan.totalBytes)
-        #expect(store.recentScanEntries.first?.path == root.standardizedFileURL.path)
+        #expect(store.recents.entries.first?.path == root.standardizedFileURL.path)
+        #expect(store.recents.entries.first?.totalBytes == scan.totalBytes)
+        #expect(store.recents.entries.first?.path == root.standardizedFileURL.path)
     }
 
     private func makeStoreWithVerifiedGroup() async throws -> (ScanStore, VerifiedDuplicateGroup) {
