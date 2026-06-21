@@ -361,6 +361,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             item.tag = index
             viewMenu.addItem(item)
         }
+        viewMenu.addItem(NSMenuItem.separator())
+        let fullScreenMenuItem = NSMenuItem(title: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        fullScreenMenuItem.keyEquivalentModifierMask = [.command, .control]
+        viewMenu.addItem(fullScreenMenuItem)
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
