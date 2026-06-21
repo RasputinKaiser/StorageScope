@@ -155,6 +155,43 @@ final class ScanStore: ObservableObject {
         set { selection.treeExpandedIDs = newValue }
     }
 
+    var canExpandAllTree: Bool {
+        guard let rootItem = scan?.rootItem else { return false }
+        let allContainers = allTreeContainerIDs(in: rootItem)
+        return !allContainers.allSatisfy { treeExpandedIDs.contains($0) }
+    }
+
+    var canCollapseTree: Bool {
+        !treeExpandedIDs.isEmpty
+    }
+
+    /// Expands every container (folder/package) in the retained scan tree. Bounded by the
+    /// same retention criteria as the scan itself, so big scans only expand what's actually
+    /// visible — the renderer never sees the dropped children.
+    func expandEntireTree() {
+        guard let rootItem = scan?.rootItem else { return }
+        treeExpandedIDs = allTreeContainerIDs(in: rootItem)
+    }
+
+    /// Collapses every container — reverts the tree to a single root row.
+    func collapseEntireTree() {
+        treeExpandedIDs.removeAll()
+    }
+
+    /// Collects the IDs of every folder / package in the retained tree. Walks `children`
+    /// only (the precomputed retention), not `flattened()`, so it stays cheap on broad scans.
+    private func allTreeContainerIDs(in item: StorageItem) -> Set<String> {
+        var ids = Set<String>()
+        func visit(_ node: StorageItem) {
+            if node.isContainer { ids.insert(node.id) }
+            for child in node.children where child.isContainer {
+                visit(child)
+            }
+        }
+        visit(item)
+        return ids
+    }
+
     enum ScanStage: String {
         case idle
         case enumerating
