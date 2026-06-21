@@ -475,9 +475,3 @@ private struct ActiveDisplayFiltersView: View {
         .padding(.bottom, 12)
     }
 }
-
-private extension String {
-    var nonEmpty: String? {
-        isEmpty ? nil : self
-    }
-}

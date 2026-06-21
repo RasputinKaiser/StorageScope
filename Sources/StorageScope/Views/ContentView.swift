@@ -72,11 +72,13 @@ struct ContentView: View {
         .sheet(item: $store.pendingTrashReviewPlan) { plan in
             TrashConfirmationSheet(
                 plan: plan,
-                isMoving: store.isMovingToTrash,
-                reveal: { store.revealTrashReviewItem($0) },
-                remove: { store.removePendingTrashReviewItem($0) },
-                cancel: { store.cancelPendingTrashReview() },
-                confirm: { store.confirmPendingTrashReview() }
+                actions: TrashReviewActions(
+                    isMoving: store.isMovingToTrash,
+                    reveal: { store.revealTrashReviewItem($0) },
+                    remove: { store.removePendingTrashReviewItem($0) },
+                    cancel: { store.cancelPendingTrashReview() },
+                    confirm: { store.confirmPendingTrashReview() }
+                )
             )
         }
     }

@@ -42,17 +42,10 @@ struct SidebarView: View {
 
                         VStack(spacing: 2) {
                             ForEach(store.recentScanEntries) { entry in
-                                SidebarPathButton(
-                                    path: entry.path,
-                                    systemImage: "clock.arrow.circlepath",
-                                    subtitle: recentScanSubtitle(for: entry)
-                                ) {
+                                RecentScanRow(entry: entry) {
                                     store.scanRecentPath(entry.path)
-                                }
-                                .contextMenu {
-                                    Button("Forget Recent Scan") {
-                                        store.forgetRecentScanPath(entry.path)
-                                    }
+                                } forgetAction: {
+                                    store.forgetRecentScanPath(entry.path)
                                 }
                             }
                         }
@@ -201,10 +194,38 @@ private struct SidebarPathButton: View {
     }
 }
 
-private func recentScanSubtitle(for entry: RecentScanEntry) -> String {
-    let relative = entry.scannedAt.formatted(.relative(presentation: .named))
-    guard entry.totalBytes > 0 else { return relative }
-    return "\(relative) · \(StorageFormat.bytes(entry.totalBytes))"
+private struct RecentScanRow: View {
+    let entry: RecentScanEntry
+    let scanAction: () -> Void
+    let forgetAction: () -> Void
+
+    @State private var relativeText: String = ""
+
+    var body: some View {
+        SidebarPathButton(
+            path: entry.path,
+            systemImage: "clock.arrow.circlepath",
+            subtitle: subtitleText
+        ) {
+            scanAction()
+        }
+        .contextMenu {
+            Button("Forget Recent Scan") {
+                forgetAction()
+            }
+        }
+        .onAppear {
+            relativeText = entry.scannedAt.formatted(.relative(presentation: .named))
+        }
+    }
+
+    private var subtitleText: String {
+        let relative = relativeText.isEmpty
+            ? entry.scannedAt.formatted(.relative(presentation: .named))
+            : relativeText
+        guard entry.totalBytes > 0 else { return relative }
+        return "\(relative) · \(StorageFormat.bytes(entry.totalBytes))"
+    }
 }
 
 private struct ScanStatusFooter: View {
@@ -250,11 +271,5 @@ private struct ScanStatusFooter: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
-    }
-}
-
-private extension String {
-    var nonEmpty: String? {
-        isEmpty ? nil : self
     }
 }
