@@ -539,7 +539,11 @@ final class ScanStore: ObservableObject {
 
                 scan = result
                 let cacheToPersist = hashCache
-                Task.detached(priority: .utility) { cacheToPersist.persist() }
+                let pathsScanned = Set(result.retainedItems.map { $0.url.standardizedFileURL.path })
+                Task.detached(priority: .utility) {
+                    _ = cacheToPersist.purgeStale(except: pathsScanned)
+                    cacheToPersist.persist()
+                }
                 rememberScanURL(url, scannedAt: result.finishedAt, totalBytes: result.totalBytes)
                 treeExpandedIDs = [result.rootItem.id]
                 session.appliedOptions = optionsSnapshot
