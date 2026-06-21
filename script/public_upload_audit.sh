@@ -56,10 +56,17 @@ sensitive_pattern='(secret|token|password|passwd|api[_-]?key|private[_-]?key|cli
 # but carry no checked-in secret value — they're declared as $VAR or VAR= references in shell.
 # Listed here so a future PR can add a credential ref without tripping the audit; expand as new
 # runtime-only credentials are introduced.
+# Env var NAMES (uppercase ALL_CAPS_WITH_UNDERSCORES) that reference runtime credentials
+# the maintainer supplies locally. They match sensitive_pattern via \bapi[_-]?key\b or other
+# patterns but carry no checked-in secret value — they're declared as $VAR or VAR= in shell,
+# or bullet-listed as the variable name in markdown contribution docs. Listed here so a future
+# PR can reference these variables without tripping the audit; expand as new runtime-only
+# credentials are introduced. The pattern deliberately omits a file-extension discriminator
+# so shell scripts, markdown, and any future doc surface are all covered.
 safe_env_var_ref_patterns=(
-  '^[^:]+\.sh:[0-9]+:.*\bAPP_STORE_CONNECT_API_KEY_(ID|FILEPATH)\b'
-  '^[^:]+\.sh:[0-9]+:.*\bAPP_STORE_CONNECT_API_ISSUER_ID\b'
-  '^[^:]+\.sh:[0-9]+:.*\bSTORAGESCOPE_SIGN_IDENTITY\b'
+  '^[^:]+:[0-9]+:.*\bAPP_STORE_CONNECT_API_KEY_(ID|FILEPATH)\b'
+  '^[^:]+:[0-9]+:.*\bAPP_STORE_CONNECT_API_ISSUER_ID\b'
+  '^[^:]+:[0-9]+:.*\bSTORAGESCOPE_SIGN_IDENTITY\b'
 )
 
 while IFS= read -r candidate; do
