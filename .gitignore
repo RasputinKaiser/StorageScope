@@ -20,6 +20,10 @@ state.yaml
 *.ipa
 *.pkg
 
+# App Store Connect notarization API keys (never checked in; see CONTRIBUTING.md).
+*.p8
+AuthKey_*.p8
+
 # Local/private release and agent handoff notes.
 AGENT_REVIEW_ALERT.md
 APP_STORE_READINESS.md
