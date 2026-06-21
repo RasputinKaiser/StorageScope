@@ -218,30 +218,29 @@ private struct RecentScanRow: View {
     let scanAction: () -> Void
     let forgetAction: () -> Void
 
-    @State private var relativeText: String = ""
-
     var body: some View {
-        SidebarPathButton(
-            path: entry.path,
-            systemImage: "clock.arrow.circlepath",
-            subtitle: subtitleText
-        ) {
-            scanAction()
+        // TimelineView.refresh redraws the relative-time subtitle on the schedule the
+        // system uses for `.relative(presentation: .named)` ("5 minutes ago" stays
+        // current without a manual Timer publisher). .onAppear-only refresh left the
+        // subtitle frozen after first paint, so rescans showed the wrong number.
+        TimelineView(.periodic(from: .now, by: 60)) { _ in
+            SidebarPathButton(
+                path: entry.path,
+                systemImage: "clock.arrow.circlepath",
+                subtitle: subtitleText
+            ) {
+                scanAction()
+            }
         }
         .contextMenu {
             Button("Forget Recent Scan") {
                 forgetAction()
             }
         }
-        .onAppear {
-            relativeText = entry.scannedAt.formatted(.relative(presentation: .named))
-        }
     }
 
     private var subtitleText: String {
-        let relative = relativeText.isEmpty
-            ? entry.scannedAt.formatted(.relative(presentation: .named))
-            : relativeText
+        let relative = entry.scannedAt.formatted(.relative(presentation: .named))
         guard entry.totalBytes > 0 else { return relative }
         return "\(relative) · \(StorageFormat.bytes(entry.totalBytes))"
     }
