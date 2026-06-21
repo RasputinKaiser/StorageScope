@@ -96,6 +96,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         store.moveSelectedItemToTrash()
     }
 
+    @objc private func selectSidebarView(_ sender: NSMenuItem) {
+        let view = SmartView.allCases[sender.tag]
+        store.selectedView = view
+    }
+
     @objc private func showSettings() {
         if let settingsWindow {
             settingsWindow.makeKeyAndOrderFront(nil)
@@ -257,6 +262,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             return store.canUseSelectedItemActions
         case #selector(moveSelectedItemToTrash):
             return store.canMoveSelectedItemToTrash
+        case #selector(selectSidebarView(_:)):
+            let activeIndex = SmartView.allCases.firstIndex(of: store.activeView) ?? -1
+            menuItem.state = menuItem.tag == activeIndex ? .on : .off
+            return true
         default:
             return true
         }
@@ -301,6 +310,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         scanMenu.addItem(menuItem("Cancel Scan", action: #selector(cancelScan), key: "."))
         scanMenuItem.submenu = scanMenu
         mainMenu.addItem(scanMenuItem)
+
+        let viewMenuItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+        for (index, smartView) in SmartView.allCases.enumerated() {
+            let item = menuItem(smartView.title, action: #selector(selectSidebarView(_:)), key: String(index + 1))
+            item.tag = index
+            viewMenu.addItem(item)
+        }
+        viewMenuItem.submenu = viewMenu
+        mainMenu.addItem(viewMenuItem)
 
         let itemMenuItem = NSMenuItem()
         let itemMenu = NSMenu(title: "Item")
