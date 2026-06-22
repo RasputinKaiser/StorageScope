@@ -71,6 +71,32 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.5.5 &mdash; Find-next auto-expands the Folder Tree</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.5">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.5/StorageScope-0.5.5.dmg">download .dmg</a></div>
+      <p>Closes a UX gap in find-next surfaced during the v0.5.4 render-pass work: when Cmd+G advances a search result to a row nested under collapsed Folder Tree folders, the row was being selected but stayed invisible until the user manually expanded each ancestor.</p>
+
+      <h3>Find-next navigation</h3>
+      <ul>
+        <li><strong>Auto-expand ancestors on Cmd+G / Cmd+Shift+G.</strong> <code>ScanStore.advanceSearchResult()</code> and <code>reverseSearchResult()</code> now call a new <code>ensureAncestorsExpanded(forItemID:)</code> helper that walks the retained tree from root to the matched target and inserts each ancestor's id into <code>selection.treeExpandedIDs</code>. The matched row is guaranteed to be visible when the user switches to the Folder Tree view, or already visible if they're already there.</li>
+        <li>Uses a single recursive DFS through <code>scan.rootItem.children</code> &mdash; O(N) per Cmd+G press, where N is bounded by retained item count (~2,000 max from <code>ScanOptions.maxRetainedItems</code>). Idempotent and cheap on repeat presses for the same target.</li>
+        <li>Returns silently if no scan is loaded or the matched id isn't in the retained tree (e.g. matches from <code>duplicateSizeGroups</code> / <code>cleanupCandidates</code> that were pruned from the retained tree). Selection still applies for views that don't need expansion (StorageItemTable).</li>
+        <li>New test <code>advanceSearchResult auto-expands collapsed ancestors in the tree so the matched row is visible</code> verifies the contract end-to-end with a 2-level-deep fixture where both intermediate folders start collapsed.</li>
+      </ul>
+
+      <h3>Docs</h3>
+      <ul>
+        <li><code>docs/keyboard-shortcuts.html</code> notes the v0.5.5 auto-expand behavior inline on the Cmd+G and Cmd+Shift+G rows.</li>
+      </ul>
+
+      <h3>Validation</h3>
+      <ul>
+        <li><code>swift test</code> &mdash; 91 tests across 10 suites pass (1 new test added)</li>
+        <li><code>./script/public_upload_audit.sh</code> &mdash; passes</li>
+        <li><code>bash ./script/build_and_run.sh --verify</code> &mdash; bundle launches cleanly</li>
+      </ul>
+    </section>
+
+    <section class="release">
       <h2>v0.5.4 &mdash; DuplicateItemList render-path refactor</h2>
       <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.4">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.4/StorageScope-0.5.4.dmg">download .dmg</a></div>
       <p>First actionable render-path perf win from the v0.5.3 measurement slice. Per <code>PLAN.md</code> &sect;6.3, scan-pipeline proposals stay deferred until Instruments signup shows their signpost at &ge;20% of <code>totalDuration</code> on the 100k fixture; v0.5.4 ships the always-applicable UI render-path wins &mdash; the P-17 enumerated allocation elimination and a <code>LazyVStack</code> swap that turns verified-duplicate groups of hundreds of items from eager-rendered to on-demand.</p>
@@ -337,14 +363,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.4/StorageScope-0.5.4.dmg">Download v0.5.4 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.5/StorageScope-0.5.5.dmg">Download v0.5.5 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.4/StorageScope-0.5.4.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.5/StorageScope-0.5.5.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.4 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.5 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>
