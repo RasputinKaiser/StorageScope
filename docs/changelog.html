@@ -78,7 +78,7 @@
       <ul>
         <li>Multi-word AND search: split queries by whitespace and require every term to match (#84). "Documents report" matches both <code>Documents</code> as a path segment AND <code>report</code> as a substring of name.</li>
         <li>Path-segment matching: terms match <code>/</code>-split segments of the full path, so "Documents" matches <code>/tmp/work/Documents/file.txt</code> without needing "Documents" to be a contiguous substring (#84).</li>
-        <li>Substring highlight: matched tokens in the file list and Folder Tree render in accent color via a new <code>HighlightedText</code> SwiftUI view struct (#84).</li>
+        <li>Substring highlight: matched substrings in the file list and Folder Tree render in accent color via a new <code>HighlightedText</code> SwiftUI view struct (#84).</li>
         <li>Search-result count badge: pill-shaped "N matches" badge in StorageItemTable header when a search is active (#86). Distinguishes nil (no search) from zero matches so the empty-state below can tell them apart.</li>
         <li>Search empty-state distinction: <code>FilterRecoveryView</code> now distinguishes "no scan", "no matches" (search active, zero hits), and "filtered empty" (filter chips, zero hits) with state-appropriate iconography and copy (#87).</li>
         <li>Cmd+G find-next navigation: Mail/Finder convention. Cmd+G advances through search-result rows and wraps around; Cmd+Shift+G reverses (#88). Sets <code>selectedItemID</code> so the matched row takes focus. Menu items gate on search-active.</li>
