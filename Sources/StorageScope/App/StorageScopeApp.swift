@@ -140,6 +140,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         store.requestSearchFieldFocus()
     }
 
+    @objc private func findNextSearchResult() {
+        store.advanceSearchResult()
+    }
+
+    @objc private func findPreviousSearchResult() {
+        store.reverseSearchResult()
+    }
+
     @objc private func scanRecentFromMenu(_ sender: NSMenuItem) {
         guard let path = sender.representedObject as? String else { return }
         store.scanRecentPath(path)
@@ -318,6 +326,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         case #selector(showMainWindow), #selector(showSettings), #selector(showAbout),
              #selector(openStorageScopeOnGitHub), #selector(reportAnIssue), #selector(findInCurrentView):
             return true
+        case #selector(findNextSearchResult), #selector(findPreviousSearchResult):
+            // Only enabled when a search is active and produced at least one hit.
+            // Matches Mail's behavior: Cmd+G is no-op when no find is in flight.
+            return store.filters.searchResultIDs?.isEmpty == false
         case #selector(chooseFolder), #selector(scanHome), #selector(scanDocuments), #selector(scanDownloads),
              #selector(scanRecentFromMenu):
             return !store.isScanning
@@ -405,6 +417,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editMenu.addItem(NSMenuItem.separator())
         editMenu.addItem(menuItem("Find...", action: #selector(findInCurrentView), key: "f"))
+        editMenu.addItem(menuItem("Find Next", action: #selector(findNextSearchResult), key: "g"))
+        editMenu.addItem(menuItem("Find Previous", action: #selector(findPreviousSearchResult), key: "g", modifiers: [.command, .shift]))
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 

@@ -92,7 +92,7 @@ final class FilterStore: ObservableObject {
 
     @Published private(set) var searchSubtreeMatchIDs: Set<String>?
 
-    /// Read-only derived count of items in `searchSubtreeMatchIDs`. Nil when no
+/// Read-only derived count of items in `searchSubtreeMatchIDs`. Nil when no
     /// search is active (empty/whitespace-only `query`) so S3's empty-state can
     /// distinguish "no search" from "search active, zero matches". Pure derivation
     /// over `searchSubtreeMatchIDs` — never set externally, never introduces a
@@ -102,6 +102,15 @@ final class FilterStore: ObservableObject {
     var searchResultCount: Int? {
         searchSubtreeMatchIDs?.count
     }
+
+    /// Ordered array of item IDs whose own name/path matches the active query,
+    /// for S4 Cmd+G find-next navigation. Built alongside `searchSubtreeMatchIDs`
+    /// in the same DFS pre-order walk so the navigation order matches the visible
+    /// tree structure (Mail/Finder convention: jump top-to-bottom in the order
+    /// the rows render). Nil when no query is active. Distinct from
+    /// `searchSubtreeMatchIDs` (Set) which includes ancestors-of-matches — that
+    /// family set powers tree-subtree filtering; this array powers navigation.
+    @Published private(set) var searchResultIDs: [String]?
 
     private var searchTextDebounceTask: Task<Void, Never>?
     private let scanLookup: () -> StorageScan?
@@ -228,17 +237,23 @@ final class FilterStore: ObservableObject {
 
         guard let scan = scanLookup() else {
             searchSubtreeMatchIDs = nil
+            searchResultIDs = nil
             return
         }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
             searchSubtreeMatchIDs = nil
+            searchResultIDs = nil
             return
         }
 
         var subtreeContains = Set<String>()
+        var orderedMatches: [String] = []
         func visit(_ item: StorageItem) -> Bool {
             var any = item.matchesNormalizedSearchQuery(trimmedQuery)
+            if any {
+                orderedMatches.append(item.id)
+            }
             for child in item.children where visit(child) {
                 any = true
             }
@@ -247,5 +262,6 @@ final class FilterStore: ObservableObject {
         }
         _ = visit(scan.rootItem)
         searchSubtreeMatchIDs = subtreeContains
+        searchResultIDs = orderedMatches
     }
 }
