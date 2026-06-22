@@ -107,6 +107,10 @@ func setSelectedView(_ view: SmartView) {
     private var cachedItems: [StorageItem] = []
     private var cachedOldLargeFilesKey: DerivedCacheKey?
     private var cachedOldLargeFiles: [StorageItem] = []
+    private var cachedDuplicateGroupsKey: DerivedCacheKey?
+    private var cachedDuplicateGroups: [DuplicateSizeGroup] = []
+    private var cachedVerifiedDuplicateGroupsKey: DerivedCacheKey?
+    private var cachedVerifiedDuplicateGroups: [VerifiedDuplicateGroup] = []
 
     lazy var onDemandVerification: OnDemandVerificationStore = OnDemandVerificationStore(
         hashCache: hashCache,
@@ -650,11 +654,17 @@ func setSelectedView(_ view: SmartView) {
         guard let scan else {
             return []
         }
+        guard let key = currentDerivedCacheKey else {
+            return []
+        }
+        if cachedDuplicateGroupsKey == key {
+            return cachedDuplicateGroups
+        }
         // Layer scan-time verified groups with on-demand ones so items that became verified
         // via "Verify Now" disappear from the same-size candidate list.
         var mergedVerifiedGroups = scan.verifiedDuplicateGroups
         mergedVerifiedGroups.append(contentsOf: onDemandVerification.verifiedGroupsByChecksum.values)
-        return DuplicateReviewPlanner.unverifiedSizeGroups(
+        let value = DuplicateReviewPlanner.unverifiedSizeGroups(
             sizeGroups: scan.duplicateSizeGroups,
             verifiedGroups: mergedVerifiedGroups
         )
@@ -663,6 +673,9 @@ func setSelectedView(_ view: SmartView) {
                 DuplicateSizeGroup(byteSize: group.byteSize, items: filtered(group.items))
             }
             .filter { $0.items.count > 1 }
+        cachedDuplicateGroupsKey = key
+        cachedDuplicateGroups = value
+        return value
     }
 
     var verifiedDuplicateGroups: [VerifiedDuplicateGroup] {
@@ -686,6 +699,13 @@ func setSelectedView(_ view: SmartView) {
                     }
         }
 
+        guard let key = currentDerivedCacheKey else {
+            return []
+        }
+        if cachedVerifiedDuplicateGroupsKey == key {
+            return cachedVerifiedDuplicateGroups
+        }
+
         // Merge scan-time verified groups with on-demand ones, keyed by checksum. On-demand wins
         // in case of a checksum collision so a manual re-verify (e.g. with cache cleared) is
         // reflected immediately.
@@ -697,7 +717,7 @@ func setSelectedView(_ view: SmartView) {
             merged[checksum] = group
         }
 
-        return merged.values
+        let value = merged.values
             .filter { $0.byteSize >= filters.sizeFilter.threshold }
             .map { group in
                 VerifiedDuplicateGroup(
@@ -713,6 +733,9 @@ func setSelectedView(_ view: SmartView) {
                 }
                 return lhs.reclaimableBytes > rhs.reclaimableBytes
             }
+        cachedVerifiedDuplicateGroupsKey = key
+        cachedVerifiedDuplicateGroups = value
+        return value
     }
 
     func keeperItemID(for group: VerifiedDuplicateGroup) -> String? {
@@ -1206,6 +1229,10 @@ func setSelectedView(_ view: SmartView) {
         cachedReclaimPlan = ReclaimPlan(sections: [], primaryAction: nil)
         cachedOldLargeFilesKey = nil
         cachedOldLargeFiles = []
+        cachedDuplicateGroupsKey = nil
+        cachedDuplicateGroups = []
+        cachedVerifiedDuplicateGroupsKey = nil
+        cachedVerifiedDuplicateGroups = []
         invalidateItemsCache()
     }
 
