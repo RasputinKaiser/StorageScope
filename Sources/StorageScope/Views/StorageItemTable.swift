@@ -22,9 +22,14 @@ struct StorageItemTable: View {
 
                 Spacer()
 
-                Text(countLabel ?? "\(items.count.formatted()) items")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    if let searchResultCount = store.filters.searchResultCount {
+                        SearchResultCountBadge(count: searchResultCount)
+                    }
+                    Text(countLabel ?? "\(items.count.formatted()) items")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             VStack(spacing: 0) {
@@ -61,6 +66,34 @@ struct StorageItemTable: View {
             }
             .cardBackground()
         }
+    }
+}
+
+/// Pill-shaped badge displayed alongside `StorageItemTable`'s item-count label
+/// whenever a search query is active. Backed by `FilterStore.searchResultCount`
+/// (derived from `searchSubtreeMatchIDs.count`). Extracted as its own `View` struct
+/// because the `.tint`-tinted Capsule background + caption weight combined with
+/// the surrounding HStack ternary was tripping the Swift type-checker inside the
+/// table header body — same pitfall already worked around via `HighlightedText`/
+/// `FileTypeRowLabel` extraction patterns documented in the v0.5.0 S1 learning.
+///
+/// Singular/plural wording mirrors macOS Find: `1 match` vs `N matches`.
+private struct SearchResultCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text(label)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(.tint.opacity(0.12), in: Capsule())
+            .accessibilityLabel("\(count.formatted()) search \(count == 1 ? "match" : "matches")")
+            .help("Items in the current scan whose name or path match the search query")
+    }
+
+    private var label: String {
+        count == 1 ? "1 match" : "\(count.formatted()) matches"
     }
 }
 
