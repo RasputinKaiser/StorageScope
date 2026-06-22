@@ -50,7 +50,7 @@ struct TypeBreakdownView: View {
                                             .fill(.quaternary)
                                             .overlay(alignment: .leading) {
                                                 RoundedRectangle(cornerRadius: 4)
-                                                    .fill(.teal.opacity(0.72))
+                                                    .fill(stat.category.barTint.opacity(0.72))
                                                     .frame(width: max(8, geometry.size.width * CGFloat(Double(stat.totalBytes) / Double(maxCategoryBytes))))
                                             }
                                     }
@@ -129,7 +129,7 @@ private struct FileTypeRowLabel: View {
                     .fill(.quaternary)
                     .overlay(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(.blue.opacity(0.72))
+                            .fill(stat.category.barTint.opacity(0.72))
                             .frame(width: max(8, geometry.size.width * CGFloat(Double(stat.totalBytes) / Double(maxBytes))))
                     }
             }
@@ -158,4 +158,27 @@ private struct FileTypeRowLabel: View {
 private func isFocused(fileTypeFocus: String?, stat: FileTypeStat) -> Bool {
     let expected = stat.label == "No Extension" ? "" : stat.label
     return fileTypeFocus == expected
+}
+
+/// Per-category bar tint so bar length is visually comparable even when the
+/// numeric ratio is small (Archives at 16 GB vs Installers at 572 MB looked
+/// near-identical when both bars were the same teal/blue — the eye registered
+/// color, not length). Hue assignment is deterministic per category and uses
+/// Apple system semantic colors so it adapts to light/dark mode automatically.
+private extension FileTypeStat.Category {
+    var barTint: Color {
+        switch self {
+        case .archive:        return .orange
+        case .audio:           return .pink
+        case .developer:      return .purple
+        case .document:       return .blue
+        case .database:       return .red
+        case .font:           return .indigo
+        case .image:          return .green
+        case .installer:      return .teal
+        case .video:          return .yellow
+        case .virtualMachine: return .brown
+        case .other:          return .gray
+        }
+    }
 }

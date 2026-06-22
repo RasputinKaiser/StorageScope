@@ -71,6 +71,34 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.5.2 &mdash; Inspector, File Types colors, Duplicate Review copy</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.2">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.2/StorageScope-0.5.2.dmg">download .dmg</a></div>
+      <p>Three more tour-driven fixes: Inspector no longer shows the root scan as a (misleading) default selection, File Types bars use per-category tint so length is visually comparable at a glance, and the Duplicate Review subtitle is de-jargoned.</p>
+
+      <h3>Inspector</h3>
+      <ul>
+        <li><strong>Removed the root-scan fallback in <code>ScanStore.selectedItem</code>.</strong> Previously, when no item was explicitly selected, the inspector fell back to <code>scan.rootItem</code> (the entire scan root folder) &mdash; making the inspector look like it was &ldquo;stuck on the root&rdquo; on every view, and masking the fact that selection is explicit. It now returns <code>nil</code> so the existing <em>&ldquo;No Selection &mdash; Select an item to inspect actions and metadata&rdquo;</em> empty state appears, which is what should have surfaced in the first place.</li>
+      </ul>
+
+      <h3>File Types</h3>
+      <ul>
+        <li><strong>Per-category bar tint.</strong> Both the Category Mix bar chart and the per-extension bar chart used a single color (teal for categories, blue for extensions), which made the visual length difference hard to register when bars were short (the Archives@16&nbsp;GB vs Installers@572&nbsp;MB bars looked near-identical proportionally). Each <code>FileTypeStat.Category</code> now maps to a deterministic system color (Archives &rarr; orange, Audio &rarr; pink, Developer &rarr; purple, Documents &rarr; blue, Databases &rarr; red, Fonts &rarr; indigo, Images &rarr; green, Installers &rarr; teal, Video &rarr; yellow, Virtual Machines &rarr; brown, Other &rarr; gray). Bar lengths were already linear with an 8pt floor &mdash; no scaling change, just better perceptual differentiation.</li>
+      </ul>
+
+      <h3>Duplicate Review</h3>
+      <ul>
+        <li><strong>Subtitle de-jargoned.</strong> &ldquo;Verified duplicates are content-hashed. Same-size candidates remain separated as review leads.&rdquo; &rarr; &ldquo;SHA-256 confirmed copies are safe to remove. Size-matched candidates need manual review.&rdquo; Same meaning; fewer formal-CS terms.</li>
+      </ul>
+
+      <h3>Validation</h3>
+      <ul>
+        <li><code>swift test</code> &mdash; 90 tests across 10 suites pass</li>
+        <li><code>./script/public_upload_audit.sh</code> &mdash; passes</li>
+        <li><code>bash ./script/build_and_run.sh --verify</code> &mdash; bundle launches cleanly</li>
+      </ul>
+    </section>
+
+    <section class="release">
       <h2>v0.5.1 &mdash; Post-release UX polish</h2>
       <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.1">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.1/StorageScope-0.5.1.dmg">download .dmg</a></div>
       <p>Targeted fixes for issues raised during the v0.5.0 UI tour: Folder Tree expand behavior, persistent-header context-sensitivity, sparse-result view layout, and Keeper badge explainability.</p>
@@ -247,14 +275,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.1/StorageScope-0.5.1.dmg">Download v0.5.1 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.2/StorageScope-0.5.2.dmg">Download v0.5.2 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.1/StorageScope-0.5.1.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.2/StorageScope-0.5.2.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.1 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.2 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

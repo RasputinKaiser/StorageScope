@@ -308,7 +308,12 @@ func setSelectedView(_ view: SmartView) {
             return nil
         }
         guard let selectedItemID else {
-            return scan.rootItem
+            // No explicit selection: surface nil so the inspector shows its
+            // "No Selection" empty state. Returning scan.rootItem here made the
+            // inspector look like it was "stuck" on the scan root regardless of
+            // which view was active — misleading because the root folder is not a
+            // reviewable artifact, and it hid the fact that selection is explicit.
+            return nil
         }
 
         return scan.lookupItem(id: selectedItemID)

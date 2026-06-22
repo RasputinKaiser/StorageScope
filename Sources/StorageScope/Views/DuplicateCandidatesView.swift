@@ -11,7 +11,7 @@ struct DuplicateCandidatesView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Duplicate Review")
                         .font(.headline)
-                    Text("Verified duplicates are content-hashed. Same-size candidates remain separated as review leads.")
+                    Text("SHA-256 confirmed copies are safe to remove. Size-matched candidates need manual review.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
