@@ -70,14 +70,82 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
-      <h2>v0.4.5 &mdash; Sidebar UX and review workflow polish</h2>
+      <h2>v0.4.5 &mdash; UX Polish Release</h2>
       <div class="meta">Released 2026-06-21 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.4.5">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.5/StorageScope-0.4.5.dmg">download .dmg</a></div>
-      <p>Navigation and review updates for the GitHub Pages site and the current StorageScope release. This page now puts the latest release first and links the current DMG from the changelog actions.</p>
+      <p>This update focused on UX polish and standard macOS conventions. 39 PRs (#33&ndash;#72) shipped since v0.4.0.</p>
+
+      <h3>Filter UX</h3>
       <ul>
-        <li>Latest release entry added above the older v0.3.0 notes.</li>
-        <li>Download actions updated to v0.4.5.</li>
-        <li>SHA-256 verification link updated for the current DMG.</li>
-        <li>Footer version updated to match the current release.</li>
+        <li>Individually dismissible filter chips &mdash; click the x on one pill instead of clearing all (#39).</li>
+        <li>File-type filter separated from search query so the chip reads "Type: mp4" instead of misleading "Search: mp4" (#46); auto-clears on non-applicable view switches (#47); visually focuses the row in Type Breakdown (#62).</li>
+        <li>Instant chip drop when the search field empties (#45).</li>
+        <li>Context-aware toolbar search prompt per active view ("Search folders and paths" on Tree, "Search extensions" on File Types, etc.) (#64).</li>
+        <li>Selected sidebar view persists across launches (#63).</li>
+        <li>Scan duration formatter shows "1 min 30 sec" instead of "1 min" for sub-10-minute rescans (#54).</li>
+        <li>Recent scan relative timestamps stay current via <code>TimelineView</code> instead of freezing (#56).</li>
+        <li>Modified column shows relative time for recent files (#66).</li>
+      </ul>
+
+      <h3>Standard macOS menus</h3>
+      <ul>
+        <li>View menu + Cmd+1&ndash;8 hotkeys for sidebar Smart Views (#41).</li>
+        <li>Edit menu Find &rarr; Cmd+F focuses the search field (with graceful fallback on macOS 14) (#69).</li>
+        <li>View menu Enter Full Screen &rarr; Cmd+Ctrl+F (#70).</li>
+        <li>Window menu Close &rarr; Cmd+W (#52).</li>
+        <li>Help menu links to GitHub repo + issues (#59).</li>
+      </ul>
+
+      <h3>Item / trash review interactions</h3>
+      <ul>
+        <li>Double-click-to-open across item rows, opens file in its default app (#43).</li>
+        <li>Trash review rows gain an Open button alongside Reveal + Remove (#53).</li>
+        <li>Trash review section headers have Reveal All (#50) + Remove All (#67).</li>
+        <li>Gate the Open button on inaccessible items with help tag (#60).</li>
+        <li>Expand All / Collapse All in the Folder Tree header (#61).</li>
+        <li>Clickable sortable column headers with chevron direction indicator in StorageItemTable (#65); Modified cycles Newest &harr; Oldest; VoiceOver values speak direction (#68).</li>
+      </ul>
+
+      <h3>Sidebar / welcome / window chrome</h3>
+      <ul>
+        <li>Sidebar scan-entry buttons disabled mid-scan (#40); toolbar Choose Folder + Recent Scans + Volumes gated (#49).</li>
+        <li>Volume free-space surfaced as subtitle ("247 GB free of 1 TB") (#51).</li>
+        <li>Recent Scans quick-launch on the WelcomeView (#57).</li>
+        <li>Tappable Overview insight cards (Largest File / Folder / Oldest Large File) select the item (#58).</li>
+        <li>Scan-canceled acknowledgment banner with contextual rescan action, made dismissible (#44, #55).</li>
+        <li>Dynamic window title reflecting the scanned root: "StorageScope &mdash; &lt;folder&gt;" (#48).</li>
+        <li>Reclaim Plan action labels disambiguated (#42).</li>
+      </ul>
+
+      <h3>ScanStore sub-store extractions (provisional-for-v0.5.0)</h3>
+      <ul>
+        <li>RecentsStore (#34), OnDemandVerificationStore (#35), FilterStore (#38) extracted from ScanStore via the lazy-var + closure-injection pattern. See the new <a href="architecture.html">architecture page</a> for details.</li>
+      </ul>
+
+      <h3>Accessibility</h3>
+      <ul>
+        <li>VoiceOver sort direction in column header a11y values (#68).</li>
+        <li>File Type Category Mix rows labeled with category + bytes (#71).</li>
+      </ul>
+
+      <h3>Quality-of-life dead-code / micro-cleanup</h3>
+      <ul>
+        <li>First-run permission card body &rarr; <code>.footnote</code> (#33).</li>
+        <li>Inline StorageFormatless.kindLabel &mdash; remove needless indirection (#36).</li>
+        <li>Remove dead <code>import AppKit</code> from ScanStore (#37).</li>
+      </ul>
+    </section>
+
+    <section class="release">
+      <h2>v0.4.0 &mdash; Foundation Release</h2>
+      <div class="meta">Released 2026-04 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.4.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.0/StorageScope-0.4.0.dmg">download .dmg</a></div>
+      <p>Foundation for the UX arc that followed in v0.4.5. App Sandbox + security-scoped bookmark plumbing, transactional Trash, and the documented build / release pipeline.</p>
+      <ul>
+        <li><code>.cardBackground()</code> / <code>.selectionBackground()</code> SwiftUI ViewModifier extensions for consistent card styling across views.</li>
+        <li><code>DuplicateHashCache.purgeStale</code> &mdash; auto-evict stale hash cache entries based on file mtime + path.</li>
+        <li><code>script/public_upload_audit.sh</code> &mdash; switched <code>rg</code> &rarr; <code>grep</code> for portability + added allowlist for legitimate runtime env-var references.</li>
+        <li><code>script/notarize_dmg.sh</code> &mdash; scaffolds the notarization pipeline (NOTE: never actually submitted to Apple's notary service in this release &mdash; first submission remains a manual maintainer step).</li>
+        <li>Contributor docs scaffolded.</li>
+        <li>Various foundation cleanups.</li>
       </ul>
     </section>
 
