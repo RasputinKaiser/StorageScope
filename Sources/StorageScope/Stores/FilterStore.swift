@@ -92,6 +92,17 @@ final class FilterStore: ObservableObject {
 
     @Published private(set) var searchSubtreeMatchIDs: Set<String>?
 
+    /// Read-only derived count of items in `searchSubtreeMatchIDs`. Nil when no
+    /// search is active (empty/whitespace-only `query`) so S3's empty-state can
+    /// distinguish "no search" from "search active, zero matches". Pure derivation
+    /// over `searchSubtreeMatchIDs` — never set externally, never introduces a
+    /// second filter-state dimension alongside the chip-bearing `query`/
+    /// `fileTypeFocus` pair. S2 surfaces this as the file-table search-result
+    /// count badge.
+    var searchResultCount: Int? {
+        searchSubtreeMatchIDs?.count
+    }
+
     private var searchTextDebounceTask: Task<Void, Never>?
     private let scanLookup: () -> StorageScan?
     private let coordinateInvalidate: () -> Void
