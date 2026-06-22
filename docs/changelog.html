@@ -71,6 +71,29 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.5.7 &mdash; Cleanup Candidate row Equatable + state hoist</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.7">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.7/StorageScope-0.5.7.dmg">download .dmg</a></div>
+      <p>Continuation of the PLAN.md &sect;3.3 P-15 row Equatable sweep: extend the diff-skip pattern to the cleanup-review row, the third row type that benefits. Pairs with the future v0.6.0 Tier-3 <code>SelectionStore</code> extraction (P-13) the same way v0.5.6 did for file/duplicate rows.</p>
+
+      <h3>Cleanup Review</h3>
+      <ul>
+        <li><strong><code>CleanupCandidateRow</code> conforms to Equatable.</strong> Stateless fields: <code>candidate</code> (already <code>Hashable</code> via <code>CleanupCandidate: Identifiable, Hashable, Sendable</code>) plus two visual outputs derived from <code>store</code> &mdash; the row's tap-selected highlight (<code>store.selectedItemID == candidate.item.id</code>) and its cleanup-batch check-mark (<code>store.selectedCleanupCandidateIDs.contains(candidate.id)</code>). Those two computed pieces were inlined in the old body and now arrive as pre-evaluated <code>let isSelected: Bool</code> and <code>let isChecked: Bool</code> fields.</li>
+        <li><strong>Call site supplies precomputed state.</strong> <code>LazyVStack</code>'s <code>ForEach</code> callsite introspects <code>store</code> once per row to compute <code>isSelected</code> and <code>isChecked</code>, then hands them to the row struct. Same per-render CPU cost as before, but the row's <code>==</code> is now O(1) for SwiftUI's diff check &mdash; rows that didn't change re-render cheaply.</li>
+        <li>Applied <code>.equatable()</code> at the call site. Checklist: clicking row N (toggles batch check) skips re-render on rows whose check state didn't flip; <code>Move to Trash</code> actions that update <code>selectedItemID</code> skip re-render on rows whose selection tint didn't change.</li>
+        <li>Accessibility, context menu, highlight behavior, and the trash-disabled gate on <code>store.canMoveItemToTrash(candidate.item)</code> are unchanged.</li>
+      </ul>
+
+      <h3>Validation</h3>
+      <ul>
+        <li><code>swift test</code> &mdash; 91 tests across 10 suites pass</li>
+        <li><code>./script/public_upload_audit.sh</code> &mdash; passes</li>
+        <li><code>bash ./script/build_and_run.sh --verify</code> &mdash; bundle launches cleanly</li>
+      </ul>
+
+      <p>Next per PLAN.md &sect;4 sequencing: v0.6.0 Tier-3 <code>SelectionStore</code> extraction (P-13). High-risk per &sect;3.3 &mdash; feature-flagged.</p>
+    </section>
+
+    <section class="release">
       <h2>v0.5.6 &mdash; Row Equatable conformance</h2>
       <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.6">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.6/StorageScope-0.5.6.dmg">download .dmg</a></div>
       <p>First PIT stop on PLAN.md &sect;3.3 P-15: row-level <code>Equatable</code> conformance so SwiftUI's <code>ForEach</code>/<code>LazyVStack</code> diff can skip body re-eval for un-changed rows. Sets up the future Tier-3 <code>SelectionStore</code> extraction (P-13, deferred to v0.6.0 per the architectural notes) by giving the diff pipeline a fast-path identity check now.</p>
@@ -386,14 +409,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.6/StorageScope-0.5.6.dmg">Download v0.5.6 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.7/StorageScope-0.5.7.dmg">Download v0.5.7 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.6/StorageScope-0.5.6.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.7/StorageScope-0.5.7.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.6 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.7 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

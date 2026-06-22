@@ -85,7 +85,13 @@ struct CleanupReviewView: View {
                 } else {
                     LazyVStack(spacing: 10) {
                         ForEach(store.cleanupCandidates) { candidate in
-                            CleanupCandidateRow(candidate: candidate, store: store)
+                            CleanupCandidateRow(
+                                candidate: candidate,
+                                isSelected: store.selectedItemID == candidate.item.id,
+                                isChecked: store.selectedCleanupCandidateIDs.contains(candidate.id),
+                                store: store
+                            )
+                            .equatable()
                         }
                     }
                 }
@@ -274,18 +280,29 @@ private struct CleanupLaneStat: View {
     }
 }
 
-private struct CleanupCandidateRow: View {
+private struct CleanupCandidateRow: View, Equatable {
     let candidate: CleanupCandidate
+    let isSelected: Bool
+    let isChecked: Bool
     @ObservedObject var store: ScanStore
+
+    static func == (lhs: CleanupCandidateRow, rhs: CleanupCandidateRow) -> Bool {
+        // Equality excludes the shared `store` (one observer per list, stable
+        // across rows). Captures selection-tint + the check-mark state, the
+        // two visual outputs derived from live `store` mutations.
+        lhs.candidate == rhs.candidate
+            && lhs.isSelected == rhs.isSelected
+            && lhs.isChecked == rhs.isChecked
+    }
 
     var body: some View {
         Button {
             store.toggleCleanupCandidate(candidate)
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: store.selectedCleanupCandidateIDs.contains(candidate.id) ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(store.selectedCleanupCandidateIDs.contains(candidate.id) ? .green : .secondary)
+                    .foregroundStyle(isChecked ? .green : .secondary)
                     .frame(width: 24)
                     .accessibilityHidden(true)
 
@@ -327,16 +344,16 @@ private struct CleanupCandidateRow: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .selectionBackground(isSelected: store.selectedItemID == candidate.item.id, radius: 8)
+            .selectionBackground(isSelected: isSelected, radius: 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(candidate.item.name), \(candidate.kind.displayName), \(StorageFormat.bytes(candidate.reclaimableBytes))")
-        .accessibilityValue(store.selectedCleanupCandidateIDs.contains(candidate.id) ? "Selected" : "Not selected")
+        .accessibilityValue(isChecked ? "Selected" : "Not selected")
         .accessibilityHint("Toggles selection for cleanup")
         .contextMenu {
-            Button(store.selectedCleanupCandidateIDs.contains(candidate.id) ? "Unselect" : "Select") {
+            Button(isChecked ? "Unselect" : "Select") {
                 store.toggleCleanupCandidate(candidate)
             }
             Button("Ignore Candidate") {
