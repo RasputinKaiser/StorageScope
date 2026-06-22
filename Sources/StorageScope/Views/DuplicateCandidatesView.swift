@@ -243,69 +243,89 @@ private struct DuplicateItemList: View {
     var onSetKeeper: ((StorageItem) -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                let isKeeper = keeperItemID == item.id
-                Button {
-                    store.selectedItemID = item.id
-                } label: {
-                    HStack {
-                        Image(systemName: "doc.fill")
-                            .foregroundStyle(.secondary)
-                        Text(item.name)
-                            .lineLimit(1)
-                        if isKeeper {
-                            Text("Keeper")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.green)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.green.opacity(0.14), in: Capsule())
-                                .help("Keeper — protected from Trash. Right-click any other copy in this group and choose \"Set as Keeper\" to reassign.")
-                        }
-                        Spacer()
-                        Text(item.url.deletingLastPathComponent().path)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .padding(.vertical, 7)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))\(isKeeper ? ", keeper" : "")")
-                .accessibilityValue(store.selectedItemID == item.id ? "Selected" : "Not selected")
-                .accessibilityHint(isKeeper
-                    ? "Keeper copy — protected from Trash. Use another row's menu to reassign keeper."
-                    : "Selects this duplicate candidate")
-                .simultaneousGesture(TapGesture(count: 2).onEnded {
-                    store.selectedItemID = item.id
-                    store.openSelectedItem()
-                })
-                .contextMenu {
-                    if let onSetKeeper, !isKeeper {
-                        Button {
-                            onSetKeeper(item)
-                        } label: {
-                            Label("Set as Keeper", systemImage: "checkmark.seal")
-                        }
-                        Divider()
-                    }
-                    Button("Reveal in Finder") {
-                        store.selectedItemID = item.id
-                        store.revealSelectedItem()
-                    }
-                    Button("Copy Path") {
-                        store.selectedItemID = item.id
-                        store.copySelectedPath()
-                    }
-                }
+        // LazyVStack (vs VStack) avoids loading rows that scroll offscreen — a real win
+        // on verified duplicate groups with hundreds of items. The previous
+        // `Array(items.enumerated())` alloc pattern was used solely to gate a trailing
+        // divider per row; switching to `LazyVStack(spacing: 0)` with the row owning its
+        // own Divider pre-render keeps the visual identical while eliminating that
+        // allocation and freeing SwiftUI's lazy recycling.
+        LazyVStack(spacing: 0) {
+            ForEach(items, id: \.id) { item in
+                DuplicateItemRow(
+                    item: item,
+                    isSelected: store.selectedItemID == item.id,
+                    isKeeper: keeperItemID == item.id,
+                    store: store,
+                    onSetKeeper: onSetKeeper
+                )
+                Divider()
+            }
+        }
+    }
+}
 
-                if index < items.index(before: items.endIndex) {
-                    Divider()
+private struct DuplicateItemRow: View {
+    let item: StorageItem
+    let isSelected: Bool
+    let isKeeper: Bool
+    @ObservedObject var store: ScanStore
+    let onSetKeeper: ((StorageItem) -> Void)?
+
+    var body: some View {
+        Button {
+            store.selectedItemID = item.id
+        } label: {
+            HStack {
+                Image(systemName: "doc.fill")
+                    .foregroundStyle(.secondary)
+                Text(item.name)
+                    .lineLimit(1)
+                if isKeeper {
+                    Text("Keeper")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.green.opacity(0.14), in: Capsule())
+                        .help("Keeper — protected from Trash. Right-click any other copy in this group and choose \"Set as Keeper\" to reassign.")
                 }
+                Spacer()
+                Text(item.url.deletingLastPathComponent().path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))\(isKeeper ? ", keeper" : "")")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityHint(isKeeper
+            ? "Keeper copy — protected from Trash. Use another row's menu to reassign keeper."
+            : "Selects this duplicate candidate")
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            store.selectedItemID = item.id
+            store.openSelectedItem()
+        })
+        .contextMenu {
+            if let onSetKeeper, !isKeeper {
+                Button {
+                    onSetKeeper(item)
+                } label: {
+                    Label("Set as Keeper", systemImage: "checkmark.seal")
+                }
+                Divider()
+            }
+            Button("Reveal in Finder") {
+                store.selectedItemID = item.id
+                store.revealSelectedItem()
+            }
+            Button("Copy Path") {
+                store.selectedItemID = item.id
+                store.copySelectedPath()
             }
         }
     }

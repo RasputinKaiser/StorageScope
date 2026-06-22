@@ -71,6 +71,29 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.5.4 &mdash; DuplicateItemList render-path refactor</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.4">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.4/StorageScope-0.5.4.dmg">download .dmg</a></div>
+      <p>First actionable render-path perf win from the v0.5.3 measurement slice. Per <code>PLAN.md</code> &sect;6.3, scan-pipeline proposals stay deferred until Instruments signup shows their signpost at &ge;20% of <code>totalDuration</code> on the 100k fixture; v0.5.4 ships the always-applicable UI render-path wins &mdash; the P-17 enumerated allocation elimination and a <code>LazyVStack</code> swap that turns verified-duplicate groups of hundreds of items from eager-rendered to on-demand.</p>
+
+      <h3>Duplicate review list</h3>
+      <ul>
+        <li><strong>Lazy-loading lazy stack.</strong> The per-group list of verified duplicate copies renders into a <code>LazyVStack(spacing: 0)</code> instead of a <code>VStack</code>. Rows that scroll offscreen are recycled, not eagerly materialized. Big perceived-latency win when a group has hundreds of verified copies (e.g. a <code>node_modules/</code> field that hashes identically across dozens of clones).</li>
+        <li><strong><code>Array(items.enumerated())</code> eliminated.</strong> The previous pattern allocated an enumerated tuple array purely to gate a trailing divider per row. Switched to <code>ForEach(items, id: \.id)</code> with the divider emitted unconditionally after every row. Same visual result, one fewer allocation per render of the list.</li>
+        <li><strong>Row extracted to <code>DuplicateItemRow</code>.</strong> Pre-existing inline closure moved into its own <code>private struct</code>. Sets up future <code>Equatable</code> conformance (PLAN.md P-15, deferred to v0.5.6 alongside the Tier-3 SelectionState extraction) where rows whose inputs haven't changed get routed through SwiftUI's diff skipping rather than re-rendered.</li>
+        <li>Accessibility, double-click-to-open-Finder, context-menu semantics, and Keeper cap tooltip from v0.5.1 unchanged.</li>
+      </ul>
+
+      <h3>Validation</h3>
+      <ul>
+        <li><code>swift test</code> &mdash; 90 tests across 10 suites pass</li>
+        <li><code>./script/public_upload_audit.sh</code> &mdash; passes</li>
+        <li><code>bash ./script/build_and_run.sh --verify</code> &mdash; bundle launches cleanly</li>
+      </ul>
+
+      <p>Render-path &quot;free win&quot; tier continues in v0.5.5 with <code>HighlightedText</code> short-circuiting on empty query (already done in v0.5.0), and the per-row <code>GeometryReader</code> hoist in <code>TypeBreakdownView</code> &mdash; medium-risk per PLAN.md &sect;3.3 P-14, so it's gated on a visual-sanity check after this release ships.</p>
+    </section>
+
+    <section class="release">
       <h2>v0.5.3 &mdash; Performance measurement slice</h2>
       <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.3">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg">download .dmg</a></div>
       <p>Measurement-only release. No behavior changes, no scan-pipeline optimizations &mdash; this slice exists to validate (or invalidate) the bottleneck hypotheses in the v0.5.3 &rarr; v0.6.0 performance plan before any optimization commits. The premise: most proposed optimizations are waste unless the underlying bottleneck is real, so we measure first.</p>
@@ -314,14 +337,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg">Download v0.5.3 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.4/StorageScope-0.5.4.dmg">Download v0.5.4 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.4/StorageScope-0.5.4.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.3 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.4 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>
