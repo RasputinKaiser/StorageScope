@@ -133,7 +133,7 @@ private struct TreeNodeRow: View {
 
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 8) {
-                            Text(item.name)
+                            HighlightedText(item.name, query: store.filters.searchText)
                                 .lineLimit(1)
                             Spacer()
                             Text(StorageFormat.bytes(item.displaySize))

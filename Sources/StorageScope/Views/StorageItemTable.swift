@@ -159,7 +159,7 @@ private struct StorageItemRow: View {
                         .frame(width: 18)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.name)
+                        HighlightedText(item.name, query: store.filters.searchText)
                             .lineLimit(1)
 
                         Text(item.url.path)
