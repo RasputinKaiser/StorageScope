@@ -71,6 +71,29 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.5.6 &mdash; Row Equatable conformance</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.6">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.6/StorageScope-0.5.6.dmg">download .dmg</a></div>
+      <p>First PIT stop on PLAN.md &sect;3.3 P-15: row-level <code>Equatable</code> conformance so SwiftUI's <code>ForEach</code>/<code>LazyVStack</code> diff can skip body re-eval for un-changed rows. Sets up the future Tier-3 <code>SelectionStore</code> extraction (P-13, deferred to v0.6.0 per the architectural notes) by giving the diff pipeline a fast-path identity check now.</p>
+
+      <h3>Diff-skipping on file and duplicate rows</h3>
+      <ul>
+        <li><strong><code>StorageItemRow</code> conforms to Equatable</strong>: <code>lhs.item == rhs.item && lhs.isSelected == rhs.isSelected</code>. Used in Largest Folders / Largest Files / Old Large Files view tables via the new <code>.equatable()</code> modifier at the call site. When the user selects row 5, rows 1&ndash;4 re-render only if their item or selection state changed &mdash; previously every row re-rendered because the parent <code>ScanStore</code> observation invalidated the whole <code>ForEach</code>.</li>
+        <li><strong><code>DuplicateItemRow</code> conforms to Equatable</strong>: adds <code>lhs.isKeeper == rhs.isKeeper</code> to the equality check (Keeper state can flip independently of selection). Same <code>.equatable()</code> modifier at call site.</li>
+        <li>Closures (<code>onSetKeeper</code>) and <code>@ObservedObject store</code> are intentionally excluded from the equality check &mdash; they're stable across rows in a group.</li>
+        <li><code>HighlightedText</code> already short-circuits on empty query (verified during v0.5.4 prep), so the row's <code>store.filters.searchText</code> dependency doesn't bypass diff-skip when no search is active.</li>
+      </ul>
+
+      <h3>Validation</h3>
+      <ul>
+        <li><code>swift test</code> &mdash; 91 tests across 10 suites pass (no test regressions)</li>
+        <li><code>./script/public_upload_audit.sh</code> &mdash; passes</li>
+        <li><code>bash ./script/build_and_run.sh --verify</code> &mdash; bundle launches cleanly</li>
+      </ul>
+
+      <p>Next planned slice per PLAN.md &sect;4 sequencing: v0.6.0 Tier-3 <code>SelectionStore</code> extraction (P-13). High-risk per &sect;3.3 &mdash; will be feature-flagged.</p>
+    </section>
+
+    <section class="release">
       <h2>v0.5.5 &mdash; Find-next auto-expands the Folder Tree</h2>
       <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.5">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.5/StorageScope-0.5.5.dmg">download .dmg</a></div>
       <p>Closes a UX gap in find-next surfaced during the v0.5.4 render-pass work: when Cmd+G advances a search result to a row nested under collapsed Folder Tree folders, the row was being selected but stayed invisible until the user manually expanded each ancestor.</p>
@@ -363,14 +386,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.5/StorageScope-0.5.5.dmg">Download v0.5.5 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.6/StorageScope-0.5.6.dmg">Download v0.5.6 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.5/StorageScope-0.5.5.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.6/StorageScope-0.5.6.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.5 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.6 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

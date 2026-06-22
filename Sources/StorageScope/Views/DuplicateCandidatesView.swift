@@ -258,18 +258,26 @@ private struct DuplicateItemList: View {
                     store: store,
                     onSetKeeper: onSetKeeper
                 )
+                .equatable()
                 Divider()
             }
         }
     }
 }
 
-private struct DuplicateItemRow: View {
+private struct DuplicateItemRow: View, Equatable {
     let item: StorageItem
     let isSelected: Bool
     let isKeeper: Bool
     @ObservedObject var store: ScanStore
     let onSetKeeper: ((StorageItem) -> Void)?
+
+    static func == (lhs: DuplicateItemRow, rhs: DuplicateItemRow) -> Bool {
+        // Skip closure comparison (onSetKeeper is the same across rows in a group)
+        // and @ObservedObject (shared). Only the row's item + selection + keeper
+        // state affect rendered output.
+        lhs.item == rhs.item && lhs.isSelected == rhs.isSelected && lhs.isKeeper == rhs.isKeeper
+    }
 
     var body: some View {
         Button {

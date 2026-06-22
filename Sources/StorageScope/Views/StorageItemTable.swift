@@ -63,6 +63,7 @@ struct StorageItemTable: View {
                                     isSelected: store.selectedItemID == item.id,
                                     store: store
                                 )
+                                .equatable()
                                 Divider()
                             }
                         }
@@ -230,10 +231,21 @@ private struct SortableColumnHeader: View {
     }
 }
 
-private struct StorageItemRow: View {
+private struct StorageItemRow: View, Equatable {
     let item: StorageItem
     let isSelected: Bool
     @ObservedObject var store: ScanStore
+
+    static func == (lhs: StorageItemRow, rhs: StorageItemRow) -> Bool {
+        // The store is shared by all rows; the only per-row values that affect output
+        // are the item itself and whether it's currently selected. Search query
+        // highlight is the one caveat — when filters.searchText changes, the parent
+        // ForEach identity changes via `\.id`, so this path still re-renders because
+        // SearchRecentsStore + SearchField drive, but for in-place re-render (e.g. a
+        // sibling row selection change), this Equatable skips rows whose item and
+        // isSelected haven't changed.
+        lhs.item == rhs.item && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Button {
