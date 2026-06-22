@@ -44,6 +44,27 @@ struct ContentView: View {
             }
         }
         .searchable(text: store.filterBinding(\.searchText), placement: .toolbar, prompt: searchPrompt)
+        .searchSuggestions {
+            // Only surface when field is empty/blank — once the user is typing,
+            // the search field's own auto-complete is more useful than a stale
+            // recent, and the suggestions list shouldn't crowd their input.
+            if store.filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ForEach(store.searchRecents.entries, id: \.self) { recent in
+                    Button {
+                        store.filters.searchText = recent
+                    } label: {
+                        Label(recent, systemImage: "clock.arrow.circlepath")
+                    }
+                }
+                if !store.searchRecents.entries.isEmpty {
+                    Button(role: .destructive) {
+                        store.searchRecents.clear()
+                    } label: {
+                        Label("Clear Recents", systemImage: "trash")
+                    }
+                }
+            }
+        }
         .modifier(SearchFocusModifier(focused: $searchFieldFocused))
         .onChange(of: store.searchFieldFocusRequest) { _, _ in
             // AppDelegate's Find command (Cmd+F) bumps the request counter; the
