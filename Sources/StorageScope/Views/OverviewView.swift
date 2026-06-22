@@ -232,6 +232,7 @@ private struct SizeDistributionView: View {
                         systemImage: "magnifyingglass",
                         description: store.hasActiveDisplayFilters ? "No root-level items match the active display filters." : "No root-level items are available for this scan.",
                         filters: store.activeDisplayFilterDescriptions,
+                        state: store.displayRecoveryState,
                         clearTitle: "Clear Filters"
                     ) {
                         store.resetDisplayFilters()

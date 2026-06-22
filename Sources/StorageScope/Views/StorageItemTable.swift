@@ -41,8 +41,8 @@ struct StorageItemTable: View {
                     FilterRecoveryView(
                         title: "No Items",
                         systemImage: "magnifyingglass",
-                        description: store.hasActiveDisplayFilters ? "No items match the active display filters." : "No items are available in this view.",
                         filters: store.activeDisplayFilterDescriptions,
+                        state: store.displayRecoveryState,
                         clearTitle: "Clear Filters"
                     ) {
                         store.resetDisplayFilters()

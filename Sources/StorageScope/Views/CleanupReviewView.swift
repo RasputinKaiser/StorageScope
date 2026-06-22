@@ -76,6 +76,7 @@ struct CleanupReviewView: View {
                         systemImage: "checklist",
                         description: store.hasActiveCleanupFilters ? "No cleanup targets match the active review filters." : "Try a broader scan or enable hidden files.",
                         filters: store.activeCleanupFilterDescriptions,
+                        state: store.cleanupRecoveryState,
                         clearTitle: "Clear Review Filters"
                     ) {
                         store.resetCleanupFilters()
