@@ -19,38 +19,54 @@ struct InspectorView: View {
             if let item = store.selectedItem {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: StorageFormat.icon(for: item))
-                                .font(.system(size: 42))
-                                .foregroundStyle(.tint)
+                        // Tinted icon header
+                        HStack(alignment: .top, spacing: 14) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.accentColor.opacity(0.14))
+                                    .frame(width: 48, height: 48)
+                                Image(systemName: StorageFormat.icon(for: item))
+                                    .font(.title2)
+                                    .foregroundStyle(.tint)
+                            }
 
-                            Text(item.name)
-                                .font(.title3.weight(.semibold))
-                                .lineLimit(3)
-
-                            Text(item.url.path)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(4)
-                                .truncationMode(.middle)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.name)
+                                    .font(.title3.weight(.semibold))
+                                    .lineLimit(3)
+                                Text(item.url.path)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                                    .truncationMode(.middle)
+                                    .textSelection(.enabled)
+                            }
                         }
 
                         Divider()
 
-                        InspectorMetric(title: "Size", value: StorageFormat.bytes(item.displaySize))
-                        InspectorMetric(title: "Kind", value: StorageFormat.label(for: item.kind))
-                        InspectorMetric(title: "Modified", value: StorageFormat.date(item.modifiedAt))
-                        InspectorMetric(title: "Children", value: "\(item.immediateChildCount.formatted()) direct, \(item.descendantCount.formatted()) nested")
-                        InspectorMetric(title: "Readable", value: item.isReadable ? "Yes" : "No")
+                        // 2-column attribute grid
+                        LazyVGrid(
+                            columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
+                            alignment: .leading,
+                            spacing: 14
+                        ) {
+                            InspectorMetric(title: "Size", value: StorageFormat.bytes(item.displaySize))
+                            InspectorMetric(title: "Kind", value: StorageFormat.label(for: item.kind))
+                            InspectorMetric(title: "Modified", value: StorageFormat.date(item.modifiedAt))
+                            InspectorMetric(title: "Readable", value: item.isReadable ? "Yes" : "No")
+                            InspectorMetric(title: "Children", value: item.immediateChildCount.formatted())
+                            InspectorMetric(title: "Nested", value: item.descendantCount.formatted())
+                        }
 
                         if let candidate = store.selectedCleanupCandidate {
                             Divider()
-
                             CleanupContextSection(candidate: candidate)
                         }
 
                         Divider()
 
+                        // Differentiated action button hierarchy
                         VStack(spacing: 8) {
                             Button {
                                 store.revealSelectedItem()
@@ -58,25 +74,30 @@ struct InspectorView: View {
                                 Label("Reveal in Finder", systemImage: "folder")
                                     .frame(maxWidth: .infinity)
                             }
+                            .buttonStyle(.borderedProminent)
                             .focused($focusedAction, equals: .reveal)
 
-                            Button {
-                                store.openSelectedItem()
-                            } label: {
-                                Label("Open", systemImage: "arrow.up.right.square")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .disabled(!store.canOpenSelectedItem)
-                            .help(item.isReadable ? "Open in default app" : "File is not readable; try Reveal in Finder instead")
-                            .focused($focusedAction, equals: .open)
+                            HStack(spacing: 8) {
+                                Button {
+                                    store.openSelectedItem()
+                                } label: {
+                                    Label("Open", systemImage: "arrow.up.right.square")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(!store.canOpenSelectedItem)
+                                .help(item.isReadable ? "Open in default app" : "File is not readable; try Reveal in Finder instead")
+                                .focused($focusedAction, equals: .open)
 
-                            Button {
-                                store.copySelectedPath()
-                            } label: {
-                                Label("Copy Path", systemImage: "doc.on.clipboard")
-                                    .frame(maxWidth: .infinity)
+                                Button {
+                                    store.copySelectedPath()
+                                } label: {
+                                    Label("Copy Path", systemImage: "doc.on.clipboard")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .focused($focusedAction, equals: .copyPath)
                             }
-                            .focused($focusedAction, equals: .copyPath)
 
                             Button(role: .destructive) {
                                 store.moveSelectedItemToTrash()
@@ -84,10 +105,10 @@ struct InspectorView: View {
                                 Label("Move to Trash", systemImage: "trash")
                                     .frame(maxWidth: .infinity)
                             }
+                            .buttonStyle(.bordered)
                             .disabled(!store.canMoveItemToTrash(item))
                             .focused($focusedAction, equals: .moveToTrash)
                         }
-                        .buttonStyle(.bordered)
                     }
                     .padding(16)
                 }
@@ -99,9 +120,9 @@ struct InspectorView: View {
                 }
             } else {
                 ContentUnavailableView(
-                    "No Selection",
-                    systemImage: "sidebar.right",
-                    description: Text(L10n.string("Select an item to inspect actions and metadata."))
+                    "Nothing Selected",
+                    systemImage: "cursorarrow.rays",
+                    description: Text("Select an item in the scan results to inspect its metadata and actions.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -131,16 +152,25 @@ private struct CleanupContextSection: View {
                 CleanupBadge(candidate.trustDetails.confidenceLabel, tint: candidate.confidence.tint)
             }
 
-            InspectorMetric(title: "Reclaimable", value: StorageFormat.bytes(candidate.reclaimableBytes))
+            LazyVGrid(
+                columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
+                alignment: .leading,
+                spacing: 14
+            ) {
+                InspectorMetric(title: "Reclaimable", value: StorageFormat.bytes(candidate.reclaimableBytes))
+                InspectorMetric(title: "Last Modified", value: StorageFormat.date(candidate.item.modifiedAt))
+                InspectorMetric(title: "Kind", value: candidate.kind.displayName)
+            }
+
             InspectorMetric(title: "Path", value: candidate.item.url.path)
-            InspectorMetric(title: "Kind", value: candidate.kind.displayName)
-            InspectorMetric(title: "Last Modified", value: StorageFormat.date(candidate.item.modifiedAt))
-            InspectorMetric(title: "Why StorageScope flagged this", value: candidate.trustDetails.flaggedReason)
-            InspectorMetric(title: "What could break if removed", value: candidate.trustDetails.couldBreak)
-            InspectorMetric(title: "Why it is usually safe or not safe", value: candidate.trustDetails.safetyNote)
+            InspectorMetric(title: "Why flagged", value: candidate.trustDetails.flaggedReason)
+            InspectorMetric(title: "Could break", value: candidate.trustDetails.couldBreak)
+            InspectorMetric(title: "Safety note", value: candidate.trustDetails.safetyNote)
             InspectorMetric(title: "Suggested action", value: candidate.trustDetails.suggestedAction)
 
-            Text(candidate.isHighConfidenceVerifiedDuplicate ? "Verified duplicates are content-matched. StorageScope still sends cleanup through Trash so you can recover from a bad choice." : "This is review guidance, not proof. Reveal the item and inspect the owning app or project before moving it to Trash.")
+            Text(candidate.isHighConfidenceVerifiedDuplicate
+                ? "Verified duplicates are content-matched. StorageScope still sends cleanup through Trash so you can recover from a bad choice."
+                : "This is review guidance, not proof. Reveal the item and inspect the owning app or project before moving it to Trash.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

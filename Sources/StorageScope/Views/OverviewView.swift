@@ -240,43 +240,21 @@ private struct SizeDistributionView: View {
                     .frame(minHeight: 180)
                     .cardBackground()
                 } else {
-                    VStack(spacing: 8) {
-                        ForEach(items) { item in
-                            Button {
+                    VStack(spacing: 0) {
+                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                            StorageMapRow(
+                                item: item,
+                                maxSize: maxSize,
+                                isSelected: store.selectedItemID == item.id
+                            ) {
                                 store.selectedItemID = item.id
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: StorageFormat.icon(for: item))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 20)
-
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        HStack {
-                                            Text(item.name)
-                                                .lineLimit(1)
-                                            Spacer()
-                                            Text(StorageFormat.bytes(item.displaySize))
-                                                .foregroundStyle(.secondary)
-                                        }
-
-                                        GeometryReader { geometry in
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(.quaternary)
-                                                .overlay(alignment: .leading) {
-                                                    RoundedRectangle(cornerRadius: 4)
-                                                        .fill(.tint.opacity(0.85))
-                                                        .frame(width: max(8, geometry.size.width * CGFloat(Double(item.displaySize) / Double(maxSize))))
-                                                }
-                                        }
-                                        .frame(height: 8)
-                                    }
-                                }
-                                .padding(10)
-                                .cardBackground()
                             }
-                            .buttonStyle(.plain)
+                            if index < items.count - 1 {
+                                Divider()
+                            }
                         }
                     }
+                    .cardBackground()
                 }
             }
         }
@@ -288,6 +266,53 @@ private struct SizeDistributionView: View {
             return "\(scope) inside the scanned root"
         }
         return "\(scope) inside the scanned root, showing \(visible.formatted()) of \(total.formatted())"
+    }
+}
+
+private struct StorageMapRow: View {
+    let item: StorageScopeCore.StorageItem
+    let maxSize: Int64
+    let isSelected: Bool
+    let onTap: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Image(systemName: StorageFormat.icon(for: item))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text(item.name)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(StorageFormat.bytes(item.displaySize))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+
+                    GeometryReader { geometry in
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(.quaternary)
+                            .overlay(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(.tint.opacity(0.85))
+                                    .frame(width: max(8, geometry.size.width * CGFloat(Double(item.displaySize) / Double(maxSize))))
+                            }
+                    }
+                    .frame(height: 8)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+            .selectionBackground(isSelected: isSelected)
+            .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -315,7 +340,7 @@ private struct InsightCard: View {
                     .font(.subheadline.weight(.medium))
                     .lineLimit(2)
                 Text(StorageFormat.bytes(item.displaySize))
-                    .font(.title3.weight(.semibold))
+                    .font(.title3.weight(.semibold).monospacedDigit())
                 Text(item.url.deletingLastPathComponent().path)
                     .font(.caption2)
                     .foregroundStyle(.secondary)

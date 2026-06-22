@@ -115,7 +115,6 @@ func setSelectedView(_ view: SmartView) {
         }
         currentSearchResultIndex = next
         selection.selectedItemID = ids[next]
-        ensureAncestorsExpanded(forItemID: ids[next])
     }
 
     /// Cmd+Shift+G &mdash; reverses direction; wraps around at the start.
@@ -132,7 +131,6 @@ func setSelectedView(_ view: SmartView) {
         }
         currentSearchResultIndex = prev
         selection.selectedItemID = ids[prev]
-        ensureAncestorsExpanded(forItemID: ids[prev])
     }
 
     /// Drop `currentSearchResultIndex` when the search query is cleared
@@ -141,42 +139,6 @@ func setSelectedView(_ view: SmartView) {
         if filters.searchResultIDs == nil {
             currentSearchResultIndex = nil
         }
-    }
-
-    /// Walks the retained tree from the scan root toward `itemID`, inserting every
-    /// ancestor's id into `selection.treeExpandedIDs` so the matched row becomes
-    /// visible without manual expand taps. Called by `advanceSearchResult` /
-    /// `reverseSearchResult` so Cmd+G surfaces the matched item in the Folder Tree
-    /// even when intermediate folders are collapsed.
-    ///
-    /// Returns silently if no scan is loaded or the id is not reachable through the
-    /// retained tree (the duplicate-candidates / cleanup-candidates arrays can produce
-    /// matches that aren't part of the collapsed retained tree — selection still
-    /// applies for views that don't need expansion, like StorageItemTable).
-    private func ensureAncestorsExpanded(forItemID itemID: String) {
-        guard let scan else { return }
-        guard let path = ancestorPath(from: scan.rootItem, to: itemID) else { return }
-        // The root is auto-expanded by TreeExplorerView.onAppear; insert every
-        // intermediate ancestor (skip the target itself — TreeExplorerView's
-        // `isExpanded` is about disclosure triangles for containers, not leaf items).
-        for ancestor in path.dropFirst() where ancestor.isContainer {
-            selection.treeExpandedIDs.insert(ancestor.id)
-        }
-    }
-
-    /// DFS search through the retained tree returning the path `[root, …, target]`
-    /// or `nil` if the target isn't reachable. Used by `ensureAncestorsExpanded`
-    /// so we get the full ancestor chain in one recursive pass.
-    private func ancestorPath(from root: StorageItem, to targetID: String) -> [StorageItem]? {
-        if root.id == targetID {
-            return [root]
-        }
-        for child in root.children {
-            if let path = ancestorPath(from: child, to: targetID) {
-                return [root] + path
-            }
-        }
-        return nil
     }
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?

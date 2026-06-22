@@ -93,6 +93,7 @@ private struct TreeNodeRow: View {
     let depth: Int
     @Binding var expandedIDs: Set<String>
     @ObservedObject var store: ScanStore
+    @State private var isHovered = false
 
     private var isExpanded: Bool {
         expandedIDs.contains(item.id)
@@ -166,6 +167,8 @@ private struct TreeNodeRow: View {
             .padding(.vertical, 8)
             .contentShape(Rectangle())
             .selectionBackground(isSelected: store.selectedItemID == item.id)
+            .background(isHovered && store.selectedItemID != item.id ? Color.primary.opacity(0.04) : Color.clear)
+            .onHover { isHovered = $0 }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")

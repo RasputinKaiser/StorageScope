@@ -243,46 +243,48 @@ private struct DuplicateItemList: View {
     var onSetKeeper: ((StorageItem) -> Void)? = nil
 
     var body: some View {
-        // LazyVStack (vs VStack) avoids loading rows that scroll offscreen — a real win
-        // on verified duplicate groups with hundreds of items. The previous
-        // `Array(items.enumerated())` alloc pattern was used solely to gate a trailing
-        // divider per row; switching to `LazyVStack(spacing: 0)` with the row owning its
-        // own Divider pre-render keeps the visual identical while eliminating that
-        // allocation and freeing SwiftUI's lazy recycling.
-        LazyVStack(spacing: 0) {
-            ForEach(items, id: \.id) { item in
-                DuplicateItemRow(
+        VStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                let isKeeper = keeperItemID == item.id
+                DuplicateFileRow(
                     item: item,
+                    isKeeper: isKeeper,
                     isSelected: store.selectedItemID == item.id,
-                    isKeeper: keeperItemID == item.id,
-                    store: store,
-                    onSetKeeper: onSetKeeper
-                )
-                .equatable()
-                Divider()
+                    onSetKeeper: onSetKeeper != nil && !isKeeper ? { onSetKeeper?(item) } : nil
+                ) {
+                    store.selectedItemID = item.id
+                } onOpen: {
+                    store.selectedItemID = item.id
+                    store.openSelectedItem()
+                } onReveal: {
+                    store.selectedItemID = item.id
+                    store.revealSelectedItem()
+                } onCopyPath: {
+                    store.selectedItemID = item.id
+                    store.copySelectedPath()
+                }
+
+                if index < items.index(before: items.endIndex) {
+                    Divider()
+                }
             }
         }
     }
 }
 
-private struct DuplicateItemRow: View, Equatable {
+private struct DuplicateFileRow: View {
     let item: StorageItem
-    let isSelected: Bool
     let isKeeper: Bool
-    @ObservedObject var store: ScanStore
-    let onSetKeeper: ((StorageItem) -> Void)?
-
-    static func == (lhs: DuplicateItemRow, rhs: DuplicateItemRow) -> Bool {
-        // Skip closure comparison (onSetKeeper is the same across rows in a group)
-        // and @ObservedObject (shared). Only the row's item + selection + keeper
-        // state affect rendered output.
-        lhs.item == rhs.item && lhs.isSelected == rhs.isSelected && lhs.isKeeper == rhs.isKeeper
-    }
+    let isSelected: Bool
+    var onSetKeeper: (() -> Void)? = nil
+    let onSelect: () -> Void
+    let onOpen: () -> Void
+    let onReveal: () -> Void
+    let onCopyPath: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
-        Button {
-            store.selectedItemID = item.id
-        } label: {
+        Button(action: onSelect) {
             HStack {
                 Image(systemName: "doc.fill")
                     .foregroundStyle(.secondary)
@@ -306,35 +308,28 @@ private struct DuplicateItemRow: View, Equatable {
             }
             .padding(.vertical, 7)
             .contentShape(Rectangle())
+            .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))\(isKeeper ? ", keeper" : "")")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint(isKeeper
             ? "Keeper copy — protected from Trash. Use another row's menu to reassign keeper."
             : "Selects this duplicate candidate")
-        .simultaneousGesture(TapGesture(count: 2).onEnded {
-            store.selectedItemID = item.id
-            store.openSelectedItem()
-        })
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onOpen() })
         .contextMenu {
-            if let onSetKeeper, !isKeeper {
+            if let onSetKeeper {
                 Button {
-                    onSetKeeper(item)
+                    onSetKeeper()
                 } label: {
                     Label("Set as Keeper", systemImage: "checkmark.seal")
                 }
                 Divider()
             }
-            Button("Reveal in Finder") {
-                store.selectedItemID = item.id
-                store.revealSelectedItem()
-            }
-            Button("Copy Path") {
-                store.selectedItemID = item.id
-                store.copySelectedPath()
-            }
+            Button("Reveal in Finder") { onReveal() }
+            Button("Copy Path") { onCopyPath() }
         }
     }
 }

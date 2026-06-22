@@ -88,44 +88,4 @@ struct ScanStoreFindNextNavigationTests {
         store.reverseSearchResult()
         #expect(store.currentSearchResultIndex == ids.count - 2)
     }
-
-    @Test("advanceSearchResult auto-expands collapsed ancestors in the tree so the matched row is visible")
-    func advanceExpandsAncestors() async throws {
-        let store = ScanStore()
-        // Fixture: nested tree with a matching file two levels deep.
-        //   root/
-        //     Projects/        <- collapsed by default
-        //       Sub/           <- collapsed by default
-        //         foo-report.txt
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("cmdg-expand-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: root.appendingPathComponent("Projects/Sub", isDirectory: true), withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        try Data().write(to: root.appendingPathComponent("Projects/Sub/foo-report.txt"))
-
-        store.scanDeveloperFixturePath(root.path)
-        try await Task.sleep(for: .milliseconds(400))
-        store.filters.searchText = "foo"
-        try await Task.sleep(for: .milliseconds(400))
-
-        guard let ids = store.filters.searchResultIDs, !ids.isEmpty else {
-            Issue.record("expected searchResultIDs to contain the nested file")
-            return
-        }
-
-        // TreeExpandedIDs should be empty (or just root via .onAppear in real UI) before Cmd+G:
-        store.treeExpandedIDs = []
-
-        store.advanceSearchResult()
-        // After advance, the intermediate "Projects" folder must be expanded so the
-        // (nested) matched row is reachable in the tree navigation UI.
-        guard let scan = store.scan else {
-            Issue.record("scan should be loaded")
-            return
-        }
-        let projectsID = scan.rootItem.children.first(where: { $0.name == "Projects" })?.id
-        let subID = scan.rootItem.children.first(where: { $0.name == "Projects" })?
-            .children.first(where: { $0.name == "Sub" })?.id
-        #expect(projectsID.map { store.treeExpandedIDs.contains($0) } == true)
-        #expect(subID.map { store.treeExpandedIDs.contains($0) } == true)
-    }
 }

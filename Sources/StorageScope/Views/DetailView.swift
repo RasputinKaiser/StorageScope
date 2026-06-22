@@ -6,33 +6,30 @@ struct DetailView: View {
     @ObservedObject var store: ScanStore
 
     var body: some View {
-        Group {
-            if store.scan == nil && !store.isScanning {
-                WelcomeView(store: store)
-            } else {
-                VStack(spacing: 0) {
-                    ScanHeaderView(store: store)
-                    if store.activeView.showsFilterBar {
-                        FilterBarView(store: store)
-                    }
-                    if let notice = store.scanNoticeText {
-                        ScanNoticeView(
-                            text: notice,
-                            rescan: { store.rescan() },
-                            dismissAction: store.scanNoticeIsDismissible ? { store.dismissScanNotice() } : nil
-                        )
-                    }
-                    if store.activeView == .cleanupReview
-                        ? store.hasActiveCleanupFilters
-                        : store.hasActiveDisplayFilters {
-                        ActiveDisplayFiltersView(store: store)
-                    }
-                    Divider()
-                    viewContent
-                }
-                .padding(.leading, 28)
+        VStack(spacing: 0) {
+            ScanHeaderView(store: store)
+            if store.activeView.showsFilterBar {
+                FilterBarView(store: store)
             }
+            if let notice = store.scanNoticeText {
+                ScanNoticeView(
+                    text: notice,
+                    rescan: { store.rescan() },
+                    dismissAction: store.scanNoticeIsDismissible ? { store.dismissScanNotice() } : nil
+                )
+            }
+            if store.activeView == .cleanupReview
+                ? store.hasActiveCleanupFilters
+                : store.hasActiveDisplayFilters {
+                ActiveDisplayFiltersView(store: store)
+            }
+            Divider()
+            viewContent
+                .id(store.activeView)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.18), value: store.activeView)
         }
+        .padding(.leading, 28)
     }
 
     @ViewBuilder
@@ -59,7 +56,7 @@ struct DetailView: View {
     }
 }
 
-private struct WelcomeView: View {
+struct WelcomeView: View {
     @ObservedObject var store: ScanStore
     @AppStorage("StorageScope.didDismissFirstRunCard") private var didDismissFirstRunCard = false
 
@@ -308,14 +305,14 @@ private struct MetricCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(value)
-                    .font(.title3.weight(.semibold))
+                    .font(.title3.weight(.semibold).monospacedDigit())
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-        .cardBackground(.thin)
+        .cardBackground(.regular)
     }
 }
 
