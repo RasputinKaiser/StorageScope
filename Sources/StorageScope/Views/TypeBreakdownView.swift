@@ -26,6 +26,7 @@ struct TypeBreakdownView: View {
                         systemImage: "chart.pie",
                         description: store.hasActiveDisplayFilters ? "No file types match the active display filters." : "No file type summary is available for this scan.",
                         filters: store.activeDisplayFilterDescriptions,
+                        state: store.displayRecoveryState,
                         clearTitle: "Clear Filters"
                     ) {
                         store.resetDisplayFilters()

@@ -26,6 +26,7 @@ struct DuplicateCandidatesView: View {
                         systemImage: "checkmark.seal",
                         description: store.hasActiveDisplayFilters ? "No duplicate leads match the active display filters." : "Try scanning a broader folder.",
                         filters: store.activeDisplayFilterDescriptions,
+                        state: store.displayRecoveryState,
                         clearTitle: "Clear Filters"
                     ) {
                         store.resetDisplayFilters()

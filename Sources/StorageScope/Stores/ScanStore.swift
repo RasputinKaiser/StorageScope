@@ -335,6 +335,38 @@ func setSelectedView(_ view: SmartView) {
     var hasActiveDisplayFilters: Bool { filters.hasActiveDisplayFilters }
     var hasActiveCleanupFilters: Bool { filters.hasActiveCleanupFilters }
 
+    /// Resolves the empty-list state shown by `FilterRecoveryView` for the
+    /// display-side views (Largest Files / Type Breakdown / Tree / etc.).
+    /// Priority: active search query → noMatches, else active filter chips
+    /// (size / file-type / lane) → filteredEmpty, else noScan. Search wins
+    /// over filter chips because the user's mental model when the chip bar
+    /// shows a `search:` entry is "my search text is wrong", not "my filter
+    /// is too narrow" — that distinction is what S3 ships.
+    var displayRecoveryState: FilterRecoveryState {
+        let trimmed = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return .noMatches(query: trimmed)
+        }
+        if hasActiveDisplayFilters {
+            return .filteredEmpty
+        }
+        return .noScan
+    }
+
+    /// Same as `displayRecoveryState` but for the cleanup-review lane, where
+    /// the filter chips are cleanup-lane scoped and the search field is the
+    /// same `filters.searchText`. Used by CleanupReviewView's empty case.
+    var cleanupRecoveryState: FilterRecoveryState {
+        let trimmed = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return .noMatches(query: trimmed)
+        }
+        if hasActiveCleanupFilters {
+            return .filteredEmpty
+        }
+        return .noScan
+    }
+
     func chooseFolderAndScan(startingAt directoryURL: URL? = nil) {
         guard let url = FileActionService.chooseFolder(startingAt: directoryURL) else {
             return
