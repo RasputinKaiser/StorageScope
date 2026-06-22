@@ -478,25 +478,12 @@ If the validation across multiple machines shows that none of the suspected hots
 
 ---
 
-## 7. Summary of file paths
+## 7. Critical files for implementation
 
-The user asked for `PLAN.md` at the repo root. This plan is a single-file document, ~600 lines, structured to be paste-as-is. Replace the following placeholder if the user wants to write it themselves:
+All cites in §1–§6 use relative paths from the repo root (`Sources/…`, `script/…`). The hot files repeated across slices:
 
-- **Path:** `/Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/PLAN.md`
-- **Length:** ~650 lines (within the 600–1200-line budget).
-- **No file edits made by this agent** (the harness is read-only).
-
-### Critical Files for Implementation
-
-- `/Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScopeCore/Services/FileSystemScanner.swift`
-- `/Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScope/Stores/ScanStore.swift`
-- `/Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScope/Stores/FilterStore.swift`
-- `/Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScopeCore/Models/StorageScan.swift`
-- `/Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScopeCore/Services/CleanupSelectionPlanner.swift`
-
-### Critical Files for Implementation
-- /Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScopeCore/Services/FileSystemScanner.swift
-- /Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScope/Stores/ScanStore.swift
-- /Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScope/Stores/FilterStore.swift
-- /Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScopeCore/Services/CleanupSelectionPlanner.swift
-- /Users/ianzvirbulis/Documents/Codex/2026-05-13/i-want-a-full-fledged-professional/Sources/StorageScopeCore/Models/StorageScan.swift
+- `Sources/StorageScopeCore/Services/FileSystemScanner.swift`
+- `Sources/StorageScope/Stores/ScanStore.swift`
+- `Sources/StorageScope/Stores/FilterStore.swift`
+- `Sources/StorageScopeCore/Models/StorageScan.swift`
+- `Sources/StorageScopeCore/Services/CleanupSelectionPlanner.swift`

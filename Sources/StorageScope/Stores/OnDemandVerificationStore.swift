@@ -1,4 +1,5 @@
 import Foundation
+import os.signpost
 import StorageScopeCore
 
 /// Bounded state and orchestration for out-of-band SHA-256 verification of same-size
@@ -12,6 +13,11 @@ import StorageScopeCore
 /// observer dependency.
 @MainActor
 final class OnDemandVerificationStore: ObservableObject {
+    /// os_signpost surface for Instruments. Shares the scan subsystem/category so on-demand
+    /// Verify Now + persist work shows up alongside scan-phase signposts (#81-pattern).
+    private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
+    private static let signpostID = OSSignpostID(log: log)
+
     /// Verified duplicate groups revealed by user-triggered Verify Now taps, keyed by the
     /// SHA-256 checksum so re-verifying the same group replaces rather than duplicates.
     @Published private(set) var verifiedGroupsByChecksum: [String: VerifiedDuplicateGroup] = [:]
@@ -68,7 +74,16 @@ final class OnDemandVerificationStore: ObservableObject {
                     }
                     self.coordinateInvalidate()
                     let cacheToPersist = self.hashCache
-                    Task.detached(priority: .utility) { cacheToPersist.persist() }
+                    Task.detached(priority: .utility) {
+                        let persistSignpostID = OSSignpostID(log: OnDemandVerificationStore.log,
+                                                             object: group.id as NSString)
+                        os_signpost(.begin, log: OnDemandVerificationStore.log,
+                                    name: "persist_on_demand", signpostID: persistSignpostID,
+                                    "group=%@", group.id)
+                        cacheToPersist.persist()
+                        os_signpost(.end, log: OnDemandVerificationStore.log,
+                                    name: "persist_on_demand", signpostID: persistSignpostID)
+                    }
                 case .failure(let error):
                     self.reportError("Verification failed: \(error.localizedDescription)")
                 }

@@ -159,6 +159,14 @@ public final class FileSystemScanner {
     ) throws -> [VerifiedDuplicateGroup] {
         try cancellation?.check()
 
+        let verifySignpostID = OSSignpostID(log: Self.log, object: group.id as NSString)
+        os_signpost(.begin, log: Self.log, name: "verify_on_demand", signpostID: verifySignpostID,
+                    "items=%d", group.items.count)
+
+        defer {
+            os_signpost(.end, log: Self.log, name: "verify_on_demand", signpostID: verifySignpostID)
+        }
+
         let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
         let cacheLock = NSLock()
 
@@ -578,6 +586,11 @@ private extension CleanupCandidate.Confidence {
 }
 
 private final class ScanAccumulator {
+    /// Shares the FileSystemScanner signpost subsystem/category so cleanup-candidate
+    /// build shows up alongside the scan/enumerate/verify spans when profiling.
+    private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
+    private static let signpostID = OSSignpostID(log: log)
+
     private struct FileTypeAccumulator {
         var category: FileTypeStat.Category = .other
         var fileCount = 0
@@ -778,6 +791,13 @@ private final class ScanAccumulator {
         verifiedDuplicateGroups: [VerifiedDuplicateGroup],
         limit: Int
     ) -> [CleanupCandidate] {
+        let cleanupSignpostID = OSSignpostID(log: Self.log, object: limit as NSNumber)
+        os_signpost(.begin, log: Self.log, name: "cleanup_candidates_build", signpostID: cleanupSignpostID,
+                    "verifiedGroups=%d limit=%d", verifiedDuplicateGroups.count, limit)
+        defer {
+            os_signpost(.end, log: Self.log, name: "cleanup_candidates_build", signpostID: cleanupSignpostID)
+        }
+
         let duplicateItemIDs = Set(verifiedDuplicateGroups.flatMap { group in group.items.dropFirst().map(\.id) })
         var candidatesByID = cleanupCandidatesByID.filter { id, _ in
             id != rootID && !duplicateItemIDs.contains(id)

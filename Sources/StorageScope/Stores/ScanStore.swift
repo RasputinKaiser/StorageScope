@@ -1326,6 +1326,8 @@ func setSelectedView(_ view: SmartView) {
     }
 
     private func invalidateDerivedCaches() {
+        os_signpost(.event, log: Self.log, name: "cache_invalidate_derived", signpostID: Self.signpostID,
+                    "activeView=%@", String(describing: activeView))
         cachedCleanupCandidatesKey = nil
         cachedCleanupCandidates = []
         cachedPotentialReclaimableBytesKey = nil
@@ -1342,6 +1344,8 @@ func setSelectedView(_ view: SmartView) {
     }
 
     private func invalidateItemsCache() {
+        os_signpost(.event, log: Self.log, name: "cache_invalidate_items", signpostID: Self.signpostID,
+                    "activeView=%@", String(describing: activeView))
         cachedItemsKey = nil
         cachedItems = []
     }

@@ -1,0 +1,22 @@
+Building for debugging...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+Build of product 'StorageScopeBenchmark' complete! (0.13s)
+StorageScope benchmark
+Scope: /var/folders/70/37y2xd0n6vbf04fw178_zy9h0000gn/T/StorageScopeBenchmark-A724DE21-06DD-49E6-9D54-2A64A5958CEC
+Duration: 0.01s
+Items scanned: 24
+Inaccessible: 0
+Total size: 1.11 GB
+Largest files retained: 11
+Largest folders retained: 12
+Duplicate candidates: 11 retained / 11 considered
+Duplicate cap reached: no
+Verified duplicate groups: 1
+Duplicate verification: 0.00s
+Enumerate duration: 0.01s
+Verify duration: 0.00s
+Persist duration: 0.00s
+Phase total (enum+verify+persist): 0.01s
+Cleanup candidates: 8
+Peak memory: 16.5 MB
+Results are local only.

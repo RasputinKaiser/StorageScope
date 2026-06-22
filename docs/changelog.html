@@ -71,6 +71,45 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.5.3 &mdash; Performance measurement slice</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.3">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg">download .dmg</a></div>
+      <p>Measurement-only release. No behavior changes, no scan-pipeline optimizations &mdash; this slice exists to validate (or invalidate) the bottleneck hypotheses in the v0.5.3 &rarr; v0.6.0 performance plan before any optimization commits. The premise: most proposed optimizations are waste unless the underlying bottleneck is real, so we measure first.</p>
+
+      <h3>Signpost coverage added</h3>
+      <ul>
+        <li><strong><code>verify_on_demand</code></strong> &mdash; wraps <code>FileSystemScanner.verifySizeGroup(_:)</code> and reports item count for each on-demand Verify Now tap. Surfaces how long each Verify Now call takes vs. the cached path.</li>
+        <li><strong><code>persist_on_demand</code></strong> &mdash; wraps the background <code>DuplicateHashCache.persist()</code> detached task triggered after on-demand verify. Measures the JSON encode + disk write cost the main actor skips.</li>
+        <li><strong><code>cache_invalidate_derived</code></strong> &mdash; event signpost fires every time <code>ScanStore.invalidateDerivedCaches()</code> clears the cleanup / reclaim-plan / old-large / duplicate caches, annotated with the active view name. Used to detect excessive invalidation during cleanup-review interactions.</li>
+        <li><strong><code>cache_invalidate_items</code></strong> &mdash; event signpost on <code>invalidateItemsCache()</code>, also annotated with active view. Validates P-3 (cache gap) priority.</li>
+        <li><strong><code>lookup_build</code></strong> &mdash; wraps <code>StorageScan.buildItemLookup</code> and reports retained/largest/old/duplicate/verified/cleanup counts. Validates P-21 (eager map build vs lazy).</li>
+        <li><strong><code>cleanup_candidates_build</code></strong> &mdash; wraps <code>ScanAccumulator.cleanupCandidates(...)</code> sort + filter pass, captures the gap <code>ScanBenchmarkReport.text</code> already admits exists between <code>totalDuration</code> and <code>duration</code>.</li>
+      </ul>
+
+      <h3>ScanBenchmark fixture scaling</h3>
+      <ul>
+        <li><strong><code>StorageScopeBenchmark --items &lt;n&gt; [--depth &lt;d&gt;] [--duplicates &lt;0..1&gt;]</code></strong> &mdash; new flags produce scaled synthetic fixtures (10k / 100k / 500k items). Items distributed across a directory tree of <code>depth</code> levels (~120 files per leaf dir); <code>--duplicates</code> is the fraction emitted as content-identical pairs (so the verify path actually fires).</li>
+        <li>Backward compat: <code>--synthetic</code> with no <code>--items</code> still builds the v0.5.0-era curated 7-file fixture, so <code>build_and_run.sh --fixture-scan</code> workflow is unchanged.</li>
+        <li><code>--keep-fixture</code> prints the fixture path so Instruments can be attached for a manual re-scan at fixture scale.</li>
+      </ul>
+
+      <h3>v0.5.2 baseline reports</h3>
+      <ul>
+        <li>Three baselines captured under <code>docs/perf-baselines/v0.5.2/</code>: curated (24 items, 0.01s), 10k (10,353 items, 6.90s), 100k (105,277 items, 185.51s). 500k skipped on the dev machine &mdash; would need ~36 GB disk vs ~33 GB free. See <code>docs/perf-baselines/v0.5.2/README.md</code>.</li>
+        <li>Bench script (<code>swift run StorageScopeBenchmark --help</code>) now documents the scaled-fixture workflow so the validation workflow is reproducible.</li>
+      </ul>
+
+      <h3>Validation</h3>
+      <ul>
+        <li><code>swift test</code> &mdash; 90 tests across 10 suites pass</li>
+        <li><code>./script/public_upload_audit.sh</code> &mdash; passes</li>
+        <li><code>bash ./script/build_and_run.sh --verify</code> &mdash; bundle launches cleanly</li>
+        <li>Scaled fixtures regenerate and benchmark cleanly at 10k and 100k items locally.</li>
+      </ul>
+
+      <p>See <code>PLAN.md</code> for the full v0.5.3 &rarr; v0.6.0 performance plan, the 23 ranked bottleneck hypotheses (P-1..P-23), and the decision rules that gate which optimizations actually ship based on the numbers measured above.</p>
+    </section>
+
+    <section class="release">
       <h2>v0.5.2 &mdash; Inspector, File Types colors, Duplicate Review copy</h2>
       <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.2">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.2/StorageScope-0.5.2.dmg">download .dmg</a></div>
       <p>Three more tour-driven fixes: Inspector no longer shows the root scan as a (misleading) default selection, File Types bars use per-category tint so length is visually comparable at a glance, and the Duplicate Review subtitle is de-jargoned.</p>
@@ -275,14 +314,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.2/StorageScope-0.5.2.dmg">Download v0.5.2 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg">Download v0.5.3 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.2/StorageScope-0.5.2.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.2 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.3 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

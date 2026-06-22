@@ -1,6 +1,12 @@
 import Foundation
+import os.signpost
 
 public struct StorageScan: Sendable {
+    /// os_signpost surface for Instruments. Shares the scan subsystem/category so the
+    /// `lookup_build` span shows up alongside FileSystemScanner and ScanStore spans (#81-pattern).
+    private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
+    private static let signpostID = OSSignpostID(log: log)
+
     public let rootURL: URL
     public let startedAt: Date
     public let finishedAt: Date
@@ -95,6 +101,14 @@ public struct StorageScan: Sendable {
         verifiedDuplicateGroups: [VerifiedDuplicateGroup],
         cleanupCandidates: [CleanupCandidate]
     ) -> [String: StorageItem] {
+        os_signpost(.begin, log: Self.log, name: "lookup_build", signpostID: Self.signpostID,
+                    "retained=%d largestFiles=%d largestFolders=%d old=%d dupGroups=%d verified=%d cleanup=%d",
+                    retainedItems.count, largestFiles.count, largestFolders.count, oldLargeFiles.count,
+                    duplicateSizeGroups.count, verifiedDuplicateGroups.count, cleanupCandidates.count)
+        defer {
+            os_signpost(.end, log: Self.log, name: "lookup_build", signpostID: Self.signpostID)
+        }
+
         var lookup: [String: StorageItem] = [:]
 
         func insert(_ item: StorageItem) {
