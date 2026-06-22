@@ -38,8 +38,14 @@ final class RecentsStore: ObservableObject {
         persist()
     }
 
+    /// Rendered @Published mutations already updated `entries` synchronously on the main
+    /// actor so SwiftUI sees the change immediately; the heavy JSON encode + UserDefaults
+    /// write is detached to .utility so the main actor doesn't block on serialization.
+    /// Matches the hashCache.persist() pattern from v0.3.0 in StorageScopeCore.
     private func persist() {
-        if let data = try? JSONEncoder().encode(entries) {
+        let snapshot = entries
+        Task.detached(priority: .utility) {
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
             UserDefaults.standard.set(data, forKey: Self.recentScanEntriesKey)
         }
     }
