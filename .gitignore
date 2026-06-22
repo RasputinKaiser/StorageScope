@@ -34,6 +34,13 @@ DIRECT_DISTRIBUTION_LOCAL.md
 # Local harness/agent state and generated docs.
 .ncode/
 NCODE.md
+.agents/
+skills-lock.json
+.test_loop_phase.md
+FEATURE_STATUS.csv
+script/apply_test_verdicts.py
+script/extend_feature_status_with_tests.py
+script/rebuild_feature_status.py
 
 # Unrelated showcase page (origins unclear; per NCODE.md it's not part of StorageScope).
 storagescope-showcase/

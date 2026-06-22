@@ -70,6 +70,38 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.5.0 &mdash; Search + Performance Upgrade</h2>
+      <div class="meta">Released 2026-06-21 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.0/StorageScope-0.5.0.dmg">download .dmg</a></div>
+      <p>Search and performance upgrade. 14 PRs (#75&ndash;#89) shipped under the batch plan plus one bonus UI improvement (#82, Open Recent submenu). 15 PRs total across search, performance, and docs.</p>
+
+      <h3>Search</h3>
+      <ul>
+        <li>Multi-word AND search: split queries by whitespace and require every term to match (#84). "Documents report" matches both <code>Documents</code> as a path segment AND <code>report</code> as a substring of name.</li>
+        <li>Path-segment matching: terms match <code>/</code>-split segments of the full path, so "Documents" matches <code>/tmp/work/Documents/file.txt</code> without needing "Documents" to be a contiguous substring (#84).</li>
+        <li>Substring highlight: matched tokens in the file list and Folder Tree render in accent color via a new <code>HighlightedText</code> SwiftUI view struct (#84).</li>
+        <li>Search-result count badge: pill-shaped "N matches" badge in StorageItemTable header when a search is active (#86). Distinguishes nil (no search) from zero matches so the empty-state below can tell them apart.</li>
+        <li>Search empty-state distinction: <code>FilterRecoveryView</code> now distinguishes "no scan", "no matches" (search active, zero hits), and "filtered empty" (filter chips, zero hits) with state-appropriate iconography and copy (#87).</li>
+        <li>Cmd+G find-next navigation: Mail/Finder convention. Cmd+G advances through search-result rows and wraps around; Cmd+Shift+G reverses (#88). Sets <code>selectedItemID</code> so the matched row takes focus. Menu items gate on search-active.</li>
+        <li>Search recents persistence: <code>SearchRecentsStore</code> mirrors the RecentsStore ring-buffer pattern; recent terms surface as <code>.searchSuggestions</code> on the search field with Clear Recents (#89). Persists across launches via UserDefaults.</li>
+      </ul>
+
+      <h3>Performance</h3>
+      <ul>
+        <li><code>os_signpost</code> instrumentation on scan phases: <code>enumerate</code>, <code>verify</code>, <code>persist</code>, and <code>index</code> spans wrap the hot paths so Instruments &rarr; Points of Interest can profile (#81). Zero behavioral change &mdash; no-ops when no profiler is attached.</li>
+        <li>Cache <code>duplicateGroups</code> + <code>verifiedDuplicateGroups</code> per <code>scanFinishedAt</code>, mirroring the existing <code>cleanupCandidates</code> cache pattern (#79). Avoids re-walking size-group / verified-group aggregation on every Duplicate Review view transition.</li>
+        <li>Background-persist <code>RecentsStore</code> writes off the main actor (#80). Heavy JSON encode + UserDefaults write detaches to <code>.utility</code> priority; @Published entries still updates synchronously so SwiftUI sees immediate change. Matches the v0.3.0 <code>hashCache.persist()</code> pattern.</li>
+        <li>Extend <code>ScanBenchmarkReport</code> with per-phase durations: <code>enumerateDuration</code>, <code>verifyDuration</code>, <code>persistDuration</code>, and <code>totalDuration</code> computed property (#83). <code>duplicateVerificationDuration</code> kept as deprecated alias for backward compat.</li>
+      </ul>
+
+      <h3>UI / chrome</h3>
+      <ul>
+        <li>Bonus: <code>File &rarr; Open Recent</code> submenu (#82). Mirrors macOS convention for non-document apps &mdash; lists recently-scanned folder paths so users can re-launch a scan without reaching for the sidebar. Dynamic rebuild on each menu open via <code>NSMenuDelegate</code>; gates on <code>!store.isScanning</code>.</li>
+        <li>Keyboard-shortcuts.html docs page (#76) documents every v0.4.5 + planned v0.5.0 hotkey (Cmd+G/Cmd+Shift+G originally listed as "Coming in v0.5.0"; now shipping).</li>
+        <li>Architecture.html docs page (#75) documents the ScanStore tier-2 sub-store extraction pattern + filterBinding bridge + derived cache invalidation, with an ASCII store hierarchy diagram.</li>
+      </ul>
+    </section>
+
+    <section class="release">
       <h2>v0.4.5 &mdash; UX Polish Release</h2>
       <div class="meta">Released 2026-06-21 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.4.5">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.5/StorageScope-0.4.5.dmg">download .dmg</a></div>
       <p>This update focused on UX polish and standard macOS conventions. 39 PRs (#33&ndash;#72) shipped since v0.4.0.</p>
@@ -176,14 +208,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.5/StorageScope-0.4.5.dmg">Download v0.4.5 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.0/StorageScope-0.5.0.dmg">Download v0.5.0 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.4.5/StorageScope-0.4.5.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.0/StorageScope-0.5.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.4.5 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>
