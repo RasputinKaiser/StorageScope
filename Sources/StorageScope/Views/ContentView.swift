@@ -34,26 +34,14 @@ struct ContentView: View {
             SidebarView(store: store)
                 .navigationSplitViewColumnWidth(min: 230, ideal: 270, max: 330)
         } detail: {
-            ZStack {
-                if store.scan == nil && !store.isScanning {
-                    WelcomeView(store: store)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                            removal: .opacity
-                        ))
-                } else {
-                    HStack(spacing: 0) {
-                        DetailView(store: store)
+            HStack(spacing: 0) {
+                DetailView(store: store)
 
-                        Divider()
+                Divider()
 
-                        InspectorView(store: store)
-                            .frame(minWidth: 300, idealWidth: 330, maxWidth: 380)
-                    }
-                    .transition(.opacity)
-                }
+                InspectorView(store: store)
+                    .frame(minWidth: 300, idealWidth: 330, maxWidth: 380)
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: store.scan == nil && !store.isScanning)
         }
         .searchable(text: store.filterBinding(\.searchText), placement: .toolbar, prompt: searchPrompt)
         .searchSuggestions {

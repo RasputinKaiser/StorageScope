@@ -5,30 +5,40 @@ struct DetailView: View {
     @ObservedObject var store: ScanStore
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScanHeaderView(store: store)
-            if store.activeView.showsFilterBar {
-                FilterBarView(store: store)
+        Group {
+            if store.scan == nil && !store.isScanning {
+                if store.activeView == .overview {
+                    WelcomeView(store: store)
+                } else {
+                    NoScanPlaceholder(activeView: store.activeView, store: store)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    ScanHeaderView(store: store)
+                    if store.activeView.showsFilterBar {
+                        FilterBarView(store: store)
+                    }
+                    if let notice = store.scanNoticeText {
+                        ScanNoticeView(
+                            text: notice,
+                            rescan: { store.rescan() },
+                            dismissAction: store.scanNoticeIsDismissible ? { store.dismissScanNotice() } : nil
+                        )
+                    }
+                    if store.activeView == .cleanupReview
+                        ? store.hasActiveCleanupFilters
+                        : store.hasActiveDisplayFilters {
+                        ActiveDisplayFiltersView(store: store)
+                    }
+                    Divider()
+                    viewContent
+                        .id(store.activeView)
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.18), value: store.activeView)
+                }
+                .padding(.leading, 28)
             }
-            if let notice = store.scanNoticeText {
-                ScanNoticeView(
-                    text: notice,
-                    rescan: { store.rescan() },
-                    dismissAction: store.scanNoticeIsDismissible ? { store.dismissScanNotice() } : nil
-                )
-            }
-            if store.activeView == .cleanupReview
-                ? store.hasActiveCleanupFilters
-                : store.hasActiveDisplayFilters {
-                ActiveDisplayFiltersView(store: store)
-            }
-            Divider()
-            viewContent
-                .id(store.activeView)
-                .transition(.opacity)
-                .animation(.easeInOut(duration: 0.18), value: store.activeView)
         }
-        .padding(.leading, 28)
     }
 
     @ViewBuilder
@@ -51,6 +61,27 @@ struct DetailView: View {
             TypeBreakdownView(store: store)
         case .duplicateCandidates:
             DuplicateCandidatesView(store: store)
+        }
+    }
+}
+
+private struct NoScanPlaceholder: View {
+    let activeView: SmartView
+    @ObservedObject var store: ScanStore
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(activeView.title, systemImage: activeView.systemImage)
+        } description: {
+            Text(activeView.subtitle + ".\nScan a folder to get started.")
+        } actions: {
+            Button {
+                store.chooseFolderAndScan()
+            } label: {
+                Label("Choose Folder", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         }
     }
 }
