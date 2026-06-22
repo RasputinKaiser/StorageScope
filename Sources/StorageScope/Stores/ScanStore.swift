@@ -84,6 +84,57 @@ func setSelectedView(_ view: SmartView) {
     func requestSearchFieldFocus() {
         searchFieldFocusRequest &+= 1
     }
+
+    /// Index of the search result currently "focused" for Cmd+G find-next
+    /// navigation. Nil while no search is active OR if the result list becomes
+    /// empty. Set by `advanceSearchResult()` / `reverseSearchResult()` and
+    /// consulted by views that want to render a "Result 3 of 12" badge.
+    @Published private(set) var currentSearchResultIndex: Int?
+
+    /// Cmd+G &mdash; advances the current find-next target through `filters.searchResultIDs`
+    /// in DFS order (top-to-bottom in the visible tree). Wraps around at the end.
+    /// Also writes `selection.selectedItemID` so the row becomes selected &mdash;
+    /// matching Mail's "Find Next" semantics where the matched row takes focus.
+    /// Resets to nil when `searchResultIDs` becomes nil/empty (query cleared)
+    /// so a stale index can't reference an item that's no longer a match.
+    func advanceSearchResult() {
+        guard let ids = filters.searchResultIDs, !ids.isEmpty else {
+            currentSearchResultIndex = nil
+            return
+        }
+        let next: Int
+        if let current = currentSearchResultIndex {
+            next = (current + 1) % ids.count
+        } else {
+            next = 0
+        }
+        currentSearchResultIndex = next
+        selection.selectedItemID = ids[next]
+    }
+
+    /// Cmd+Shift+G &mdash; reverses direction; wraps around at the start.
+    func reverseSearchResult() {
+        guard let ids = filters.searchResultIDs, !ids.isEmpty else {
+            currentSearchResultIndex = nil
+            return
+        }
+        let prev: Int
+        if let current = currentSearchResultIndex {
+            prev = (current - 1 + ids.count) % ids.count
+        } else {
+            prev = ids.count - 1
+        }
+        currentSearchResultIndex = prev
+        selection.selectedItemID = ids[prev]
+    }
+
+    /// Drop `currentSearchResultIndex` when the search query is cleared
+    /// (FilterStore.searchResultIDs becomes nil). Cheap to call idempotently.
+    func resetSearchResultNavigationIfApplicable() {
+        if filters.searchResultIDs == nil {
+            currentSearchResultIndex = nil
+        }
+    }
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?
     private var selectVerifiedCleanupWhenCurrentScanCompletes = false
