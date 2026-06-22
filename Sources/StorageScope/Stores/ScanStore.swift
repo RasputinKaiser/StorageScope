@@ -45,6 +45,11 @@ final class ScanStore: ObservableObject {
 
     let recents = RecentsStore()
 
+    /// S5: bounded ring of search terms the user has typed, surfaced as
+    /// `.searchSuggestions` on the `.searchable` field. Parallel structure to
+    /// `recents` (RecentsStore) — same UserDefaults-backed JSON pattern.
+    let searchRecents = SearchRecentsStore()
+
     /// Persists across launches via UserDefaults so reopen lands the user in their last
 /// session's view — macOS convention. The didSet is gone (AppStorage handles updates),
 /// but we still need cache invalidation + the file-type focus clear so the side effects
@@ -178,7 +183,8 @@ func setSelectedView(_ view: SmartView) {
 
     lazy var filters = FilterStore(
         scanLookup: { [weak self] in self?.scan },
-        coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() }
+        coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() },
+        recordSearchRecent: { [weak self] term in self?.searchRecents.add(term) }
     )
 
     /// Typed Binding<T> for any writable FilterStore property — used by Picker/Stepper/Toggle

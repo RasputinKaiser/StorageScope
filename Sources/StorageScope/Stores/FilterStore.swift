@@ -56,6 +56,10 @@ final class FilterStore: ObservableObject {
             // the search field shouldn't retain a stale file-type filter, and clicking
             // a new file-type row in TypeBreakdownView shouldn't carry an old query.
             if !query.isEmpty, fileTypeFocus != nil { fileTypeFocus = nil }
+            // Record the term in SearchRecentsStore for S5 search-suggestions surface.
+            // Filtered at the store level against empty / whitespace — no need to gate here.
+            // Recents don't affect filtered(_:) output, so coordinateInvalidate isn't called.
+            if !query.isEmpty { recordSearchRecent(query) }
             coordinateInvalidate()
             rebuildSearchSubtreeMatchIDs()
         }
@@ -115,13 +119,16 @@ final class FilterStore: ObservableObject {
     private var searchTextDebounceTask: Task<Void, Never>?
     private let scanLookup: () -> StorageScan?
     private let coordinateInvalidate: () -> Void
+    private let recordSearchRecent: (String) -> Void
 
     init(
         scanLookup: @escaping () -> StorageScan?,
-        coordinateInvalidate: @escaping () -> Void
+        coordinateInvalidate: @escaping () -> Void,
+        recordSearchRecent: @escaping (String) -> Void = { _ in }
     ) {
         self.scanLookup = scanLookup
         self.coordinateInvalidate = coordinateInvalidate
+        self.recordSearchRecent = recordSearchRecent
     }
 
     var activeDisplayFilterDescriptions: [String] {
