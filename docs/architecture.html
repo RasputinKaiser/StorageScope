@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture — StorageScope</title>
+  <meta name="description" content="StorageScope ScanStore architecture: the @MainActor ObservableObject coordinator, the v0.5.0 Tier-2 sub-store extraction pattern, the filterBinding bridge, derived cache invalidation, and what's planned for Tiers 3-5.">
+  <link rel="canonical" href="https://rasputinkaiser.github.io/StorageScope/architecture.html">
+  <meta property="og:title" content="Architecture — StorageScope">
+  <meta property="og:description" content="How ScanStore coordinates sub-stores (FilterStore, OnDemandVerificationStore, RecentsStore) via closure-injected hooks, the filterBinding Binding bridge, and derived cache invalidation.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://rasputinkaiser.github.io/StorageScope/architecture.html">
+  <meta property="og:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Architecture — StorageScope">
+  <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
+  <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "ScanStore Architecture",
+    "inLanguage": "en",
+    "about": "ScanStore (@MainActor ObservableObject) coordinator pattern, v0.5.0 Tier-2 sub-store extraction, filterBinding bridge, and derived cache invalidation in StorageScope.",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "StorageScope",
+      "url": "https://rasputinkaiser.github.io/StorageScope/"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "RasputinKaiser"
+    }
+  }
+  </script>
+  <style>
+    :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; --code-bg: #f6f8fa; --code-text: #1d1d1f; }
+    @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; --code-bg: #0e0f12; --code-text: #f5f5f7; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 920px; margin: 0 auto; padding: 56px 24px 72px; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; }
+    h2 { margin-top: 36px; font-size: 1.25rem; }
+    h3 { margin-top: 24px; font-size: 1.05rem; }
+    p, li { color: var(--muted); line-height: 1.6; }
+    a { color: var(--accent); }
+    code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.92em; }
+    p > code, li > code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); }
+    pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.5; margin: 14px 0 18px; }
+    pre code { color: var(--code-text); background: transparent; border: 0; padding: 0; font-size: 0.86rem; white-space: pre; }
+    .section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 24px 28px; margin-top: 20px; }
+    .section h2 { margin-top: 0; }
+    .section h3:first-child { margin-top: 0; }
+    ul { margin: 8px 0 0; padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    .lead { color: var(--muted); font-size: 1.1rem; line-height: 1.55; margin: 0 0 8px; }
+    .note { font-size: 0.9rem; color: var(--muted); background: var(--code-bg); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0 0; }
+    .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+    .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
+    .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
+    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; }
+    .site-nav nav a:hover { color:var(--accent); }
+    .site-nav nav a[aria-current="page"] { color: var(--text); font-weight: 600; }
+    footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
+    footer.site-footer a { color:inherit; }
+    @media (max-width: 820px) {
+      main { padding: 32px 16px 56px; }
+      .section { padding: 18px 16px; }
+      pre { padding: 12px; }
+      pre code { font-size: 0.78rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="site-nav" aria-label="Site navigation">
+      <a class="brand" href="./">StorageScope</a>
+      <nav>
+        <a href="./">Home</a>
+        <a href="faq.html">FAQ</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+        <a href="architecture.html" aria-current="page">Architecture</a>
+      </nav>
+    </header>
+    <h1>ScanStore Architecture</h1>
+    <p class="lead">How <code>ScanStore</code> coordinates SwiftUI state, why it owns sub-stores via closure-injected hooks, and what's planned for v0.5.0+.</p>
+
+    <section class="section" id="scanstore-coordinator">
+      <h2>1. ScanStore: the coordinator</h2>
+      <p><code>ScanStore</code> is the root SwiftUI state object for the StorageScope Mac app. It lives in
+      <code>Sources/StorageScope/Stores/ScanStore.swift</code> and is declared as
+      <code>@MainActor final class ScanStore: ObservableObject</code>.</p>
+      <p>It is constructed exactly once in the app delegate
+      (<code>Sources/StorageScope/App/StorageScopeApp.swift</code>) as
+      <code>private let store = ScanStore()</code>, then injected into the view tree as an
+      <code>@ObservedObject</code> on <code>ContentView</code>, <code>SidebarView</code>,
+      <code>DetailView</code>, <code>InspectorView</code>, <code>TreeExplorerView</code>,
+      <code>CleanupReviewView</code>, <code>DuplicateCandidatesView</code>,
+      <code>TypeBreakdownView</code>, <code>OverviewView</code>, and <code>SettingsView</code>.</p>
+      <p><code>ScanStore</code> owns the active scan, scan session state, selection state, the duplicate hash
+      cache, security-scoped bookmark store, and the derived item/cleanup/reclaim caches that power the UI.
+      It also <em>composes</em> three sub-stores that own narrower responsibility:</p>
+      <ul>
+        <li><code>RecentsStore</code> &mdash; persisted recent-folder URLs.</li>
+        <li><code>OnDemandVerificationStore</code> &mdash; user-triggered "Verify Now" duplicate hashing.</li>
+        <li><code>FilterStore</code> &mdash; search/size/type/sort/cleanup-lane/old-file-age filter state.</li>
+      </ul>
+      <p>The v0.5.0 era is deliberately splitting further responsibility out of <code>ScanStore</code> into
+      additional sub-stores. Section&nbsp;5 enumerates what's planned.</p>
+      <p class="note"><strong>Why sub-stores?</strong> A single monolithic <code>ObservableObject</code> makes SwiftUI
+      observation too coarse: any <code>@Published</code> mutation invalidates the whole view tree that observes
+      the store. Carving selection, filters, and verification into their own
+      <code>ObservableObject</code>s lets SwiftUI re-render only the views that observe the changed sub-store.</p>
+    </section>
+
+    <section class="section" id="sub-store-extraction-pattern">
+      <h2>2. Sub-store extraction pattern (v0.5.0 Tier 2)</h2>
+      <p>The canonical pattern for a v0.5.0 sub-store declares it as a <code>lazy var</code> on
+      <code>ScanStore</code> and wires three closure-injected hooks so the sub-store can read parent state
+      and ask the parent to coordinate, without holding an owning reference back into <code>ScanStore</code>:</p>
+      <pre><code class="language-swift">lazy var filters = FilterStore(
+    scanLookup: { [weak self] in self?.scan },
+    coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() },
+    reportError: { [weak self] in self?.errorMessage = $0 }
+)</code></pre>
+      <h3>The three closure-injected hooks</h3>
+      <ul>
+        <li><code>scanLookup: () -&gt; StorageScan?</code> &mdash; the sub-store reads the current
+        <code>StorageScan</code> without holding an owning reference. <code>FilterStore</code> uses this to walk
+        the retained-items tree when rebuilding its search-subtree match index; <code>OnDemandVerificationStore</code>
+        uses it to check whether a group is already covered by a verified duplicate group.</li>
+        <li><code>coordinateInvalidate: () -&gt; Void</code> &mdash; the sub-store asks the parent to drop its
+        derived caches whenever filter / verification state changes. Each <code>@Published</code> setter on
+        <code>FilterStore</code> that affects item ordering or visibility calls
+        <code>coordinateInvalidate()</code>.</li>
+        <li><code>reportError: (String) -&gt; Void</code> &mdash; the sub-store surfaces a user-facing error
+        string through the parent's <code>@Published var errorMessage: String?</code>, so a single banner in
+        <code>ContentView</code> can render errors from any sub-store.</li>
+      </ul>
+      <p class="note"><strong>Current state vs. canonical pattern.</strong> <code>FilterStore</code> today only
+      opts into <code>scanLookup</code> and <code>coordinateInvalidate</code> &mdash; it has no user-facing
+      error path of its own. <code>OnDemandVerificationStore</code> uses all three hooks
+      (<code>scanLookup</code>, <code>coordinateInvalidate</code>, <code>reportError</code>). The three-hook
+      shape above is the v0.5.0 canonical form new sub-stores should follow.</p>
+      <h3>Why <code>lazy var</code></h3>
+      <p>Sub-stores capture <code>self</code> in their init via closures. If they were initialized eagerly
+      during <code>ScanStore.init</code>, the closures would close over not-yet-initialized stored properties
+      and a later access through <code>self?.scan</code> (a computed property that reads
+      <code>session.scan</code>) would be undefined behavior. <code>lazy var</code> defers construction until
+      first access, by which point <code>ScanStore.init</code> has finished and every stored property is
+      initialized.</p>
+      <h3>Why <code>[weak self]</code></h3>
+      <p>The closures live for the lifetime of the sub-store, which is owned by <code>ScanStore</code>. A
+      strong capture would create a retain cycle (<code>ScanStore</code> &rarr; sub-store &rarr; closure
+      &rarr; <code>ScanStore</code>) and prevent the coordinator from deallocating when the app tears down the
+      window. <code>[weak self]</code> lets the closure safely no-op once the store is gone, and never extends
+      <code>ScanStore</code>'s lifetime.</p>
+    </section>
+
+    <section class="section" id="filterbinding-bridge">
+      <h2>3. The filterBinding bridge</h2>
+      <p>SwiftUI's dynamic member lookup on <code>@ObservedObject</code> (<code>$store.query</code>,
+      <code>$store.filters.query</code>) does <strong>not</strong> produce a <code>Binding&lt;String&gt;</code>
+      when the path crosses an <code>ObservableObject</code> sub-store boundary. Only the
+      <code>@Observable</code> macro (Swift Observation) traverses that boundary automatically; under the
+      classic <code>ObservableObject</code> + <code>@Published</code> world StorageScope uses today, a sub-store
+      property does not project a typed <code>Binding&lt;T&gt;</code> the way <code>$store.query</code> does.</p>
+      <p>So <code>FilterStore</code>'s filter fields &mdash; <code>searchText</code>, <code>query</code>,
+      <code>sizeFilter</code>, <code>sortOption</code>, <code>fileTypeFocus</code>,
+      <code>cleanupLaneFilter</code>, <code>oldFileAgeDays</code>, <code>includeHiddenFiles</code>
+      &mdash; need a hand-rolled bridge to be consumable from <code>Picker</code>, <code>Stepper</code>,
+      <code>Toggle</code>, and <code>.searchable(text:)</code>:</p>
+      <pre><code class="language-swift">internal func filterBinding&lt;T&gt;(
+    _ keyPath: ReferenceWritableKeyPath&lt;FilterStore, T&gt;
+) -&gt; Binding&lt;T&gt; {
+    Binding(
+        get: { self.filters[keyPath: keyPath] },
+        set: { self.filters[keyPath: keyPath] = $0 }
+    )
+}</code></pre>
+      <p>Usage:</p>
+      <pre><code class="language-swift">.searchable(text: store.filterBinding(\.searchText), prompt: "Filter")
+
+Picker("Sort", selection: store.filterBinding(\.sortOption)) {
+    Text("Size").tag(ItemSortOption.sizeDescending)
+    Text("Name").tag(ItemSortOption.nameAscending)
+}
+
+Stepper(
+    value: store.filterBinding(\.oldFileAgeDays),
+    in: 30...365,
+    step: 30
+) {
+    Text("Older than \(store.oldFileAgeDays) days")
+}</code></pre>
+      <p class="note"><strong>Must be <code>internal</code>, not <code>private</code>.</strong> The first cut of this
+      bridge shipped as <code>private func</code> in v0.4.5 PR&nbsp;#38, which made it invisible to the views
+      outside the <code>ScanStore</code> file and broke <code>Picker</code>/<code>Stepper</code> bindings in
+      <code>SidebarView</code> and <code>CleanupReviewView</code>. The access modifier is now explicitly
+      <code>internal</code>. If you copy this shape into a new sub-store, keep the modifier explicit.</p>
+      <p>When StorageScope migrates to the <code>@Observable</code> macro (see Section&nbsp;5, Tier 5), this
+      bridge becomes unnecessary &mdash; <code>Bindable(store.filters).$searchText</code> will produce a typed
+      <code>Binding&lt;String&gt;</code> without per-keyPath shimming.</p>
+    </section>
+
+    <section class="section" id="derived-cache-invalidation">
+      <h2>4. Derived cache invalidation</h2>
+      <p><code>ScanStore</code> derives several expensive views of the scan on demand &mdash; filtered items,
+      cleanup candidates, old-large-files, the reclaim plan, and total reclaimable bytes. Each derived view is
+      cached against an <code>Equatable</code> cache key that folds together the inputs that would change the
+      output:</p>
+      <pre><code class="language-swift">private struct ItemsCacheKey: Equatable {
+    let scanFinishedAt: Date
+    let view: SmartView
+    let query: String
+    let sizeFilter: SizeFilter
+    let sortOption: ItemSortOption
+    let cleanupLaneFilter: CleanupLaneFilter
+    let fileTypeFocus: String?
+    let ignoredCleanupCandidateIDs: Set&lt;String&gt;
+}
+
+private struct DerivedCacheKey: Equatable {
+    let scanFinishedAt: Date
+    let query: String
+    let sizeFilter: SizeFilter
+    let sortOption: ItemSortOption
+    let cleanupLaneFilter: CleanupLaneFilter
+    let ignoredCleanupCandidateIDs: Set&lt;String&gt;
+}</code></pre>
+      <p>Each cache is stored as a paired key/value slot on <code>ScanStore</code>:
+      <code>cachedItemsKey</code>/<code>cachedItems</code>,
+      <code>cachedCleanupCandidatesKey</code>/<code>cachedCleanupCandidates</code>,
+      <code>cachedOldLargeFilesKey</code>/<code>cachedOldLargeFiles</code>,
+      <code>cachedReclaimPlanKey</code>/<code>cachedReclaimPlan</code>,
+      <code>cachedPotentialReclaimableBytesKey</code>/<code>cachedPotentialReclaimableBytes</code>.</p>
+      <p><code>invalidateDerivedCaches()</code> drops every cache key/value pair in one pass:</p>
+      <pre><code class="language-swift">private func invalidateDerivedCaches() {
+    cachedCleanupCandidatesKey = nil
+    cachedCleanupCandidates = []
+    cachedPotentialReclaimableBytesKey = nil
+    cachedPotentialReclaimableBytes = 0
+    cachedReclaimPlanKey = nil
+    cachedReclaimPlan = ReclaimPlan(sections: [], primaryAction: nil)
+    cachedOldLargeFilesKey = nil
+    cachedOldLargeFiles = []
+    invalidateItemsCache()
+}
+
+private func invalidateItemsCache() {
+    cachedItemsKey = nil
+    cachedItems = []
+}</code></pre>
+      <p class="note"><strong>Sub-stores must not touch these caches directly.</strong>
+      <code>coordinateInvalidate</code> is the only sanctioned way for a sub-store to drop the parent's caches.
+      A sub-store that wrote to <code>cachedItemsKey</code> directly would free itself from spelling its own
+      cache inputs in <code>ItemsCacheKey</code>, and then drift the next time an input was added. Always go
+      through <code>coordinateInvalidate()</code>.</p>
+    </section>
+
+    <section class="section" id="whats-next">
+      <h2>5. What's next (Tiers 3–5)</h2>
+      <p>The v0.5.0 sub-store extraction is sequenced into tiers. FilterStore (Tier&nbsp;2) and
+      OnDemandVerificationStore (Tier&nbsp;1b) shipped; the remaining tiers are planned:</p>
+      <ul>
+        <li><strong>Tier 3 (planned, v0.5.0+).</strong> Extract <code>SelectionState</code> &mdash;
+        <code>selectedItemID</code>, <code>selectedFolderID</code>, <code>treeExpandedIDs</code> expand state,
+        and the <code>selectedCleanupCandidateIDs</code> / <code>ignoredCleanupCandidateIDs</code> sets &mdash;
+        into a <code>SelectionStore</code> with the same closure-injected hook shape.</li>
+        <li><strong>Tier 4 (planned).</strong> Extract <code>TrashReviewState</code> &mdash;
+        <code>pendingTrashReviewPlan</code>, <code>isMovingToTrash</code>, and the transactional-batch progress
+        counters &mdash; into a <code>TrashReviewStore</code>. This is the most latent risk because the
+        transactional batch interacts with the active scan's hash cache and must coordinate via
+        <code>reportError</code> for rolled-back partial failures.</li>
+        <li><strong>Tier 5 (planned).</strong> Migrate <code>ScanStore</code> and its sub-stores from the
+        classic <code>ObservableObject</code> + <code>@Published</code> pattern to the Swift
+        <code>@Observable</code> macro. This removes the <code>filterBinding</code> bridge (Section&nbsp;3)
+        entirely, because the macro lets dynamic member lookup traverse sub-store boundaries. Gated on raising
+        the deployment target to <strong>macOS 14 exclusively</strong> (the macro requires macOS 14+, and the
+        project currently still supports a macOS 14 baseline with gradual migration rather than a hard cutoff).</li>
+      </ul>
+    </section>
+
+    <section class="section" id="store-hierarchy-diagram">
+      <h2>6. Store hierarchy</h2>
+      <p>ASCII rendering of the coordinator &harr; sub-store relationship. Boxes are
+      <code>ObservableObject</code> types; arrows show the closure direction
+      (<code>coordinateInvalidate</code> flows up to the parent; <code>weak self</code> capture is what lets
+      the closure no-op after <code>ScanStore</code> deallocs).</p>
+      <pre>
++------------------------------------------+
+|             ScanStore                    |
+|             (@MainActor                  |
+|              ObservableObject)           |
+|                                          |
+|  +------------+  +-------------+         |
+|  | Recents    |  | OnDemand    |         |
+|  | Store      |  | Verification|         |
+|  |            |  | Store       |         |
+|  +------------+  +-------------+         |
+|                                          |
+|  +-----------------+                     |
+|  |  FilterStore    |                     |
+|  |  - searchText   |                     |
+|  |  - query        |                     |
+|  |  - fileTypeFocus|                     |
+|  |  - sizeFilter   |                     |
+|  |  - sortOption   |                     |
+|  |  - cleanupLane  |                     |
+|  |  - ActiveFilter |                     |
+|  +--------+--------+                     |
+|           |                              |
+|    coordinateInvalidate → drop           |
+|         derived caches                   |
++------------------------------------------+
+        ^
+        | weak self capture
+        |
++------------------------------------------+
+|  FilterStore delegate closures           |
+|  - scanLookup: () -> StorageScan?        |
+|  - coordinateInvalidate: () -> Void      |
+|  - reportError: (String) -> Void         |
++------------------------------------------+
+</pre>
+      <p class="note">Boxes are <em>not</em> memory ownership boxes; they are responsibility boxes. The
+      sub-stores are owned by <code>ScanStore</code> (either eagerly via <code>let</code> or lazily via
+      <code>lazy var</code>), and the closures above are how a sub-store talks back up.</p>
+    </section>
+
+    <p class="actions-note">See also: <a href="https://github.com/RasputinKaiser/StorageScope">source on GitHub</a> &middot; <a href="changelog.html">release history</a> &middot; <a href="faq.html">FAQ</a> &middot; <a href="keyboard-shortcuts.html">Keyboard Shortcuts</a></p>
+
+    <footer class="site-footer">
+      <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="changelog.html">Changelog</a> &middot; <a href="faq.html">FAQ</a> &middot; <a href="architecture.html">Architecture</a></div>
+      <div>v0.4.5 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+    </footer>
+  </main>
+</body>
+</html>
