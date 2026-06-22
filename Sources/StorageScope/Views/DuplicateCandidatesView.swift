@@ -261,6 +261,7 @@ private struct DuplicateItemList: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(.green.opacity(0.14), in: Capsule())
+                                .help("Keeper — protected from Trash. Right-click any other copy in this group and choose \"Set as Keeper\" to reassign.")
                         }
                         Spacer()
                         Text(item.url.deletingLastPathComponent().path)
@@ -274,9 +275,11 @@ private struct DuplicateItemList: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))")
+                .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))\(isKeeper ? ", keeper" : "")")
                 .accessibilityValue(store.selectedItemID == item.id ? "Selected" : "Not selected")
-                .accessibilityHint("Selects this duplicate candidate")
+                .accessibilityHint(isKeeper
+                    ? "Keeper copy — protected from Trash. Use another row's menu to reassign keeper."
+                    : "Selects this duplicate candidate")
                 .simultaneousGesture(TapGesture(count: 2).onEnded {
                     store.selectedItemID = item.id
                     store.openSelectedItem()

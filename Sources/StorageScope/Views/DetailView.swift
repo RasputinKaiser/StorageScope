@@ -12,7 +12,9 @@ struct DetailView: View {
             } else {
                 VStack(spacing: 0) {
                     ScanHeaderView(store: store)
-                    FilterBarView(store: store)
+                    if store.activeView.showsFilterBar {
+                        FilterBarView(store: store)
+                    }
                     if let notice = store.scanNoticeText {
                         ScanNoticeView(
                             text: notice,
@@ -422,28 +424,38 @@ private struct FilterBarView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var wideControls: some View {
-        HStack(alignment: .center, spacing: 16) {
-            HStack(spacing: 10) {
-                ControlGroupLabel(title: "Display", systemImage: "line.3.horizontal.decrease.circle")
+    private var displayGroup: some View {
+        HStack(spacing: 10) {
+            ControlGroupLabel(title: "Display", systemImage: "line.3.horizontal.decrease.circle")
 
+            if store.activeView.appliesSizeFilter {
                 sizePicker
                     .frame(maxWidth: 430)
+            }
 
+            if store.activeView.appliesSortOption {
                 sortControl
             }
 
-            Divider()
-                .frame(height: 28)
+            if store.activeView == .oldLargeFiles {
+                Divider()
+                    .frame(height: 28)
 
-            HStack(spacing: 10) {
-                ControlGroupLabel(title: "Scan Options", systemImage: "slider.horizontal.3")
-
-                Stepper("Old after \(store.oldFileAgeDays) days", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
-                    .frame(width: 190)
-
-                Toggle("Hidden", isOn: store.filterBinding(\.includeHiddenFiles))
+                HStack(spacing: 6) {
+                    Text("Old after")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Stepper("\(store.oldFileAgeDays) days", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
+                        .labelsHidden()
+                }
+                .help("Files older than this become 'old'. Rescan to apply the new threshold.")
             }
+        }
+    }
+
+    private var wideControls: some View {
+        HStack(alignment: .center, spacing: 16) {
+            displayGroup
 
             Spacer()
 
@@ -453,25 +465,9 @@ private struct FilterBarView: View {
 
     private var compactControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ControlGroupLabel(title: "Display", systemImage: "line.3.horizontal.decrease.circle")
+            displayGroup
 
             HStack(spacing: 12) {
-                sizePicker
-                    .frame(maxWidth: 430)
-
-                sortControl
-
-                Spacer(minLength: 0)
-            }
-
-            ControlGroupLabel(title: "Scan Options", systemImage: "slider.horizontal.3")
-
-            HStack(spacing: 12) {
-                Stepper("Old after \(store.oldFileAgeDays) days", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
-                    .frame(width: 190)
-
-                Toggle("Hidden", isOn: store.filterBinding(\.includeHiddenFiles))
-
                 Spacer(minLength: 0)
 
                 scanDurationLabel

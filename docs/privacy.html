@@ -32,18 +32,18 @@
   <style>
     :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
     @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
     main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
-    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; }
-    h2 { margin-top: 36px; }
-    p, li { color: var(--muted); line-height: 1.6; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; text-wrap: balance; }
+    h2 { margin-top: 36px; text-wrap: balance; }
+    p, li { color: var(--muted); line-height: 1.6; text-wrap: pretty; }
     a { color: var(--accent); }
     .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-top: 24px; }
     .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
     .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
     .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
     .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
-    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; }
+    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; transition: color 150ms cubic-bezier(0.2, 0, 0, 1); }
     .site-nav nav a:hover { color:var(--accent); }
     footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
     footer.site-footer a { color:inherit; }
@@ -99,7 +99,7 @@
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="changelog.html">Changelog</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.1 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

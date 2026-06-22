@@ -108,66 +108,70 @@ private struct TreeNodeRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button {
-                store.selectedItemID = item.id
-                if item.isContainer {
-                    toggleExpanded()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    if item.isContainer && !visibleChildren.isEmpty {
+            HStack(spacing: 10) {
+                if item.isContainer && !item.children.isEmpty {
+                    Button {
+                        toggleExpanded()
+                    } label: {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 14)
-                            .accessibilityLabel(isExpanded ? "Collapse" : "Expand")
-                            .accessibilityAddTraits(.isButton)
-                    } else {
-                        Color.clear
                             .frame(width: 14, height: 14)
+                            .contentShape(Rectangle())
                     }
-
-                    Image(systemName: StorageFormat.icon(for: item))
-                        .foregroundStyle(item.kind == .inaccessible ? .red : .secondary)
-                        .frame(width: 18)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 8) {
-                            HighlightedText(item.name, query: store.filters.searchText)
-                                .lineLimit(1)
-                            Spacer()
-                            Text(StorageFormat.bytes(item.displaySize))
-                                .font(.system(.body, design: .rounded).monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-
-                        GeometryReader { geometry in
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(.quaternary)
-                                .overlay(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(.tint.opacity(depth == 0 ? 0.85 : 0.62))
-                                        .frame(width: max(6, geometry.size.width * CGFloat(Double(item.displaySize) / Double(rootSize))))
-                                }
-                        }
-                        .frame(height: 7)
-                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isExpanded ? "Collapse \(item.name)" : "Expand \(item.name)")
+                    .help(isExpanded ? "Collapse this folder" : "Expand this folder")
+                } else {
+                    Color.clear
+                        .frame(width: 14, height: 14)
                 }
-                .padding(.leading, CGFloat(depth * 18) + 12)
-                .padding(.trailing, 12)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-                .selectionBackground(isSelected: store.selectedItemID == item.id)
+
+                Button {
+                    store.selectedItemID = item.id
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: StorageFormat.icon(for: item))
+                            .foregroundStyle(item.kind == .inaccessible ? .red : .secondary)
+                            .frame(width: 18)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(spacing: 8) {
+                                HighlightedText(item.name, query: store.filters.searchText)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(StorageFormat.bytes(item.displaySize))
+                                    .font(.system(.body, design: .rounded).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            GeometryReader { geometry in
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(.quaternary)
+                                    .overlay(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(.tint.opacity(depth == 0 ? 0.85 : 0.62))
+                                            .frame(width: max(6, geometry.size.width * CGFloat(Double(item.displaySize) / Double(rootSize))))
+                                    }
+                            }
+                            .frame(height: 7)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
+            .padding(.leading, CGFloat(depth * 18) + 12)
+            .padding(.trailing, 12)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .selectionBackground(isSelected: store.selectedItemID == item.id)
+            .accessibilityElement(children: .contain)
             .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(item.isContainer ? "Selects and toggles this folder" : "Selects this item")
-            .simultaneousGesture(TapGesture(count: 2).onEnded {
-                store.selectedItemID = item.id
-                store.openSelectedItem()
-            })
+            .accessibilityHint(item.isContainer && !item.children.isEmpty
+                ? "Click the disclosure triangle to expand or collapse"
+                : "Selects this item")
             .contextMenu {
                 Button("Reveal in Finder") {
                     store.selectedItemID = item.id

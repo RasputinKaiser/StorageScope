@@ -32,6 +32,12 @@ struct StorageItemTable: View {
                 }
             }
 
+            if store.activeView == .oldLargeFiles, items.count > 0, items.count <= 5 {
+                OldLargeFilesThresholdHint(itemCount: items.count, days: store.oldFileAgeDays) {
+                    store.rescan()
+                }
+            }
+
             VStack(spacing: 0) {
                 StorageItemHeader(sortOption: store.filters.sortOption) { store.filters.sortOption = $0 }
 
@@ -61,11 +67,59 @@ struct StorageItemTable: View {
                             }
                         }
                     }
-                    .frame(minHeight: compact ? 320 : 420)
+                    .frame(minHeight: listMinHeight)
                 }
             }
             .cardBackground()
         }
+    }
+
+    /// Scales the scroll area to its content rather than reserving ~420pt for a sparse
+    /// result set. Old Large Files frequently surfaces 1-3 files; leaving the old 420pt
+    /// reserved produced the "600px of void below one row" complaint. When there are
+    /// enough rows to overflow a card anyway, the old compact/full heights stay.
+    private var listMinHeight: CGFloat {
+        if compact { return items.count <= 5 ? 180 : 320 }
+        return items.count <= 5 ? 220 : 420
+    }
+}
+
+/// Inline hint shown above the table when Old Large Files surfaces only a handful of
+/// items. The threshold is scan-time (baked into `StorageScan.oldLargeFiles`), so the
+/// call-to-action is a Rescan after the user adjusts either the size filter or the
+/// `oldFileAgeDays` stepper above.
+private struct OldLargeFilesThresholdHint: View {
+    let itemCount: Int
+    let days: Int
+    let onRescan: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .foregroundStyle(.orange)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(itemCount == 1
+                    ? "Only 1 file qualifies as old."
+                    : "Only \(itemCount.formatted()) files qualify as old.")
+                    .font(.callout.weight(.medium))
+                Text("Lower the size filter or \"Old after \(days) days\" above, then rescan to surface more.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button {
+                onRescan()
+            } label: {
+                Label("Rescan", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Rescan with the current threshold settings")
+        }
+        .padding(12)
+        .cardBackground(.thin)
     }
 }
 

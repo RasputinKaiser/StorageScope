@@ -94,6 +94,35 @@ enum SmartView: String, CaseIterable, Identifiable {
             return false
         }
     }
+
+    /// Size-picker relevance. The picker hides children/rows below `sizeFilter.threshold`,
+    /// which is meaningful only on views that list ranked items. Overview / CleanupReview /
+    /// File Types use aggregation or their own filter lane and gain nothing from it.
+    var appliesSizeFilter: Bool {
+        switch self {
+        case .tree, .largestFolders, .largestFiles, .oldLargeFiles, .duplicateCandidates:
+            return true
+        case .overview, .cleanupReview, .typeBreakdown:
+            return false
+        }
+    }
+
+    /// Sort-pickler relevance. Tree is hierarchical (no column sort), Overview / File
+    /// Types / Cleanup Review have no row ordering the user can flip from the bar.
+    var appliesSortOption: Bool {
+        switch self {
+        case .largestFolders, .largestFiles, .oldLargeFiles, .duplicateCandidates:
+            return true
+        case .overview, .cleanupReview, .tree, .typeBreakdown:
+            return false
+        }
+    }
+
+    /// Whether the FilterBarView itself should appear at all on this view. Avoids
+    /// an empty chrome strip on Overview / File Types / Cleanup Review.
+    var showsFilterBar: Bool {
+        appliesSizeFilter || appliesSortOption
+    }
 }
 
 enum SizeFilter: Int, CaseIterable, Identifiable {

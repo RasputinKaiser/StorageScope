@@ -32,11 +32,11 @@
   <style>
     :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
     @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
     main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
-    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; }
-    h2 { margin-top: 36px; }
-    p, li { color: var(--muted); line-height: 1.6; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; text-wrap: balance; }
+    h2 { margin-top: 36px; text-wrap: balance; }
+    p, li { color: var(--muted); line-height: 1.6; text-wrap: pretty; }
     a { color: var(--accent); }
     .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
     .release { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-top: 24px; }
@@ -44,12 +44,13 @@
     .release .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
     .release ul { margin: 8px 0 0; padding-left: 20px; }
     .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-    .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--panel); font-weight: 650; }
+    .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--panel); font-weight: 650; transition: transform 100ms cubic-bezier(0.2, 0, 0, 1); }
+    .button:active { transform: scale(0.96); }
     .primary { background: var(--accent); border-color: var(--accent); color: white; }
     .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
     .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
     .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
-    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; }
+    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; transition: color 150ms cubic-bezier(0.2, 0, 0, 1); }
     .site-nav nav a:hover { color:var(--accent); }
     footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
     footer.site-footer a { color:inherit; }
@@ -68,6 +69,44 @@
     </header>
     <h1>Changelog</h1>
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
+
+    <section class="release">
+      <h2>v0.5.1 &mdash; Post-release UX polish</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.1">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.1/StorageScope-0.5.1.dmg">download .dmg</a></div>
+      <p>Targeted fixes for issues raised during the v0.5.0 UI tour: Folder Tree expand behavior, persistent-header context-sensitivity, sparse-result view layout, and Keeper badge explainability.</p>
+
+      <h3>Folder Tree</h3>
+      <ul>
+        <li><strong>Disclosure triangle is its own toggle.</strong> Previously the whole row mutated both selection and expand state, and double-clicking a folder opened it in Finder instead of drilling in-app. The chevron is now a dedicated <code>Button</code>; the row body only selects. Deprecated the double-click-to-Finder shortcut on tree rows (Reveal/Open remain in the row's context menu).</li>
+        <li>Empty-tree accessibility hint clarified: rows that <em>can</em> expand say &ldquo;Click the disclosure triangle to expand or collapse&rdquo;; leaf rows still say &ldquo;Selects this item.&rdquo;</li>
+      </ul>
+
+      <h3>Context-sensitive header</h3>
+      <ul>
+        <li><strong>FilterBar removed from Overview / File Types / Cleanup Review.</strong> The Display + Scan Options strip was ~120pt of dead chrome on views that don't use it. The bar now appears only when the active view actually consumes the size or sort picker.</li>
+        <li><strong>Size picker gated per-view.</strong> Hidden on Overview / File Types / Cleanup Review where the threshold aggregates nothing.</li>
+        <li><strong>Sort picker gated per-view.</strong> Tree is hierarchical; Overview / File Types / Cleanup Review have no column sort the user can flip from the bar.</li>
+        <li><strong>Removed Scan Options group from the filter bar.</strong> &ldquo;Old after N days&rdquo; and &ldquo;Hidden&rdquo; were already covered by Settings &rarr; Scan Options; their presence in the bar was redundant. (The Old-after stepper was re-added <em>only</em> on Old Large Files, since the threshold directly drives that view.)</li>
+      </ul>
+
+      <h3>Old Large Files</h3>
+      <ul>
+        <li><strong>Threshold hint card when results are sparse.</strong> A new <code>OldLargeFilesThresholdHint</code> inline card surfaces when 1&ndash;5 files qualify: copy acknowledges the small set, secondary line guides the user to lower the size filter or &ldquo;Old after N days&rdquo; then Rescan, and a Rescan button is wired up for one-tap action.</li>
+        <li><strong>List minHeight scales with content.</strong> The scroll area no longer reserves 420pt when only a handful of rows exist &mdash; drops to ~220pt for &le;5 items so the empty canvas below sparse results is gone.</li>
+      </ul>
+
+      <h3>Duplicate Review</h3>
+      <ul>
+        <li><strong>Keeper badge tooltip.</strong> The green &ldquo;Keeper&rdquo; capsule now carries a help-tag explaining what keeper means and how to reassign it (right-click another copy &rarr; &ldquo;Set as Keeper&rdquo;). Row accessibility now appends &ldquo;, keeper&rdquo; to the row label and the hint explains the swap path.</li>
+      </ul>
+
+      <h3>Validation</h3>
+      <ul>
+        <li><code>swift test</code> &mdash; 90 tests across 10 suites pass</li>
+        <li><code>./script/public_upload_audit.sh</code> &mdash; passes</li>
+        <li><code>bash ./script/build_and_run.sh --verify</code> &mdash; bundle launches cleanly</li>
+      </ul>
+    </section>
 
     <section class="release">
       <h2>v0.5.0 &mdash; Search + Performance Upgrade</h2>
@@ -208,14 +247,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.0/StorageScope-0.5.0.dmg">Download v0.5.0 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.1/StorageScope-0.5.1.dmg">Download v0.5.1 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.0/StorageScope-0.5.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.1/StorageScope-0.5.1.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.5.1 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>
