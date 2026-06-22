@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var cacheSnapshot: CacheSnapshot = .init(entryCount: 0, lastPersistedAt: nil)
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(title: "Scan Options") {
                 Toggle("Include hidden files", isOn: store.filterBinding(\.includeHiddenFiles))
@@ -65,7 +66,8 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(width: 520, alignment: .topLeading)
-        .frame(minHeight: 320, alignment: .topLeading)
+        } // ScrollView
+        .frame(width: 520)
         .task { refreshCacheSnapshot() }
         .alert("Clear Duplicate Hash Cache?", isPresented: $showingClearCacheAlert) {
             Button("Cancel", role: .cancel) {}
