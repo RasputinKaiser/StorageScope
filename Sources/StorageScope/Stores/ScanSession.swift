@@ -14,6 +14,13 @@ struct ScanSession {
     /// currentPath during `isScanning`), so users got no visible feedback.
     var lastCancellationMessage: String?
 
+    /// Last scan/bookmark/trash error category surfaced through `errorMessage`. Mirrors
+    /// `lastCancellationMessage`'s lifecycle (cleared on the next `scan(_:)` start) so the
+    /// alert UI and tests can assert on what kind of failure just happened — permission
+    /// denial, missing folder, stale bookmark, internal — without parsing the alert string.
+    /// Nil after a cancellation, since cancellation is intentionally silent.
+    var lastErrorCategory: ScanStore.ScanStoreErrorCategory?
+
     var canRescan: Bool {
         lastScannedURL != nil && !isScanning
     }

@@ -507,7 +507,12 @@ func setSelectedView(_ view: SmartView) {
 
             scanUserGrantedURL(resolvedURL.url, access: resolvedURL.access)
         } catch {
-            errorMessage = "StorageScope could not reopen this folder bookmark. Choose it again to refresh access. \(error.localizedDescription)"
+            let category = Self.categorize(error, fallbackPath: path)
+            session.lastErrorCategory = category
+            os_log("Reopen-bookmark failed for %{private}@: %{public}@",
+                   log: Self.log, type: .error, path, String(describing: error))
+            errorMessage = category?.userMessage
+                ?? "StorageScope could not reopen this folder bookmark. Choose it again to refresh access. \(error.localizedDescription)"
             chooseFolderAndScan(startingAt: URL(fileURLWithPath: path, isDirectory: true))
         }
     }
@@ -583,7 +588,12 @@ func setSelectedView(_ view: SmartView) {
                 chooseFolderAndScan(startingAt: lastScannedURL)
             }
         } catch {
-            errorMessage = "StorageScope needs refreshed access before rescanning. \(error.localizedDescription)"
+            let category = Self.categorize(error, fallbackPath: lastScannedURL.path)
+            session.lastErrorCategory = category
+            os_log("Rescan access failed for %{private}@: %{public}@",
+                   log: Self.log, type: .error, lastScannedURL.path, String(describing: error))
+            errorMessage = category?.userMessage
+                ?? "StorageScope needs refreshed access before rescanning. \(error.localizedDescription)"
             chooseFolderAndScan(startingAt: lastScannedURL)
         }
     }
@@ -616,9 +626,13 @@ func setSelectedView(_ view: SmartView) {
         do {
             scopedAccess = try access ?? SecurityScopedResourceAccess(url: url)
         } catch {
+            let category = Self.categorize(error, fallbackPath: url.path)
+            session.lastErrorCategory = category
+            os_log("Access denied at scan start for %{private}@: %{public}@",
+                   log: Self.log, type: .error, url.path, String(describing: error))
             isScanning = false
             progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Access denied")
-            errorMessage = error.localizedDescription
+errorMessage = category?.userMessage ?? error.localizedDescription
             return
         }
         replaceActiveRootAccess(with: scopedAccess)
@@ -642,6 +656,7 @@ func setSelectedView(_ view: SmartView) {
         onDemandVerification.clear()
         invalidateDerivedCaches()
         errorMessage = nil
+        session.lastErrorCategory = nil
         session.resultsNeedRefresh = false
         isScanning = true
         progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: url.path)
@@ -694,7 +709,7 @@ func setSelectedView(_ view: SmartView) {
                                     progressContinuation.yield(progress)
                                 }
                             )
-                            return .result(scan)
+return .result(scan)
                         }
 
                         group.addTask {
@@ -771,6 +786,11 @@ func setSelectedView(_ view: SmartView) {
                 selectedViewWhenCurrentScanCompletes = nil
                 selectVerifiedCleanupWhenCurrentScanCompletes = false
                 progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Scan cancelled")
+                // Intentionally quiet: cancellation is not an alert-worthy failure. The footer
+                // already surfaces "Scan cancelled"; surfacing errorMessage here would pop a
+                // redundant alert after every Cmd+. Clear lastErrorCategory so a stale category
+                // from a previous failed scan does not linger through this cancellation.
+                session.lastErrorCategory = nil
                 clearActiveScan(scanID, cancellation: scanCancellation)
             } catch {
                 guard isCurrentScan(scanID, cancellation: scanCancellation) else {
@@ -780,7 +800,11 @@ func setSelectedView(_ view: SmartView) {
                 markResultsNeedRefreshWhenCurrentScanCompletes = false
                 selectedViewWhenCurrentScanCompletes = nil
                 selectVerifiedCleanupWhenCurrentScanCompletes = false
-                errorMessage = error.localizedDescription
+                let category = Self.categorize(error, fallbackPath: url.path)
+                session.lastErrorCategory = category
+                os_log("Scan failed for %{private}@: %{public}@",
+                       log: Self.log, type: .error, url.path, String(describing: error))
+                errorMessage = category?.userMessage ?? error.localizedDescription
                 clearActiveScan(scanID, cancellation: scanCancellation)
             }
         }
@@ -1237,6 +1261,7 @@ func setSelectedView(_ view: SmartView) {
                 }.value
                 result = .success(())
             } catch {
+                os_log("Trash move failed: %{public}@", log: Self.log, type: .error, String(describing: error))
                 result = .failure(error)
             }
 
@@ -1528,5 +1553,81 @@ func setSelectedView(_ view: SmartView) {
         activeScanID = nil
         cancellation = nil
         scanTask = nil
+    }
+}
+
+extension ScanStore {
+    /// Categorizes an error caught from scan or bookmark resolve so the
+    /// `errorMessage` alert can include the affected path/operation when known
+    /// and skip surfacing entirely on cancellation. Recorded on
+    /// `ScanSession.lastErrorCategory` so the UI/tests can assert on the failure
+    /// shape without parsing the alert string.
+    enum ScanStoreErrorCategory: Equatable {
+        /// Sandbox/permission denial — user must re-grant folder access.
+        case permissionDenied(path: String)
+        /// Folder no longer exists at the bookmarked/scanned location.
+        case missingFolder(path: String)
+        /// Persisted security-scoped bookmark data couldn't be decoded/resolved.
+        case staleBookmark(path: String)
+        /// Other unrecoverable scan error — surfaced without a specific path.
+        case scanInternal(message: String)
+
+        /// The string surfaced in `errorMessage` (and thus the SwiftUI alert).
+        /// Path-bearing cases always include the affected path so users know which
+        /// folder StorageScope couldn't reach.
+        var userMessage: String {
+            switch self {
+            case .permissionDenied(let path):
+                return "StorageScope could not access \"\(path)\". Choose the folder again or grant access in macOS privacy settings."
+            case .missingFolder(let path):
+                return "The folder no longer exists at \"\(path)\". Pick a different folder to scan."
+            case .staleBookmark(let path):
+                return "StorageScope could not reopen this folder (\(path)). Choose it again to refresh access."
+            case .scanInternal(let message):
+                return message
+            }
+        }
+    }
+
+    /// Categorizes an error caught from scan or bookmark resolve so the
+    /// `errorMessage` alert can include the affected path when known and skip
+    /// surfacing entirely on cancellation. Recorded on `ScanSession.lastErrorCategory`
+    /// so the UI/tests can assert on the failure shape without parsing the alert string.
+    static func categorize(_ error: Error, fallbackPath: String? = nil) -> ScanStoreErrorCategory? {
+        if let scannerError = error as? FileSystemScannerError {
+            switch scannerError {
+            case .cancelled:
+                return nil
+            case .rootDoesNotExist(let url):
+                return .missingFolder(path: url.path)
+            }
+        }
+        if let bookmarkError = error as? BookmarkError {
+            switch bookmarkError {
+            case .accessDenied(let url):
+                return .permissionDenied(path: url.path)
+            case .bookmarkDataInvalid(let path, underlying: _):
+                return .staleBookmark(path: path)
+            case .fileMissing(let url):
+                return .missingFolder(path: url.path)
+            case .bookmarkCreationFailed, .volumeNotMounted:
+                break
+            }
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain {
+            // Bookmark decoding failure (corrupt data, moved source, sandbox invalidation).
+            // NSURLErrorKey sometimes carries the URL; otherwise fall back to the path the
+            // user asked us to reopen so the alert still names the folder.
+            let path = (nsError.userInfo[NSURLErrorKey] as? URL)?.path
+                ?? fallbackPath
+            if let path {
+                return .staleBookmark(path: path)
+            }
+        }
+        if let fallbackPath {
+            return .scanInternal(message: "\(error.localizedDescription) (Folder: \(fallbackPath))")
+        }
+        return .scanInternal(message: error.localizedDescription)
     }
 }
