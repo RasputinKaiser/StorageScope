@@ -58,7 +58,7 @@ struct CleanupSelectionPlannerTests {
     @Test("treats root slash as ancestor of every non-root path")
     func treatsRootSlashAsAncestorOfEveryNonRootPath() {
         let root = candidate(url: URL(fileURLWithPath: "/"), bytes: 1_000_000, kind: .cacheFolder)
-        let nested = candidate(url: URL(fileURLWithPath: "/Users/x/file.bin"), bytes: 1)
+        let nested = candidate(url: URL(fileURLWithPath: "/Volumes/Data/file.bin"), bytes: 1)
 
         let plannedA = CleanupSelectionPlanner.topLevelCandidates([nested, root])
         let plannedB = CleanupSelectionPlanner.topLevelCandidates([root, nested])
