@@ -37,6 +37,11 @@ final class OnDemandVerificationStore: ObservableObject {
     /// alongside the task so hashing I/O bails out at the next chunk boundary instead of
     /// waiting for a whole file to hash before noticing the Swift task was cancelled.
     private var verifyCancellationsByID: [String: ScanCancellation] = [:]
+    /// Group IDs that have completed verification at least once. Non-duplicate items (singletons
+    /// after hashing) are intentionally absent from `verifiedGroupsByChecksum`, so the
+    /// item-coverage check in `isGroupAlreadyVerified` would incorrectly re-verify them.
+    /// Tracking completed IDs separately ensures re-verify taps are always a no-op.
+    private var completedVerificationGroupIDs: Set<String> = []
 
     init(
         hashCache: DuplicateHashCache,
@@ -106,6 +111,7 @@ final class OnDemandVerificationStore: ObservableObject {
 
                 switch result {
                 case .success(let groups):
+                    self.completedVerificationGroupIDs.insert(group.id)
                     for verifiedGroup in groups {
                         self.verifiedGroupsByChecksum[verifiedGroup.checksum] = verifiedGroup
                     }
@@ -148,10 +154,13 @@ final class OnDemandVerificationStore: ObservableObject {
         verifyingGroupIDs.removeAll()
     }
 
-    /// `true` when every item in `group` is already covered by a verified duplicate group
-    /// (scan-time or on-demand) at the same byte size — i.e. calling `verify(_:)` would be
-    /// a no-op. Used to skip superfluous Verify Now taps cheaply.
+    /// `true` when `group` has already been verified — either by this store or by the scan-time
+    /// budget. Non-duplicate items (singletons after hashing) are intentionally absent from
+    /// `verifiedGroupsByChecksum`, so checking item coverage alone would incorrectly re-verify
+    /// a group whose singletons got filtered out. The `completedVerificationGroupIDs` set
+    /// short-circuits that case.
     private func isGroupAlreadyVerified(_ group: DuplicateSizeGroup) -> Bool {
+        if completedVerificationGroupIDs.contains(group.id) { return true }
         let targetIDs = Set(group.items.map(\.id))
         let candidates = (scanLookup()?.verifiedDuplicateGroups ?? []) + Array(verifiedGroupsByChecksum.values)
         return candidates.contains { verified in
@@ -166,6 +175,7 @@ final class OnDemandVerificationStore: ObservableObject {
     func clear() {
         cancelAllVerifications()
         verifiedGroupsByChecksum.removeAll()
+        completedVerificationGroupIDs.removeAll()
     }
 
     /// Persists the in-memory hash cache off the main actor. Failures surface through
