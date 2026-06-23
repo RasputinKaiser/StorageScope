@@ -96,6 +96,14 @@ final class OnDemandVerificationStore: ObservableObject {
                 self.verifyCancellationsByID.removeValue(forKey: group.id)
                 self.verifyTasksByID.removeValue(forKey: group.id)
 
+                // Re-check cancellation right before merging. A cancel that lands between
+                // the detached hash completing and this main-actor closure running (while
+                // we were parked waiting for the main actor) must still discard partial
+                // results — otherwise the user's abort silently surfaces phantom groups.
+                if cancellation.isCancelled || Task.isCancelled {
+                    return
+                }
+
                 switch result {
                 case .success(let groups):
                     for verifiedGroup in groups {
