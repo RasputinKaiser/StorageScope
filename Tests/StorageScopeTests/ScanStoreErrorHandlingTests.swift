@@ -14,7 +14,7 @@ struct ScanStoreErrorHandlingTests {
 
     @Test("missing root surfaces with the affected folder path")
     func missingFolderIncludesPath() throws {
-        let url = URL(fileURLWithPath: "/Users/tester/does-not-exist", isDirectory: true)
+        let url = URL(fileURLWithPath: "/tmp/storagescope-tester/does-not-exist", isDirectory: true)
         let category = try #require(ScanStore.categorize(FileSystemScannerError.rootDoesNotExist(url)))
         #expect(category == .missingFolder(path: url.path))
         #expect(category.userMessage.contains(url.path))
@@ -22,7 +22,7 @@ struct ScanStoreErrorHandlingTests {
 
     @Test("permission-denied bookmark errors include the affected URL")
     func permissionDeniedIncludesURL() throws {
-        let url = URL(fileURLWithPath: "/Users/tester/restricted", isDirectory: true)
+        let url = URL(fileURLWithPath: "/tmp/storagescope-tester/restricted", isDirectory: true)
         let category = try #require(ScanStore.categorize(SecurityScopedBookmarkError.accessDenied(url)))
         #expect(category == .permissionDenied(path: url.path))
         #expect(category.userMessage.contains(url.path))
@@ -41,7 +41,7 @@ struct ScanStoreErrorHandlingTests {
             )
             Issue.record("URL.init(resolvingBookmarkData:) should throw on corrupt data")
         } catch {
-            let path = "/Users/tester/folder-bookmark"
+            let path = "/tmp/storagescope-tester/folder-bookmark"
             let category = try #require(ScanStore.categorize(error, fallbackPath: path))
             #expect(category == .staleBookmark(path: path))
             #expect(category.userMessage.contains(path))
@@ -51,9 +51,9 @@ struct ScanStoreErrorHandlingTests {
     @Test("unknown error falls back to scanInternal and attaches the path when provided")
     func unknownErrorAttachesFallbackPath() throws {
         struct MysteryError: Error {}
-        let category = try #require(ScanStore.categorize(MysteryError(), fallbackPath: "/Users/tester/scans/inbox"))
+        let category = try #require(ScanStore.categorize(MysteryError(), fallbackPath: "/tmp/storagescope-tester/scans/inbox"))
         if case .scanInternal(let message) = category {
-            #expect(message.contains("/Users/tester/scans/inbox"))
+            #expect(message.contains("/tmp/storagescope-tester/scans/inbox"))
         } else {
             Issue.record("expected .scanInternal, got \(category)")
         }
