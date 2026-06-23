@@ -65,4 +65,58 @@ struct SearchRecentsStoreTests {
         store.clear()
         #expect(store.entries.isEmpty)
     }
+
+    @Test("corrupt persisted JSON recovers by resetting to empty")
+    func corruptJSONResetsToEmpty() {
+        let key = "StorageScope.searchRecents"
+        // Stash whatever was there so other tests + a real launch aren't perturbed.
+        let original = UserDefaults.standard.data(forKey: key)
+        defer {
+            if let original { UserDefaults.standard.set(original, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+
+        // Write obviously-undecodable bytes under the persist key, then construct
+        // a fresh store — `load()` should drop the corrupt blob and reset entries
+        // rather than surface a partial state or throw.
+        let corrupt = "{ this is not a JSON array }".data(using: .utf8)!
+        UserDefaults.standard.set(corrupt, forKey: key)
+
+        let store = SearchRecentsStore()
+        #expect(store.entries.isEmpty)
+
+        // Verify the corrupt bytes were purged so subsequent launches don't re-trip
+        // the same decode failure.
+        #expect(UserDefaults.standard.data(forKey: key) == nil)
+    }
+
+    @Test("rapid typing cancels earlier debounce snapshots so only the last wins")
+    func rapidTypingCancelsEarlierDebounces() async throws {
+        let filters = FilterStore(
+            scanLookup: { nil },
+            coordinateInvalidate: { },
+            recordSearchRecent: { _ in }
+        )
+        #expect(filters.query == "")
+
+        // Simulate a fast typist: typing each character flips searchText, which
+        // cancels the in-flight debounce and starts a new one with the latest
+        // snapshot. None of the intermediate snapshots should survive the 200ms
+        // gap — only the final `apple` snapshot should land on `query`.
+        filters.searchText = "a"
+        filters.searchText = "ap"
+        filters.searchText = "app"
+        filters.searchText = "appl"
+        filters.searchText = "apple"
+        // Pin the in-flux state to prove it hasn't propagated yet.
+        #expect(filters.query == "")
+
+        // Wait long enough for the 200ms debounce to fire and run its main-actor
+        // hop. The sleep is sized with a small grace margin so a CI hiccup doesn't
+        // race the assertion; failure here would mean the cancellation didn't work
+        // and an earlier "a"/"ap"/etc. snapshot landed instead — which is exactly
+        // the race we're guarding against.
+        try? await Task.sleep(for: .milliseconds(350))
+        #expect(filters.query == "apple")
+    }
 }

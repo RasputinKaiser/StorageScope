@@ -1,4 +1,11 @@
 import Foundation
+import os
+
+/// Shared `os_log` surface for the JSON-persisted recents stores. Hoisted out
+/// of `RecentStoreWriter` because Swift reserves static stored properties for
+/// non-generic types — the actor is generic over `T: Encodable`. Internal so
+/// both `RecentsStore` and `SearchRecentsStore` can share one log instance.
+let recentStorePersistenceLog = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "persistence")
 
 struct RecentScanEntry: Codable, Identifiable, Hashable {
     let path: String
@@ -6,6 +13,31 @@ struct RecentScanEntry: Codable, Identifiable, Hashable {
     let totalBytes: Int64
 
     var id: String { path }
+}
+
+/// Serializes JSON encode + UserDefaults writes for `RecentsStore` and
+/// `SearchRecentsStore`. A monotonic generation counter drops writes whose
+/// generation is older than the latest committed one — this is the fix for the
+/// race where two `Task.detached` persist invocations reach the actor mailbox
+/// out of arrival order and the older snapshot would otherwise overwrite the
+/// user's most recent state. Held as a `static let` per store so writes for a
+/// given storage key serialize without blocking other store's persist calls.
+actor RecentStoreWriter<T: Encodable> {
+    private let key: String
+    private var lastWrittenGeneration: UInt64 = 0
+
+    init(key: String) { self.key = key }
+
+    func write(_ value: T, generation: UInt64) {
+        guard generation >= lastWrittenGeneration else { return }
+        lastWrittenGeneration = generation
+        do {
+            let data = try JSONEncoder().encode(value)
+            UserDefaults.standard.set(data, forKey: key)
+        } catch {
+            os_log("RecentStoreWriter encode failed key=%{public}@ error=%{public}@", log: recentStorePersistenceLog, type: .error, key, String(describing: error))
+        }
+    }
 }
 
 /// Bounded ring of recently-scanned folder paths with their last-known scan metadata.
@@ -17,8 +49,10 @@ final class RecentsStore: ObservableObject {
     private static let legacyRecentScanPathsKey = "StorageScope.recentScanPaths"
     private static let recentScanEntriesKey = "StorageScope.recentScanEntries"
     private static let maxEntries = 8
+    private static let writer = RecentStoreWriter<[RecentScanEntry]>(key: recentScanEntriesKey)
 
     @Published private(set) var entries: [RecentScanEntry] = []
+    private var writeGeneration: UInt64 = 0
 
     init() {
         load()
@@ -40,21 +74,32 @@ final class RecentsStore: ObservableObject {
 
     /// Rendered @Published mutations already updated `entries` synchronously on the main
     /// actor so SwiftUI sees the change immediately; the heavy JSON encode + UserDefaults
-    /// write is detached to .utility so the main actor doesn't block on serialization.
-    /// Matches the hashCache.persist() pattern from v0.3.0 in StorageScopeCore.
+    /// write is dispatched to `RecentStoreWriter` (a serializing actor) so the main actor
+    /// doesn't block on serialization and concurrent `add(_:)` calls can't race the
+    /// UserDefaults write order.
     private func persist() {
+        writeGeneration += 1
+        let generation = writeGeneration
         let snapshot = entries
-        Task.detached(priority: .utility) {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
-            UserDefaults.standard.set(data, forKey: Self.recentScanEntriesKey)
+        Task.detached(priority: .utility) { [writer = Self.writer] in
+            await writer.write(snapshot, generation: generation)
         }
     }
 
     private func load() {
-        if let data = UserDefaults.standard.data(forKey: Self.recentScanEntriesKey),
-           let decoded = try? JSONDecoder().decode([RecentScanEntry].self, from: data) {
-            entries = decoded
-            return
+        if let data = UserDefaults.standard.data(forKey: Self.recentScanEntriesKey) {
+            do {
+                entries = try JSONDecoder().decode([RecentScanEntry].self, from: data)
+                return
+            } catch {
+                // Migration-safe: drop corrupt JSON so subsequent loads see a clean
+                // state instead of being stuck on undecodable bytes forever. Also
+                // surfaces the failure so a future build can correlate via Console.app
+                // rather than chasing a phantom plist.
+                os_log("RecentsStore decode failed, resetting to empty: %{public}@", log: recentStorePersistenceLog, type: .error, String(describing: error))
+                entries = []
+                UserDefaults.standard.removeObject(forKey: Self.recentScanEntriesKey)
+            }
         }
 
         // One-time migration from the v0.1.x string-array recent-scans list. Drops the
