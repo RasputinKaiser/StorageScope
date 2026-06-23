@@ -636,7 +636,7 @@ func setSelectedView(_ view: SmartView) {
                 //      into the stream as it goes.
                 //   2) A structured consumer forwarding each event to MainActor.
                 // Both inherit scanTask's cancellation: withTaskCancellationHandler propagates
-                // Task.cancel() into the scanner's ScanCancellation token AND finishes the
+                // Task.cancel() into the scanner's ScanCancellation handle AND finishes the
                 // stream so the consumer exits cleanly.
                 let (progressStream, progressContinuation) = AsyncStream<ScanProgress>.makeStream()
                 let result = try await withTaskCancellationHandler {
