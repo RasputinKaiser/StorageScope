@@ -563,16 +563,25 @@ func setSelectedView(_ view: SmartView) {
     private func scanUserGrantedURL(_ url: URL, access: SecurityScopedResourceAccess? = nil) {
         abandonActiveScan()
 
+        let scopedAccess: SecurityScopedResourceAccess
         do {
-            let scopedAccess = try access ?? SecurityScopedResourceAccess(url: url)
-            replaceActiveRootAccess(with: scopedAccess)
-            bookmarkStore.remember(url)
-            scan(url)
+            scopedAccess = try access ?? SecurityScopedResourceAccess(url: url)
         } catch {
             isScanning = false
             progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Access denied")
             errorMessage = error.localizedDescription
+            return
         }
+        replaceActiveRootAccess(with: scopedAccess)
+        do {
+            try bookmarkStore.remember(url)
+        } catch {
+            // The user has access for this session; only the launch-to-launch
+            // Recents entry is affected. Surface that as a non-blocking notice
+            // while still starting the scan.
+            errorMessage = error.localizedDescription
+        }
+        scan(url)
     }
 
     private func scan(_ url: URL) {
