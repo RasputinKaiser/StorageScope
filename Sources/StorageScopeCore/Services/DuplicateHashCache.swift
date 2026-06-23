@@ -149,11 +149,18 @@ public final class DuplicateHashCache: @unchecked Sendable {
     }
 
     public func persist() {
+        _ = try? persistThrowing()
+    }
+
+    /// Throwing variant so callers that care about persistence failure (e.g. on-demand
+    /// verification) can surface the error instead of silently dropping the cache. Mirrors
+    /// the legacy `persist()` swallow path: a `nil` `cacheURL` is a no-op, not an error.
+    public func persistThrowing() throws {
         guard let cacheURL else { return }
         lock.lock()
         let snapshot = entries
         lock.unlock()
-        let data: Data
+let data: Data
         do {
             data = try JSONEncoder().encode(snapshot)
         } catch {
