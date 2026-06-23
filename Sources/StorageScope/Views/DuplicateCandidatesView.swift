@@ -147,9 +147,13 @@ private struct VerifiedDuplicateGroupCard: View {
 
             DuplicateItemList(
                 items: group.items,
-                store: store,
+                selectedItemID: store.selectedItemID,
                 keeperItemID: store.keeperItemID(for: group),
-                onSetKeeper: { item in store.setKeeper(itemID: item.id, for: group) }
+                onSetKeeper: { item in store.setKeeper(itemID: item.id, for: group) },
+                onSelect: { store.selectedItemID = $0.id },
+                onOpen: { store.selectedItemID = $0.id; store.openSelectedItem() },
+                onReveal: { store.selectedItemID = $0.id; store.revealSelectedItem() },
+                onCopyPath: { store.selectedItemID = $0.id; store.copySelectedPath() }
             )
         }
         .padding(14)
@@ -229,7 +233,16 @@ private struct DuplicateGroupCard: View {
                 }
             }
 
-            DuplicateItemList(items: visibleItems, store: store, keeperItemID: nil, onSetKeeper: nil)
+            DuplicateItemList(
+                items: visibleItems,
+                selectedItemID: store.selectedItemID,
+                keeperItemID: nil,
+                onSetKeeper: nil,
+                onSelect: { store.selectedItemID = $0.id },
+                onOpen: { store.selectedItemID = $0.id; store.openSelectedItem() },
+                onReveal: { store.selectedItemID = $0.id; store.revealSelectedItem() },
+                onCopyPath: { store.selectedItemID = $0.id; store.copySelectedPath() }
+            )
         }
         .padding(14)
         .cardBackground()
@@ -238,9 +251,13 @@ private struct DuplicateGroupCard: View {
 
 private struct DuplicateItemList: View {
     let items: [StorageItem]
-    @ObservedObject var store: ScanStore
+    let selectedItemID: String?
     var keeperItemID: String? = nil
     var onSetKeeper: ((StorageItem) -> Void)? = nil
+    let onSelect: (StorageItem) -> Void
+    let onOpen: (StorageItem) -> Void
+    let onReveal: (StorageItem) -> Void
+    let onCopyPath: (StorageItem) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -249,19 +266,16 @@ private struct DuplicateItemList: View {
                 DuplicateFileRow(
                     item: item,
                     isKeeper: isKeeper,
-                    isSelected: store.selectedItemID == item.id,
+                    isSelected: selectedItemID == item.id,
                     onSetKeeper: onSetKeeper != nil && !isKeeper ? { onSetKeeper?(item) } : nil
                 ) {
-                    store.selectedItemID = item.id
+                    onSelect(item)
                 } onOpen: {
-                    store.selectedItemID = item.id
-                    store.openSelectedItem()
+                    onOpen(item)
                 } onReveal: {
-                    store.selectedItemID = item.id
-                    store.revealSelectedItem()
+                    onReveal(item)
                 } onCopyPath: {
-                    store.selectedItemID = item.id
-                    store.copySelectedPath()
+                    onCopyPath(item)
                 }
 
                 if index < items.index(before: items.endIndex) {

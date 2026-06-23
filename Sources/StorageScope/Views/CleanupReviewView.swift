@@ -85,7 +85,19 @@ struct CleanupReviewView: View {
                 } else {
                     LazyVStack(spacing: 10) {
                         ForEach(store.cleanupCandidates) { candidate in
-                            CleanupCandidateRow(candidate: candidate, store: store)
+                            CleanupCandidateRow(
+                                candidate: candidate,
+                                isChecked: store.selectedCleanupCandidateIDs.contains(candidate.id),
+                                isSelected: store.selectedItemID == candidate.item.id,
+                                canTrash: store.canMoveItemToTrash(candidate.item),
+                                onToggle: { store.toggleCleanupCandidate(candidate) },
+                                onIgnore: { store.ignoreCleanupCandidate(candidate) },
+                                onReveal: { store.selectedItemID = candidate.item.id; store.revealSelectedItem() },
+                                onOpen: { store.selectedItemID = candidate.item.id; store.openSelectedItem() },
+                                onCopyPath: { store.selectedItemID = candidate.item.id; store.copySelectedPath() },
+                                onTrash: { store.moveCleanupCandidateToTrash(candidate) }
+                            )
+                            .equatable()
                         }
                     }
                 }
@@ -274,19 +286,34 @@ private struct CleanupLaneStat: View {
     }
 }
 
-private struct CleanupCandidateRow: View {
+private struct CleanupCandidateRow: View, Equatable {
     let candidate: CleanupCandidate
-    @ObservedObject var store: ScanStore
+    let isChecked: Bool
+    let isSelected: Bool
+    let canTrash: Bool
+    let onToggle: () -> Void
+    let onIgnore: () -> Void
+    let onReveal: () -> Void
+    let onOpen: () -> Void
+    let onCopyPath: () -> Void
+    let onTrash: () -> Void
     @State private var isHovered = false
+
+    static func == (lhs: CleanupCandidateRow, rhs: CleanupCandidateRow) -> Bool {
+        lhs.candidate == rhs.candidate
+            && lhs.isChecked == rhs.isChecked
+            && lhs.isSelected == rhs.isSelected
+            && lhs.canTrash == rhs.canTrash
+    }
 
     var body: some View {
         Button {
-            store.toggleCleanupCandidate(candidate)
+            onToggle()
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: store.selectedCleanupCandidateIDs.contains(candidate.id) ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(store.selectedCleanupCandidateIDs.contains(candidate.id) ? .green : .secondary)
+                    .foregroundStyle(isChecked ? .green : .secondary)
                     .frame(width: 24)
                     .accessibilityHidden(true)
 
@@ -328,41 +355,26 @@ private struct CleanupCandidateRow: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .selectionBackground(isSelected: store.selectedItemID == candidate.item.id, radius: 8)
-            .background(isHovered && store.selectedItemID != candidate.item.id ? Color.primary.opacity(0.04) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            .selectionBackground(isSelected: isSelected, radius: 8)
+            .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(candidate.item.name), \(candidate.kind.displayName), \(StorageFormat.bytes(candidate.reclaimableBytes))")
-        .accessibilityValue(store.selectedCleanupCandidateIDs.contains(candidate.id) ? "Selected" : "Not selected")
+        .accessibilityValue(isChecked ? "Selected" : "Not selected")
         .accessibilityHint("Toggles selection for cleanup")
         .contextMenu {
-            Button(store.selectedCleanupCandidateIDs.contains(candidate.id) ? "Unselect" : "Select") {
-                store.toggleCleanupCandidate(candidate)
-            }
-            Button("Ignore Candidate") {
-                store.ignoreCleanupCandidate(candidate)
-            }
+            Button(isChecked ? "Unselect" : "Select") { onToggle() }
+            Button("Ignore Candidate") { onIgnore() }
             Divider()
-            Button("Reveal in Finder") {
-                store.selectedItemID = candidate.item.id
-                store.revealSelectedItem()
-            }
-            Button("Open") {
-                store.selectedItemID = candidate.item.id
-                store.openSelectedItem()
-            }
-            Button("Copy Path") {
-                store.selectedItemID = candidate.item.id
-                store.copySelectedPath()
-            }
+            Button("Reveal in Finder") { onReveal() }
+            Button("Open") { onOpen() }
+            Button("Copy Path") { onCopyPath() }
             Divider()
-            Button("Move to Trash", role: .destructive) {
-                store.moveCleanupCandidateToTrash(candidate)
-            }
-            .disabled(!store.canMoveItemToTrash(candidate.item))
+            Button("Move to Trash", role: .destructive) { onTrash() }
+                .disabled(!canTrash)
         }
     }
 }

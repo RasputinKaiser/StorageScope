@@ -4,6 +4,7 @@ struct ContentView: View {
     @ObservedObject var store: ScanStore
     var onOpenSettings: () -> Void = {}
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var inspectorVisible = true
     @FocusState private var searchFieldFocused: Bool
 
     /// Search-field prompt that reflects what the active view actually filters —
@@ -34,14 +35,11 @@ struct ContentView: View {
             SidebarView(store: store)
                 .navigationSplitViewColumnWidth(min: 230, ideal: 270, max: 330)
         } detail: {
-            HStack(spacing: 0) {
-                DetailView(store: store)
-
-                Divider()
-
-                InspectorView(store: store)
-                    .frame(minWidth: 300, idealWidth: 330, maxWidth: 380)
-            }
+            DetailView(store: store)
+                .inspector(isPresented: $inspectorVisible) {
+                    InspectorView(store: store)
+                        .inspectorColumnWidth(min: 300, ideal: 330, max: 380)
+                }
         }
         .searchable(text: store.filterBinding(\.searchText), placement: .toolbar, prompt: searchPrompt)
         .searchSuggestions {
@@ -104,6 +102,13 @@ struct ContentView: View {
                     Label("Reveal", systemImage: "folder")
                 }
                 .disabled(store.selectedItem == nil)
+
+                Button {
+                    inspectorVisible.toggle()
+                } label: {
+                    Label("Inspector", systemImage: "sidebar.right")
+                }
+                .help(inspectorVisible ? "Hide Inspector" : "Show Inspector")
 
                 Button {
                     onOpenSettings()

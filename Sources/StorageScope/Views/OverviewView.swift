@@ -323,12 +323,21 @@ private struct InsightCard: View {
     var onTap: ((StorageScopeCore.StorageItem) -> Void)? = nil
 
     var body: some View {
+        if let item, let onTap {
+            Button { onTap(item) } label: { cardLabel }
+                .buttonStyle(.plain)
+        } else {
+            cardLabel
+        }
+    }
+
+    private var cardLabel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label(title, systemImage: systemImage)
                     .font(.headline)
                 Spacer()
-                if item != nil, onTap != nil {
+                if item != nil && onTap != nil {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.tertiary)
@@ -355,12 +364,6 @@ private struct InsightCard: View {
         .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
         .cardBackground()
         .contentShape(Rectangle())
-        .onTapGesture {
-            if let item, let onTap {
-                onTap(item)
-            }
-        }
-        .accessibilityAddTraits(onTap != nil && item != nil ? .isButton : [])
     }
 }
 
