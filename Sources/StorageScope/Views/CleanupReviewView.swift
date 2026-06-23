@@ -300,7 +300,7 @@ private struct CleanupCandidateRow: View, Equatable {
     @State private var isHovered = false
 
     static func == (lhs: CleanupCandidateRow, rhs: CleanupCandidateRow) -> Bool {
-        lhs.candidate.id == rhs.candidate.id
+        lhs.candidate == rhs.candidate
             && lhs.isChecked == rhs.isChecked
             && lhs.isSelected == rhs.isSelected
             && lhs.canTrash == rhs.canTrash
