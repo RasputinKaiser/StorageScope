@@ -1208,6 +1208,144 @@ struct FileSystemScannerTests {
         #expect(first.verifiedDuplicateGroups.first?.items.count == 2)
     }
 
+    @Test("pre-cancelled scan surfaces FileSystemScannerError.cancelled without scanning")
+    func scanWithPreCancelledTokenThrowsCancelled() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+        try writeFile(named: "a.bin", bytes: 4_096, in: temporaryRoot)
+
+        let cancellation = ScanCancellation()
+        cancellation.cancel()
+
+        do {
+            _ = try FileSystemScanner().scan(
+                root: temporaryRoot,
+                options: ScanOptions(duplicateCandidateThreshold: 1),
+                cancellation: cancellation
+            )
+            Issue.record("Pre-cancelled scan should throw FileSystemScannerError.cancelled.")
+        } catch FileSystemScannerError.cancelled {
+            // Expected — cancellation propagates before any directory enumeration begins.
+        } catch {
+            Issue.record("Unexpected error from scan: \(error).")
+        }
+    }
+
+    @Test("cancellation mid-hash aborts verifySizeGroup and propagates cancelled error")
+    func verifySizeGroupAbortsWhenCancelledDuringHashing() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        // Two 8 MB files at identical content form a duplicate group whose hash requires
+        // multiple chunked reads inside sha256Checksum — exercising the in-loop probe at
+        // every 1 MB chunk boundary rather than just the pre-open one.
+        let bigData = Data(repeating: 0xAA, count: 8 * 1_048_576)
+        try bigData.write(to: temporaryRoot.appendingPathComponent("big-a.bin"))
+        try bigData.write(to: temporaryRoot.appendingPathComponent("big-b.bin"))
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1,
+                duplicateVerificationByteLimit: 0,
+                maxDuplicateVerificationFiles: 0
+            )
+        )
+
+        let group = try #require(scan.duplicateSizeGroups.first)
+        #expect(group.items.count == 2)
+        #expect(group.byteSize == Int64(bigData.count))
+
+        let cancellation = ScanCancellation()
+        cancellation.cancel()
+
+        do {
+            _ = try FileSystemScanner().verifySizeGroup(group, cancellation: cancellation)
+            Issue.record("Cancelled verifySizeGroup should propagate FileSystemScannerError.cancelled.")
+        } catch FileSystemScannerError.cancelled {
+            // Expected — the per-item and in-loop cancellation probes abort before any
+            // hashing completes, so no partial verified group is surfaced.
+        } catch {
+            Issue.record("Unexpected error from verifySizeGroup: \(error).")
+        }
+    }
+
+    @Test("verifySizeGroup skips per-file read failures and surfaces the remaining duplicates")
+    func verifySizeGroupSkipsUnreadableFilesAndSurfacesRemainingDuplicates() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let sameData = Data(repeating: 0x42, count: 4_096)
+        try sameData.write(to: temporaryRoot.appendingPathComponent("a.bin"))
+        try sameData.write(to: temporaryRoot.appendingPathComponent("b.bin"))
+        try sameData.write(to: temporaryRoot.appendingPathComponent("c.bin"))
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1,
+                duplicateVerificationByteLimit: 0,
+                maxDuplicateVerificationFiles: 0
+            )
+        )
+
+        let group = try #require(scan.duplicateSizeGroups.first)
+        #expect(group.items.count == 3)
+
+        // Vanish one of the three files between scan and verify. The verify path should
+        // skip the FileHandle open failure on `c.bin` and still report the verified pair
+        // formed by the remaining two readable files — no abort, no spurious verified
+        // group containing the dropped item.
+        try FileManager.default.removeItem(at: temporaryRoot.appendingPathComponent("c.bin"))
+
+        let verified = try FileSystemScanner().verifySizeGroup(group)
+        #expect(verified.count == 1)
+        let verifiedGroup = try #require(verified.first)
+        #expect(verifiedGroup.items.map(\.name).sorted() == ["a.bin", "b.bin"])
+        #expect(!verifiedGroup.items.contains { $0.name == "c.bin" })
+    }
+
+    @Test("verifySizeGroup skips permission-denied files and verifies the rest")
+    func verifySizeGroupSkipsPermissionDeniedFilesAndVerifiesRest() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let sameData = Data(repeating: 0x99, count: 4_096)
+        let aURL = temporaryRoot.appendingPathComponent("a.bin")
+        let bURL = temporaryRoot.appendingPathComponent("b.bin")
+        let cURL = temporaryRoot.appendingPathComponent("c.bin")
+        try sameData.write(to: aURL)
+        try sameData.write(to: bURL)
+        try sameData.write(to: cURL)
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 1,
+                duplicateVerificationByteLimit: 0,
+                maxDuplicateVerificationFiles: 0
+            )
+        )
+
+        let group = try #require(scan.duplicateSizeGroups.first)
+        #expect(group.items.count == 3)
+
+        // Strip every permission bit on `c.bin` so the FileHandle open fails with EACCES.
+        // The verify path should treat that as a per-file skip and still surface the
+        // verified duplicate group for the two readable copies. Restore the bit before
+        // the deferred removeItem so cleanup succeeds as the owner of the directory.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: cURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: cURL.path)
+        }
+
+        let verified = try FileSystemScanner().verifySizeGroup(group)
+        #expect(verified.count == 1)
+        let verifiedGroup = try #require(verified.first)
+        #expect(verifiedGroup.items.map(\.name).sorted() == ["a.bin", "b.bin"])
+        #expect(!verifiedGroup.items.contains { $0.name == "c.bin" })
+    }
+
     private func makeTemporaryRoot() throws -> URL {
         let temporaryRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("StorageScopeTests-\(UUID().uuidString)", isDirectory: true)
