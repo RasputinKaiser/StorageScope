@@ -43,7 +43,7 @@ struct OnDemandVerificationStoreTests {
     @Test("cancel mid-verify discards partial results and surfaces no error")
     func cancelMidVerifyDiscardsPartialResults() async throws {
         // Build a fixture with a large (>1 MiB) file so the hasher spends measurable time
-        // inside the read loop where the ScanCancellation token can interrupt it.
+        // inside the read loop where the ScanCancellation check can interrupt it.
         let fixture = try makeFixture(fileSize: 8 * 1_048_576)
         defer { fixture.tearDown() }
 

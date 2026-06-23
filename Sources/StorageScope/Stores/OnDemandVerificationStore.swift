@@ -33,7 +33,7 @@ final class OnDemandVerificationStore: ObservableObject {
     /// In-flight verify tasks keyed by `DuplicateSizeGroup.id` so the user can cancel a
     /// specific group without disturbing other concurrent verifications.
     private var verifyTasksByID: [String: Task<Void, Never>] = [:]
-    /// Cooperative cancellation tokens mirroring `FileSystemScanner.ScanCancellation`. Kept
+    /// Cooperative cancellation handles mirroring `FileSystemScanner.ScanCancellation`. Kept
     /// alongside the task so hashing I/O bails out at the next chunk boundary instead of
     /// waiting for a whole file to hash before noticing the Swift task was cancelled.
     private var verifyCancellationsByID: [String: ScanCancellation] = [:]
