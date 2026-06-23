@@ -6,6 +6,7 @@ struct KeeperComparisonSheet: View {
     let keeperItemID: String?
     let onSetKeeper: (StorageItem) -> Void
     let onDismiss: () -> Void
+    @ObservedObject var store: ScanStore
 
     private var keeper: StorageItem? {
         group.items.first { $0.id == keeperItemID } ?? group.items.first
@@ -59,9 +60,9 @@ struct KeeperComparisonSheet: View {
                 Spacer()
                 if let keeper {
                     Button {
-                        // KeeperComparisonSheet has no ScanStore in scope; the caller
-                        // routes reveal errors to ScanStore where the store is available.
-                        _ = FileActionService.reveal(keeper.url)
+                        if let message = FileActionService.reveal(keeper.url) {
+                            store.errorMessage = message
+                        }
                     } label: {
                         Label("Reveal", systemImage: "folder")
                             .labelStyle(.iconOnly)
@@ -106,7 +107,9 @@ struct KeeperComparisonSheet: View {
     private var footer: some View {
         HStack {
             Button {
-                _ = FileActionService.revealAll(group.items.map(\.url))
+                if let message = FileActionService.revealAll(group.items.map(\.url)) {
+                    store.errorMessage = message
+                }
             } label: {
                 Label("Reveal All in Finder", systemImage: "folder.badge.gearshape")
             }
