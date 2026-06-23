@@ -5,7 +5,12 @@ public enum BatchTrashError: LocalizedError {
     case nestedTargets(parent: URL, child: URL)
     case missingTargets([URL])
     case rollbackSucceeded(originalError: Error)
-    case rollbackFailed(originalError: Error, rollbackError: Error, movedCount: Int)
+    case rollbackFailed(
+        originalError: Error,
+        rollbackError: Error,
+        restored: [URL],
+        unrestored: [URL]
+    )
     case missingTrashLocation(URL)
 
     public var errorDescription: String? {
@@ -19,12 +24,35 @@ public enum BatchTrashError: LocalizedError {
             return "Some selected items no longer exist: \(names). Rescan before moving items to Trash."
         case .rollbackSucceeded(let originalError):
             return "Trash failed and StorageScope restored the items it had already moved. Original error: \(originalError.localizedDescription)"
-        case .rollbackFailed(let originalError, let rollbackError, let movedCount):
-            return "Trash failed after moving \(movedCount) item(s), and rollback also failed. Original error: \(originalError.localizedDescription). Rollback error: \(rollbackError.localizedDescription)"
+        case .rollbackFailed(let originalError, let rollbackError, let restored, let unrestored):
+            let movedCount = restored.count + unrestored.count
+            let restoredNames = restored.map(\.lastPathComponent).joined(separator: ", ")
+            let trashedNames = unrestored.map(\.lastPathComponent).joined(separator: ", ")
+            return "Trash failed after moving \(movedCount) item(s); StorageScope restored \(restored.count) (\(restoredNames)) but \(unrestored.count) remain in Trash (\(trashedNames)). Original error: \(originalError.localizedDescription). Rollback error: \(rollbackError.localizedDescription)"
         case .missingTrashLocation(let url):
             return "macOS moved \(url.lastPathComponent) to Trash but did not report its Trash location, so StorageScope could not guarantee rollback."
         }
     }
+}
+
+public struct NestedTargetPair: Equatable {
+    public let parent: URL
+    public let child: URL
+
+    public init(parent: URL, child: URL) {
+        self.parent = parent
+        self.child = child
+    }
+}
+
+public struct BatchTrashPreflightResult: Equatable {
+    public let duplicateCount: Int
+    public let missing: [URL]
+    public let nested: [NestedTargetPair]
+
+    public var hasDuplicates: Bool { duplicateCount > 0 }
+    public var hasMissing: Bool { !missing.isEmpty }
+    public var hasNested: Bool { !nested.isEmpty }
 }
 
 public struct TransactionalTrashMover {
@@ -59,6 +87,10 @@ public struct TransactionalTrashMover {
         self.restoreItem = restoreItem
     }
 
+    public func preflight(_ urls: [URL]) -> BatchTrashPreflightResult {
+        preflightResult(urls.map(\.standardizedFileURL))
+    }
+
     public func moveToTrash(_ urls: [URL]) throws {
         let standardizedURLs = urls.map(\.standardizedFileURL)
         try preflightBatchTrash(standardizedURLs)
@@ -78,52 +110,92 @@ public struct TransactionalTrashMover {
                 throw originalError
             }
 
-            do {
-                try rollbackMovedItems(movedItems)
-                throw BatchTrashError.rollbackSucceeded(originalError: originalError)
-            } catch let rollbackError as BatchTrashError {
-                throw rollbackError
-            } catch let rollbackError {
+            let outcome = rollbackMovedItems(movedItems)
+            if let rollbackError = outcome.error {
                 throw BatchTrashError.rollbackFailed(
                     originalError: originalError,
                     rollbackError: rollbackError,
-                    movedCount: movedItems.count
+                    restored: outcome.restored,
+                    unrestored: outcome.unrestored
                 )
             }
+            throw BatchTrashError.rollbackSucceeded(originalError: originalError)
         }
     }
 
     private func preflightBatchTrash(_ urls: [URL]) throws {
-        guard urls.count == Set(urls.map(\.path)).count else {
+        let result = preflightResult(urls)
+        if result.hasDuplicates {
             throw BatchTrashError.duplicateTargets
         }
-
-        let missingURLs = urls.filter { !fileExists($0) }
-        if !missingURLs.isEmpty {
-            throw BatchTrashError.missingTargets(missingURLs)
+        if !result.missing.isEmpty {
+            throw BatchTrashError.missingTargets(result.missing)
         }
-
-        let sortedURLs = urls.sorted { $0.path.count < $1.path.count }
-        for parentIndex in sortedURLs.indices {
-            let parent = sortedURLs[parentIndex]
-            for child in sortedURLs.dropFirst(parentIndex + 1) {
-                if child.path.hasPrefix(parent.path + "/") {
-                    throw BatchTrashError.nestedTargets(parent: parent, child: child)
-                }
-            }
+        if let nested = result.nested.first {
+            throw BatchTrashError.nestedTargets(parent: nested.parent, child: nested.child)
         }
     }
 
-    private func rollbackMovedItems(_ movedItems: [(original: URL, trashed: URL)]) throws {
-        for movedItem in movedItems.reversed() {
-            do {
-                try restoreItem(movedItem.trashed, movedItem.original)
-            } catch {
-                if fileExists(movedItem.original), !fileExists(movedItem.trashed) {
-                    continue
+    private func preflightResult(_ urls: [URL]) -> BatchTrashPreflightResult {
+        // Path-keyed lookup so the original URL identity is preserved when an
+        // ancestor is found, avoiding the trailing-slash divergence that
+        // URL.deletingLastPathComponent() introduces.
+        let paths = urls.map(\.path)
+        let pathSet = Set(paths)
+        // On duplicate paths (duplicates are reported via duplicateCount),
+        // keep the first occurrence's URL object for any ancestor lookups.
+        let urlByPath = Dictionary(zip(paths, urls), uniquingKeysWith: { first, _ in first })
+        let duplicateCount = paths.count - pathSet.count
+
+        var missing: [URL] = []
+        var nested: [NestedTargetPair] = []
+
+        for url in urls {
+            if !fileExists(url) {
+                missing.append(url)
+            }
+            var currentPath = (url.path as NSString).deletingLastPathComponent
+            while currentPath != "/" && !currentPath.isEmpty {
+                if let matchingParent = urlByPath[currentPath] {
+                    nested.append(NestedTargetPair(parent: matchingParent, child: url))
+                    break
                 }
-                throw error
+                let nextPath = (currentPath as NSString).deletingLastPathComponent
+                if nextPath == currentPath {
+                    break
+                }
+                currentPath = nextPath
             }
         }
+
+        return BatchTrashPreflightResult(
+            duplicateCount: duplicateCount,
+            missing: missing,
+            nested: nested
+        )
+    }
+
+    private func rollbackMovedItems(
+        _ movedItems: [(original: URL, trashed: URL)]
+    ) -> (restored: [URL], unrestored: [URL], error: Error?) {
+        var restored: [URL] = []
+        var unrestored: [URL] = []
+        var capturedError: Error?
+
+        for movedItem in movedItems.reversed() {
+            if capturedError != nil {
+                unrestored.append(movedItem.original)
+                continue
+            }
+            do {
+                try restoreItem(movedItem.trashed, movedItem.original)
+                restored.append(movedItem.original)
+            } catch {
+                capturedError = error
+                unrestored.append(movedItem.original)
+            }
+        }
+
+        return (restored: restored, unrestored: unrestored, error: capturedError)
     }
 }
