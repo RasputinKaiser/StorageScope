@@ -115,7 +115,9 @@ final class OnDemandVerificationStore: ObservableObject {
                     for verifiedGroup in groups {
                         self.verifiedGroupsByChecksum[verifiedGroup.checksum] = verifiedGroup
                     }
-                    self.coordinateInvalidate()
+                    if !groups.isEmpty {
+                        self.coordinateInvalidate()
+                    }
                     self.persistAsync(group: group)
                 case .failure(let error):
                     if case FileSystemScannerError.cancelled = error {
