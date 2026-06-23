@@ -3,10 +3,12 @@ import Foundation
 public struct ReclaimPlan: Equatable, Sendable {
     public let sections: [ReclaimPlanSection]
     public let primaryAction: ReclaimPlanAction?
+    public let missingPaths: [URL]
 
-    public init(sections: [ReclaimPlanSection], primaryAction: ReclaimPlanAction?) {
+    public init(sections: [ReclaimPlanSection], primaryAction: ReclaimPlanAction?, missingPaths: [URL] = []) {
         self.sections = sections
         self.primaryAction = primaryAction
+        self.missingPaths = missingPaths
     }
 }
 
@@ -56,9 +58,35 @@ public enum ReclaimPlanBuilder {
         scan: StorageScan,
         visibleCleanupCandidates: [CleanupCandidate]
     ) -> ReclaimPlan {
-        let verifiedCandidates = CleanupSelectionPlanner.verifiedDuplicateBatchCandidates(visibleCleanupCandidates)
+        build(scan: scan, visibleCleanupCandidates: visibleCleanupCandidates, fileExists: nil)
+    }
+
+    /// Same as `build(scan:visibleCleanupCandidates:)` but probes each input
+    /// URL through `fileExists`. URLs that fail the probe are surfaced on the
+    /// returned `ReclaimPlan.missingPaths` so the UI can ask the user to rescan
+    /// instead of presenting a stale reclaim dialog.
+    public static func build(
+        scan: StorageScan,
+        visibleCleanupCandidates: [CleanupCandidate],
+        fileExists: (@Sendable (URL) -> Bool)?
+    ) -> ReclaimPlan {
+        let selection: CleanupSelectionPlanner.Selection
+        if let fileExists {
+            selection = CleanupSelectionPlanner.selectTopLevel(
+                visibleCleanupCandidates,
+                fileExists: fileExists
+            )
+        } else {
+            selection = CleanupSelectionPlanner.Selection(
+                candidates: visibleCleanupCandidates,
+                missingPaths: []
+            )
+        }
+        let liveCandidates = selection.candidates
+
+        let verifiedCandidates = CleanupSelectionPlanner.verifiedDuplicateBatchCandidates(liveCandidates)
         let reviewCandidates = CleanupSelectionPlanner.topLevelCandidates(
-            visibleCleanupCandidates.filter { !$0.isHighConfidenceVerifiedDuplicate }
+            liveCandidates.filter { !$0.isHighConfidenceVerifiedDuplicate }
         )
 
         var sections: [ReclaimPlanSection] = []
@@ -104,7 +132,8 @@ public enum ReclaimPlanBuilder {
 
         return ReclaimPlan(
             sections: sections,
-            primaryAction: sections.compactMap(\.action).first
+            primaryAction: sections.compactMap(\.action).first,
+            missingPaths: selection.missingPaths
         )
     }
 }
