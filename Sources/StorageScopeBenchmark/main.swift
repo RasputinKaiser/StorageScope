@@ -146,7 +146,9 @@ do {
     )
     print(report.text)
 } catch {
-    FileHandle.standardError.write(Data(((error as? LocalizedError)?.errorDescription ?? "\(error)").utf8))
-    FileHandle.standardError.write(Data("\n\n\(usage())\n".utf8))
+    let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+    FileHandle.standardError.write(
+        Data("StorageScopeBenchmark failed: \(message)\n\n\(usage())\n".utf8)
+    )
     exit(2)
 }

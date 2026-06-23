@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct ScanBenchmarkReport: Hashable, Sendable {
     public let scopeLabel: String
@@ -154,6 +155,11 @@ public extension ScanOptions {
 }
 
 public enum SyntheticBenchmarkFixture {
+    /// os_log surface for fixture-write and cleanup errors. Mirrors the scanner
+    /// subsystem so bench failures can be filtered in Console.app and Instruments
+    /// alongside scan-side spans.
+    private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "benchmark")
+
     /// Default fixture for the existing `--synthetic` flow (~10 files across 6 dirs).
     /// Kept for backward compat so v0.5.0-era scripts that pass no extra flags still work.
     public static func create(
@@ -303,8 +309,20 @@ public enum SyntheticBenchmarkFixture {
         }
     }
 
+    /// Removes a fixture root. Resilient to partial fixture creation: if only a
+    /// subset of the expected files exist (because `create` threw midway) or the
+    /// root was already removed, `FileManager.removeItem` will surface an error
+    /// that is logged to the benchmark OSLog and swallowed so the calling
+    /// benchmark CLI doesn't mask an earlier write failure with a freshly thrown
+    /// cleanup error.
     public static func remove(_ root: URL, fileManager: FileManager = .default) {
-        try? fileManager.removeItem(at: root)
+        do {
+            try fileManager.removeItem(at: root)
+        } catch {
+            os_log(.error, log: Self.log,
+                   "Benchmark fixture cleanup failed for %{public}@: %{public}@",
+                   root.path, String(describing: error))
+        }
     }
 
     private static func makeDirectory(_ url: URL, fileManager: FileManager) throws {
@@ -315,20 +333,50 @@ public enum SyntheticBenchmarkFixture {
         let chunk = Data(repeating: seed, count: min(bytes, 64 * 1024))
         FileManager.default.createFile(atPath: url.path, contents: nil)
         let handle = try FileHandle(forWritingTo: url)
-        defer { try? handle.close() }
 
-        var remaining = bytes
-        while remaining > 0 {
-            let count = min(remaining, chunk.count)
-            try handle.write(contentsOf: chunk.prefix(count))
-            remaining -= count
+        do {
+            var remaining = bytes
+            while remaining > 0 {
+                let count = min(remaining, chunk.count)
+                try handle.write(contentsOf: chunk.prefix(count))
+                remaining -= count
+            }
+            // Surface close failures out of the success path: deferred write errors
+            // (NFS, quota, APFS snapshots) surface here, and a benchmark that ran on
+            // a corrupt fixture must report the failure rather than emitting tidy numbers.
+            try closeHandle(handle, at: url, context: "writeFile")
+        } catch {
+            // Best-effort close if we exited mid-write. The original error re-throws
+            // so the benchmark CLI fails loudly.
+            try? handle.close()
+            throw error
         }
     }
 
     private static func writeSparseFile(_ url: URL, logicalBytes: UInt64) throws {
         FileManager.default.createFile(atPath: url.path, contents: nil)
         let handle = try FileHandle(forWritingTo: url)
-        defer { try? handle.close() }
-        try handle.truncate(atOffset: logicalBytes)
+
+        do {
+            try handle.truncate(atOffset: logicalBytes)
+            try closeHandle(handle, at: url, context: "writeSparseFile")
+        } catch {
+            try? handle.close()
+            throw error
+        }
+    }
+
+    /// Closes a `FileHandle`, logging the failure to the benchmark OSLog before
+    /// rethrowing so a benchmark user can correlate corrupt-fixture reports with
+    /// the underlying close error in Console.app.
+    private static func closeHandle(_ handle: FileHandle, at url: URL, context: String) throws {
+        do {
+            try handle.close()
+        } catch {
+            os_log(.error, log: Self.log,
+                   "%{public}@ close failed for %{public}@: %{public}@",
+                   context, url.path, String(describing: error))
+            throw error
+        }
     }
 }

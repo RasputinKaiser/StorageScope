@@ -1051,6 +1051,58 @@ struct FileSystemScannerTests {
         #expect(secondReport.totalDuration >= 0)
     }
 
+    @Test("benchmark fixture cleanup is resilient to a missing root (partial-creation safety net)")
+    func benchmarkFixtureCleanupIsResilientToMissingRoot() throws {
+        let missingRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StorageScopeMissing-\(UUID().uuidString)", isDirectory: true)
+        #expect(!FileManager.default.fileExists(atPath: missingRoot.path))
+
+        // Best-effort cleanup must not escalate a missing root into a thrown error;
+        // an earlier write failure is the cause worth surfacing, not this defer.
+        SyntheticBenchmarkFixture.remove(missingRoot)
+    }
+
+    @Test("benchmark fixture cleanup is idempotent (re-removing a root is a no-op)")
+    func benchmarkFixtureCleanupIsIdempotent() throws {
+        let root = try SyntheticBenchmarkFixture.create()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        SyntheticBenchmarkFixture.remove(root)
+        // The second call walks a root that no longer exists; the resilient code path
+        // must swallow the NSFileNoSuchFile instead of masking it as a bench failure.
+        SyntheticBenchmarkFixture.remove(root)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
+    @Test("benchmark runner surfaces scan failure when root is missing")
+    func benchmarkRunnerSurfacesScanFailureWhenRootIsMissing() throws {
+        let missingRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StorageScopeMissing-\(UUID().uuidString)", isDirectory: true)
+        #expect(!FileManager.default.fileExists(atPath: missingRoot.path))
+
+        // Runner-propagated scan errors reach the benchmark CLI's catch block so
+        // users exit with a non-zero status and a stderr message rather than spotting
+        // suspicious numbers in a report that came from an empty / failed run.
+        #expect(throws: FileSystemScannerError.self) {
+            try ScanBenchmarkRunner().run(rootURL: missingRoot)
+        }
+    }
+
+    @Test("benchmark fixture creates expected candidate classes at scaled depth")
+    func benchmarkFixtureHandlesScaledTreeAtDepthAndPropagatesWrites() throws {
+        let root = try SyntheticBenchmarkFixture.create(
+            in: FileManager.default.temporaryDirectory,
+            items: 12,
+            depth: 2,
+            duplicateRatio: 0.5
+        )
+        defer { SyntheticBenchmarkFixture.remove(root) }
+
+        let scan = try FileSystemScanner().scan(root: root, options: .benchmarkDefaults())
+        #expect(scan.scannedItemCount >= 13) // 12 files + 1 root + dir count
+        #expect(!scan.duplicateSizeGroups.isEmpty)
+    }
+
     @Test("scan option policy uses fixed analysis thresholds")
     func scanOptionPolicyUsesFixedThresholds() {
         let thresholds = ScanOptionPolicy.interactiveScanThresholds()
