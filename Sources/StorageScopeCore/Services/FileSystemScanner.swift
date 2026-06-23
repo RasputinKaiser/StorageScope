@@ -1144,7 +1144,17 @@ private final class ScanAccumulator {
         limit: Int,
         by areInIncreasingPriorityOrder: (StorageItem, StorageItem) -> Bool
     ) -> [StorageItem] {
-        Array(items.sorted(by: areInIncreasingPriorityOrder).prefix(max(0, limit)))
+        Array(items.sorted { lhs, rhs in
+            if areInIncreasingPriorityOrder(lhs, rhs) { return true }
+            if areInIncreasingPriorityOrder(rhs, lhs) { return false }
+            // Tie on the priority Comparator (equal displaySize). Fall back to URL path so
+            // two equally-sized items land in a deterministic order regardless of the order
+            // `DispatchQueue.concurrentPerform` appended them to largestFileItems. Without
+            // this, `sorted(by:)` isn't guaranteed stable and two scans of the same fixture
+            // produce different largestFiles orderings — caught by
+            // `parallelEnumerationIsDeterministicAcrossRuns`.
+            return lhs.url.path < rhs.url.path
+        }.prefix(max(0, limit)))
     }
 }
 

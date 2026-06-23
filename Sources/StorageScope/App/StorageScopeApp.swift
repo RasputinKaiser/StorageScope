@@ -125,14 +125,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
     }
 
     @objc private func openStorageScopeOnGitHub() {
-        if let url = URL(string: "https://github.com/RasputinKaiser/StorageScope") {
-            NSWorkspace.shared.open(url)
+        if let url = URL(string: "https://github.com/RasputinKaiser/StorageScope"),
+           !NSWorkspace.shared.open(url) {
+            store.errorMessage = "StorageScope couldn't open the GitHub page in your browser. Visit https://github.com/RasputinKaiser/StorageScope manually."
         }
     }
 
     @objc private func reportAnIssue() {
-        if let url = URL(string: "https://github.com/RasputinKaiser/StorageScope/issues/new") {
-            NSWorkspace.shared.open(url)
+        if let url = URL(string: "https://github.com/RasputinKaiser/StorageScope/issues/new"),
+           !NSWorkspace.shared.open(url) {
+            store.errorMessage = "StorageScope couldn't open the issues page in your browser. Visit https://github.com/RasputinKaiser/StorageScope/issues/new manually."
         }
     }
 

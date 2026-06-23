@@ -1168,16 +1168,20 @@ func setSelectedView(_ view: SmartView) {
     }
 
     func revealTrashReviewItem(_ item: TrashReviewPlan.Item) {
-        FileActionService.reveal(item.url)
+        if let message = FileActionService.reveal(item.url) {
+            errorMessage = message
+        }
     }
 
     func openTrashReviewItem(_ item: TrashReviewPlan.Item) {
-        FileActionService.open(item.url)
+        openURLAndSurfaceError(item.url)
     }
 
     func revealAllTrashReviewItems(_ items: [TrashReviewPlan.Item]) {
         let urls = items.map(\.url)
-        FileActionService.revealAll(urls)
+        if let message = FileActionService.revealAll(urls) {
+            errorMessage = message
+        }
     }
 
     func removePendingTrashReviewItem(_ item: TrashReviewPlan.Item) {
@@ -1319,21 +1323,38 @@ func setSelectedView(_ view: SmartView) {
         guard let selectedItem else {
             return
         }
-        FileActionService.reveal(selectedItem.url)
+        if let message = FileActionService.reveal(selectedItem.url) {
+            errorMessage = message
+        }
     }
 
     func openSelectedItem() {
         guard let selectedItem else {
             return
         }
-        FileActionService.open(selectedItem.url)
+        openURLAndSurfaceError(selectedItem.url)
     }
 
     func copySelectedPath() {
         guard let selectedItem else {
             return
         }
-        FileActionService.copyPath(selectedItem.url)
+        if let message = FileActionService.copyPath(selectedItem.url) {
+            errorMessage = message
+        }
+    }
+
+    /// Routes `FileActionService.open` errors back through `errorMessage`. The open call
+    /// uses the throwing Swift API on a background task; without this wrapper a missing-app
+    /// or permission-denied failure would land as an uncaught Task error and die silently
+    /// rather than presenting a message to the user.
+    private func openURLAndSurfaceError(_ url: URL) {
+        Task { [weak self] in
+            guard let self else { return }
+            if let message = await FileActionService.open(url) {
+                self.errorMessage = message
+            }
+        }
     }
 
     func moveSelectedItemToTrash() {
