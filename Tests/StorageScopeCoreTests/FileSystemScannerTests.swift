@@ -1209,7 +1209,7 @@ struct FileSystemScannerTests {
     }
 
     @Test("pre-cancelled scan surfaces FileSystemScannerError.cancelled without scanning")
-    func scanWithPreCancelledTokenThrowsCancelled() throws {
+    func preCancelledScanThrowsCancelled() throws {
         let temporaryRoot = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: temporaryRoot) }
         try writeFile(named: "a.bin", bytes: 4_096, in: temporaryRoot)
