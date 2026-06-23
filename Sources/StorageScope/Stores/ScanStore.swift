@@ -38,6 +38,10 @@ final class ScanStore: ObservableObject {
         let ignoredCleanupCandidateIDs: Set<String>
     }
 
+    /// Cache key for `items(for:)`. Construction in `items(for:)` normalizes dimensions
+    /// irrelevant to the requested view (e.g. `cleanupLaneFilter` on `.largestFiles`) so
+    /// no-op neighborhood changes don't invalidate. Don't write `cachedItems` directly —
+    /// always go through `coordinateInvalidate()` and spell new inputs here.
     private struct ItemsCacheKey: Equatable {
         let scanFinishedAt: Date
         let view: SmartView
@@ -187,6 +191,17 @@ func setSelectedView(_ view: SmartView) {
     private var cachedDuplicateGroups: [DuplicateSizeGroup] = []
     private var cachedVerifiedDuplicateGroupsKey: DerivedCacheKey?
     private var cachedVerifiedDuplicateGroups: [VerifiedDuplicateGroup] = []
+
+    /// Test observability for `items(for:)` cache. DEBUG-only so production pays nothing.
+    #if DEBUG
+    private(set) var itemsCacheHitCount: Int = 0
+    private(set) var itemsCacheMissCount: Int = 0
+
+    func resetItemsCacheDebugCounters() {
+        itemsCacheHitCount = 0
+        itemsCacheMissCount = 0
+    }
+    #endif
 
     lazy var onDemandVerification: OnDemandVerificationStore = OnDemandVerificationStore(
         hashCache: hashCache,
@@ -722,19 +737,36 @@ func setSelectedView(_ view: SmartView) {
             return []
         }
 
+        // Toggle dims irrelevant to the requested view so the cache survives no-op
+        // neighborhood changes: cleanupLaneFilter + ignoredCleanupCandidateIDs feed
+        // `cleanupCandidates` (→ `.cleanupReview` only), nothing else; fileTypeFocus
+        // is filtered by `setSelectedView` but normalized here too as defense-in-depth.
+        let cleanupRelevant = view == .cleanupReview
         let key = ItemsCacheKey(
             scanFinishedAt: scan.finishedAt,
             view: view,
             query: filters.query,
             sizeFilter: filters.sizeFilter,
             sortOption: filters.sortOption,
-            cleanupLaneFilter: filters.cleanupLaneFilter,
-            fileTypeFocus: filters.fileTypeFocus,
-            ignoredCleanupCandidateIDs: ignoredCleanupCandidateIDs
+            cleanupLaneFilter: cleanupRelevant ? filters.cleanupLaneFilter : .all,
+            fileTypeFocus: view.supportsFileTypeFocus ? filters.fileTypeFocus : nil,
+            ignoredCleanupCandidateIDs: cleanupRelevant ? ignoredCleanupCandidateIDs : []
         )
         if cachedItemsKey == key {
+            #if DEBUG
+            itemsCacheHitCount &+= 1
+            #endif
             return cachedItems
         }
+
+        os_signpost(.begin, log: Self.log, name: "items_rebuild", signpostID: Self.signpostID,
+                    "view=%@ query=%@", view.rawValue, filters.query)
+        defer {
+            os_signpost(.end, log: Self.log, name: "items_rebuild", signpostID: Self.signpostID)
+        }
+        #if DEBUG
+        itemsCacheMissCount &+= 1
+        #endif
 
         let baseItems: [StorageItem]
         switch view {
@@ -1363,7 +1395,11 @@ func setSelectedView(_ view: SmartView) {
         cachedDuplicateGroups = []
         cachedVerifiedDuplicateGroupsKey = nil
         cachedVerifiedDuplicateGroups = []
-        invalidateItemsCache()
+        // cachedItemsKey/cachedItems intentionally NOT dropped here. `items(for:)`'s key
+        // comparison is the source of truth — its key normalizes irrelevant dims per view,
+        // so a filter change that doesn't affect the active view's output is a no-op
+        // cache hit on the next call. Force-clearing here would discard a still-valid slice
+        // on every neighborhood touch (e.g. toggling cleanupLaneFilter while on .largestFiles).
     }
 
     private func invalidateItemsCache() {
