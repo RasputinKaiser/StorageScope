@@ -25,10 +25,27 @@ public struct TrashReviewPlan: Identifiable, Equatable, Sendable {
 
     public let items: [Item]
     public let id: String
+    public let missingPaths: [URL]
 
     public init(candidates: [CleanupCandidate]) {
-        items = CleanupSelectionPlanner.topLevelCandidates(candidates).map(Item.init(candidate:))
+        let kept = CleanupSelectionPlanner.topLevelCandidates(candidates)
+        items = kept.map(Item.init(candidate:))
         id = items.map(\.id).joined(separator: "|")
+        missingPaths = []
+    }
+
+    /// Constructs a trash review plan and reports any candidate whose URL no
+    /// longer exists on disk. Missing candidates are excluded from `items` —
+    /// they cannot be moved to Trash — and surfaced through `missingPaths` so
+    /// the caller can ask the user to rescan before retrying.
+    public init(
+        candidates: [CleanupCandidate],
+        fileExists: @escaping (URL) -> Bool
+    ) {
+        let selection = CleanupSelectionPlanner.selectTopLevel(candidates, fileExists: fileExists)
+        items = selection.candidates.map(Item.init(candidate:))
+        id = items.map(\.id).joined(separator: "|")
+        missingPaths = selection.missingPaths
     }
 
     public var title: String {
