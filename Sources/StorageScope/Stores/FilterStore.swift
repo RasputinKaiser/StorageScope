@@ -227,8 +227,14 @@ final class FilterStore: ObservableObject {
         searchTextDebounceTask?.cancel()
         let snapshot = searchText
         searchTextDebounceTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+            } catch {
+                // Cancelled — a newer keystroke superseded this debounce.
+                // Leave `query` alone so the in-flight snapshot doesn't outrun
+                // the one captured for the later `searchText` write.
+                return
+            }
             await MainActor.run { [weak self] in
                 guard let self, self.query != snapshot else { return }
                 self.query = snapshot
