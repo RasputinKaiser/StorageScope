@@ -54,7 +54,16 @@ struct TreeExplorerView: View {
                             rootSize: max(rootItem.displaySize, 1),
                             depth: 0,
                             expandedIDs: $store.treeExpandedIDs,
-                            store: store
+                            selectedItemID: store.selectedItemID,
+                            searchSubtreeMatchIDs: store.searchSubtreeMatchIDs,
+                            sizeThreshold: store.filters.sizeFilter.threshold,
+                            searchText: store.filters.searchText,
+                            selectItem: { store.selectedItemID = $0 },
+                            openItem: { store.selectedItemID = $0.id; store.openSelectedItem() },
+                            revealItem: { store.selectedItemID = $0.id; store.revealSelectedItem() },
+                            copyItemPath: { store.selectedItemID = $0.id; store.copySelectedPath() },
+                            trashItem: { store.selectedItemID = $0.id; store.moveSelectedItemToTrash() },
+                            canTrashItem: { store.canMoveItemToTrash($0) }
                         )
                     }
                     .cardBackground()
@@ -92,19 +101,28 @@ private struct TreeNodeRow: View {
     let rootSize: Int64
     let depth: Int
     @Binding var expandedIDs: Set<String>
-    @ObservedObject var store: ScanStore
+    let selectedItemID: String?
+    let searchSubtreeMatchIDs: Set<String>?
+    let sizeThreshold: Int64
+    let searchText: String
+    let selectItem: (String) -> Void
+    let openItem: (StorageItem) -> Void
+    let revealItem: (StorageItem) -> Void
+    let copyItemPath: (StorageItem) -> Void
+    let trashItem: (StorageItem) -> Void
+    let canTrashItem: (StorageItem) -> Bool
     @State private var isHovered = false
 
     private var isExpanded: Bool {
         expandedIDs.contains(item.id)
     }
 
+    private var isSelected: Bool { selectedItemID == item.id }
+
     private var visibleChildren: [StorageItem] {
-        let subtreeMatchIDs = store.searchSubtreeMatchIDs
-        let sizeThreshold = store.filters.sizeFilter.threshold
-        return item.children.filter { child in
+        item.children.filter { child in
             guard child.displaySize >= sizeThreshold else { return false }
-            return subtreeMatchIDs?.contains(child.id) ?? true
+            return searchSubtreeMatchIDs?.contains(child.id) ?? true
         }
     }
 
@@ -130,7 +148,7 @@ private struct TreeNodeRow: View {
                 }
 
                 Button {
-                    store.selectedItemID = item.id
+                    selectItem(item.id)
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: StorageFormat.icon(for: item))
@@ -139,7 +157,7 @@ private struct TreeNodeRow: View {
 
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 8) {
-                                HighlightedText(item.name, query: store.filters.searchText)
+                                HighlightedText(item.name, query: searchText)
                                     .lineLimit(1)
                                 Spacer()
                                 Text(StorageFormat.bytes(item.displaySize))
@@ -167,8 +185,8 @@ private struct TreeNodeRow: View {
             .padding(.trailing, 12)
             .padding(.vertical, 8)
             .contentShape(Rectangle())
-            .selectionBackground(isSelected: store.selectedItemID == item.id)
-            .background(isHovered && store.selectedItemID != item.id ? Color.primary.opacity(0.04) : Color.clear)
+            .selectionBackground(isSelected: isSelected)
+            .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
             .onHover { isHovered = $0 }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
@@ -177,24 +195,12 @@ private struct TreeNodeRow: View {
                 ? "Click the disclosure triangle to expand or collapse"
                 : "Selects this item")
             .contextMenu {
-                Button("Reveal in Finder") {
-                    store.selectedItemID = item.id
-                    store.revealSelectedItem()
-                }
-                Button("Open") {
-                    store.selectedItemID = item.id
-                    store.openSelectedItem()
-                }
-                Button("Copy Path") {
-                    store.selectedItemID = item.id
-                    store.copySelectedPath()
-                }
+                Button("Reveal in Finder") { revealItem(item) }
+                Button("Open") { openItem(item) }
+                Button("Copy Path") { copyItemPath(item) }
                 Divider()
-                Button("Move to Trash", role: .destructive) {
-                    store.selectedItemID = item.id
-                    store.moveSelectedItemToTrash()
-                }
-                .disabled(!store.canMoveItemToTrash(item))
+                Button("Move to Trash", role: .destructive) { trashItem(item) }
+                    .disabled(!canTrashItem(item))
             }
 
             if isExpanded {
@@ -205,7 +211,16 @@ private struct TreeNodeRow: View {
                         rootSize: rootSize,
                         depth: depth + 1,
                         expandedIDs: $expandedIDs,
-                        store: store
+                        selectedItemID: selectedItemID,
+                        searchSubtreeMatchIDs: searchSubtreeMatchIDs,
+                        sizeThreshold: sizeThreshold,
+                        searchText: searchText,
+                        selectItem: selectItem,
+                        openItem: openItem,
+                        revealItem: revealItem,
+                        copyItemPath: copyItemPath,
+                        trashItem: trashItem,
+                        canTrashItem: canTrashItem
                     )
                 }
             }

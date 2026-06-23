@@ -61,7 +61,13 @@ struct StorageItemTable: View {
                                 StorageItemRow(
                                     item: item,
                                     isSelected: store.selectedItemID == item.id,
-                                    store: store
+                                    searchText: store.filters.searchText,
+                                    canTrash: store.canMoveItemToTrash(item),
+                                    onSelect: { store.selectedItemID = item.id },
+                                    onOpen: { store.selectedItemID = item.id; store.openSelectedItem() },
+                                    onReveal: { store.selectedItemID = item.id; store.revealSelectedItem() },
+                                    onCopyPath: { store.selectedItemID = item.id; store.copySelectedPath() },
+                                    onTrash: { store.selectedItemID = item.id; store.moveSelectedItemToTrash() }
                                 )
                                 .equatable()
                                 Divider()
@@ -234,20 +240,25 @@ private struct SortableColumnHeader: View {
 private struct StorageItemRow: View, Equatable {
     let item: StorageItem
     let isSelected: Bool
-    @ObservedObject var store: ScanStore
+    let searchText: String
+    let canTrash: Bool
+    let onSelect: () -> Void
+    let onOpen: () -> Void
+    let onReveal: () -> Void
+    let onCopyPath: () -> Void
+    let onTrash: () -> Void
     @State private var isHovered = false
 
-    // Excludes the shared `store` and `@State isHovered`: the former is stable
-    // across rows, the latter invalidates through SwiftUI's @State channel so
-    // it must not participate in the Equatable short-circuit.
+    // Closures are excluded: they're stable references back to the store and
+    // are never the source of meaningful visual change. `@State isHovered`
+    // uses the SwiftUI @State channel and must not participate here either.
     static func == (lhs: StorageItemRow, rhs: StorageItemRow) -> Bool {
         lhs.item == rhs.item && lhs.isSelected == rhs.isSelected
+            && lhs.searchText == rhs.searchText && lhs.canTrash == rhs.canTrash
     }
 
     var body: some View {
-        Button {
-            store.selectedItemID = item.id
-        } label: {
+        Button(action: onSelect) {
             HStack(spacing: 12) {
                 HStack(spacing: 9) {
                     Image(systemName: StorageFormat.icon(for: item))
@@ -255,7 +266,7 @@ private struct StorageItemRow: View, Equatable {
                         .frame(width: 18)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        HighlightedText(item.name, query: store.filters.searchText)
+                        HighlightedText(item.name, query: searchText)
                             .lineLimit(1)
 
                         Text(item.url.path)
@@ -291,29 +302,14 @@ private struct StorageItemRow: View, Equatable {
         .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint("Selects this storage item")
-        .simultaneousGesture(TapGesture(count: 2).onEnded {
-            store.selectedItemID = item.id
-            store.openSelectedItem()
-        })
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onOpen() })
         .contextMenu {
-            Button("Reveal in Finder") {
-                store.selectedItemID = item.id
-                store.revealSelectedItem()
-            }
-            Button("Open") {
-                store.selectedItemID = item.id
-                store.openSelectedItem()
-            }
-            Button("Copy Path") {
-                store.selectedItemID = item.id
-                store.copySelectedPath()
-            }
+            Button("Reveal in Finder") { onReveal() }
+            Button("Open") { onOpen() }
+            Button("Copy Path") { onCopyPath() }
             Divider()
-            Button("Move to Trash", role: .destructive) {
-                store.selectedItemID = item.id
-                store.moveSelectedItemToTrash()
-            }
-            .disabled(!store.canMoveItemToTrash(item))
+            Button("Move to Trash", role: .destructive) { onTrash() }
+                .disabled(!canTrash)
         }
     }
 }
