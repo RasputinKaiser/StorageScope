@@ -59,7 +59,9 @@ struct KeeperComparisonSheet: View {
                 Spacer()
                 if let keeper {
                     Button {
-                        FileActionService.reveal(keeper.url)
+                        // KeeperComparisonSheet has no ScanStore in scope; the caller
+                        // routes reveal errors to ScanStore where the store is available.
+                        _ = FileActionService.reveal(keeper.url)
                     } label: {
                         Label("Reveal", systemImage: "folder")
                             .labelStyle(.iconOnly)
@@ -104,7 +106,7 @@ struct KeeperComparisonSheet: View {
     private var footer: some View {
         HStack {
             Button {
-                FileActionService.revealAll(group.items.map(\.url))
+                _ = FileActionService.revealAll(group.items.map(\.url))
             } label: {
                 Label("Reveal All in Finder", systemImage: "folder.badge.gearshape")
             }
