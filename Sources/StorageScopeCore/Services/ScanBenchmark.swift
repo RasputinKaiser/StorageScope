@@ -125,9 +125,18 @@ public struct ScanBenchmarkRunner {
     public func run(rootURL: URL, options: ScanOptions = .benchmarkDefaults(), showFullPath: Bool = false) throws -> ScanBenchmarkReport {
         let scan = try scanner.scan(root: rootURL, options: options)
 
-        let persistStartedAt = Date()
-        hashCache?.persist()
-        let persistDuration = Date().timeIntervalSince(persistStartedAt)
+        // Gate the persist-phase timing on a real cache being attached. When `hashCache`
+        // is nil, `hashCache?.persist()` is a no-op, so any non-zero persistDuration here
+        // would be pure `Date()` jitter — the no-cache contract is hard-zero. Recording it
+        // unconditionally made `benchmarkReportExposesPerPhaseDurations` flake (~1µs).
+        let persistDuration: TimeInterval
+        if let hashCache {
+            let persistStartedAt = Date()
+            hashCache.persist()
+            persistDuration = Date().timeIntervalSince(persistStartedAt)
+        } else {
+            persistDuration = 0
+        }
 
         return ScanBenchmarkReport(
             scopeLabel: ScanBenchmarkReport.scopeLabel(for: rootURL, showFullPath: showFullPath),
