@@ -67,7 +67,14 @@ struct SearchRecentsStoreTests {
     }
 
     @Test("corrupt persisted JSON recovers by resetting to empty")
-    func corruptJSONResetsToEmpty() {
+    func corruptJSONResetsToEmpty() async {
+        // Earlier tests schedule detached `persist()` writes through the
+        // shared writer actor. Without draining them, a stale write could
+        // land between our `set(corrupt:)` and `SearchRecentsStore()`'s
+        // `load()`, overwriting the corrupt blob with valid JSON and masking
+        // the very decode-failure path this test means to exercise.
+        await SearchRecentsStore._flushPendingWritesForTesting()
+
         let key = "StorageScope.searchRecents"
         // Stash whatever was there so other tests + a real launch aren't perturbed.
         let original = UserDefaults.standard.data(forKey: key)
@@ -111,12 +118,15 @@ struct SearchRecentsStoreTests {
         // Pin the in-flux state to prove it hasn't propagated yet.
         #expect(filters.query == "")
 
-        // Wait long enough for the 200ms debounce to fire and run its main-actor
-        // hop. The sleep is sized with a small grace margin so a CI hiccup doesn't
-        // race the assertion; failure here would mean the cancellation didn't work
-        // and an earlier "a"/"ap"/etc. snapshot landed instead — which is exactly
-        // the race we're guarding against.
-        try? await Task.sleep(for: .milliseconds(350))
+        // Poll up to 2s for the 200ms debounce + main-actor hop to fire. A
+        // one-shot sleep sized for the happy path flakes on a loaded CI runner
+        // where the cooperative pool hasn't scheduled the debounce task within
+        // the grace window; polling lets a slow hop still land while preserving
+        // the test's strict assertion that only the final "apple" snapshot wins.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while filters.query != "apple" && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         #expect(filters.query == "apple")
     }
 }

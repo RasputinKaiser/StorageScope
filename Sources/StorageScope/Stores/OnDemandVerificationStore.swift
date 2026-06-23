@@ -30,6 +30,14 @@ final class OnDemandVerificationStore: ObservableObject {
     private let coordinateInvalidate: () -> Void
     private let reportError: (String) -> Void
 
+    /// In-flight verify tasks keyed by `DuplicateSizeGroup.id` so the user can cancel a
+    /// specific group without disturbing other concurrent verifications.
+    private var verifyTasksByID: [String: Task<Void, Never>] = [:]
+    /// Cooperative cancellation handles mirroring `FileSystemScanner.ScanCancellation`. Kept
+    /// alongside the task so hashing I/O bails out at the next chunk boundary instead of
+    /// waiting for a whole file to hash before noticing the Swift task was cancelled.
+    private var verifyCancellationsByID: [String: ScanCancellation] = [:]
+
     init(
         hashCache: DuplicateHashCache,
         scanLookup: @escaping () -> StorageScan?,
@@ -50,15 +58,34 @@ final class OnDemandVerificationStore: ObservableObject {
         guard !verifyingGroupIDs.contains(group.id) else { return }
         verifyingGroupIDs.insert(group.id)
 
+        let cancellation = ScanCancellation()
+        verifyCancellationsByID[group.id] = cancellation
         let cache = hashCache
-        Task { [weak self] in
+
+        // Pass a `ScanCancellation` (in addition to the Swift Task) so hashing I/O bails
+        // at the next read-chunk boundary instead of finishing the whole file before the
+        // task cancellation is observed.
+        let task: Task<Void, Never> = Task { [weak self] in
             let result: Result<[VerifiedDuplicateGroup], Error>
             do {
-                let groups = try await Task.detached(priority: .userInitiated) {
+                try Task.checkCancellation()
+                let groups = try await Task.detached(priority: .userInitiated) { [cache] in
                     let scanner = FileSystemScanner(hashCache: cache)
-                    return try scanner.verifySizeGroup(group, cancellation: nil)
+                    return try scanner.verifySizeGroup(group, cancellation: cancellation)
                 }.value
-                result = .success(groups)
+
+                // FileSystemScanner swallows `cancellation.check()` errors inside a `try?`
+                // during `compactMap`, so a mid-stream cancel lands here as `.success`
+                // with whatever fragments hashed before the cancel. Promote it to an
+                // explicit cancellation so the store discards partial results instead of
+                // surfacing phantom verified groups.
+                if cancellation.isCancelled {
+                    result = .failure(FileSystemScannerError.cancelled)
+                } else {
+                    result = .success(groups)
+                }
+            } catch is CancellationError {
+                result = .failure(FileSystemScannerError.cancelled)
             } catch {
                 result = .failure(error)
             }
@@ -66,6 +93,8 @@ final class OnDemandVerificationStore: ObservableObject {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.verifyingGroupIDs.remove(group.id)
+                self.verifyCancellationsByID.removeValue(forKey: group.id)
+                self.verifyTasksByID.removeValue(forKey: group.id)
 
                 switch result {
                 case .success(let groups):
@@ -73,22 +102,42 @@ final class OnDemandVerificationStore: ObservableObject {
                         self.verifiedGroupsByChecksum[verifiedGroup.checksum] = verifiedGroup
                     }
                     self.coordinateInvalidate()
-                    let cacheToPersist = self.hashCache
-                    Task.detached(priority: .utility) {
-                        let persistSignpostID = OSSignpostID(log: OnDemandVerificationStore.log,
-                                                             object: group.id as NSString)
-                        os_signpost(.begin, log: OnDemandVerificationStore.log,
-                                    name: "persist_on_demand", signpostID: persistSignpostID,
-                                    "group=%@", group.id)
-                        cacheToPersist.persist()
-                        os_signpost(.end, log: OnDemandVerificationStore.log,
-                                    name: "persist_on_demand", signpostID: persistSignpostID)
-                    }
+                    self.persistAsync(group: group)
                 case .failure(let error):
+                    if case FileSystemScannerError.cancelled = error {
+                        // Cancellation is a user action, not an error to surface.
+                        return
+                    }
                     self.reportError("Verification failed: \(error.localizedDescription)")
                 }
             }
         }
+        verifyTasksByID[group.id] = task
+    }
+
+    /// Cancel an in-flight on-demand verify for `groupID`. Partial hashed fragments are
+    /// discarded. Returns `true` when a verify was active for the id.
+    @discardableResult
+    func cancelVerification(forGroupID groupID: String) -> Bool {
+        let wasActive = verifyCancellationsByID[groupID] != nil || verifyTasksByID[groupID] != nil
+        verifyCancellationsByID[groupID]?.cancel()
+        verifyTasksByID[groupID]?.cancel()
+        return wasActive
+    }
+
+    /// Cancel every in-flight on-demand verify and clear the `verifyingGroupIDs` set.
+    /// Called from `clear()` so a fresh scan doesn't resurrect stale verified groups or
+    /// leave orphaned verify tasks running.
+    func cancelAllVerifications() {
+        for cancellation in verifyCancellationsByID.values {
+            cancellation.cancel()
+        }
+        for task in verifyTasksByID.values {
+            task.cancel()
+        }
+        verifyCancellationsByID.removeAll()
+        verifyTasksByID.removeAll()
+        verifyingGroupIDs.removeAll()
     }
 
     /// `true` when every item in `group` is already covered by a verified duplicate group
@@ -107,7 +156,36 @@ final class OnDemandVerificationStore: ObservableObject {
     /// duplicates discovered by user-triggered Verify Now actions so they don't bleed
     /// into the next scan's UI until the user re-verifies.
     func clear() {
+        cancelAllVerifications()
         verifiedGroupsByChecksum.removeAll()
-        verifyingGroupIDs.removeAll()
+    }
+
+    /// Persists the in-memory hash cache off the main actor. Failures surface through
+    /// `reportError` and close the `persist_on_demand` signpost as an error interval so
+    /// they show up in Instruments alongside scan-phase spans.
+    private func persistAsync(group: DuplicateSizeGroup) {
+        let cacheToPersist = hashCache
+        let persistSignpostID = OSSignpostID(log: OnDemandVerificationStore.log,
+                                             object: group.id as NSString)
+        Task { [weak self] in
+            os_signpost(.begin, log: OnDemandVerificationStore.log,
+                        name: "persist_on_demand", signpostID: persistSignpostID,
+                        "group=%@", group.id)
+            do {
+                try await Task.detached(priority: .utility) {
+                    try cacheToPersist.persistThrowing()
+                }.value
+                os_signpost(.end, log: OnDemandVerificationStore.log,
+                            name: "persist_on_demand", signpostID: persistSignpostID)
+            } catch {
+                let errorMessage = error.localizedDescription
+                os_signpost(.end, log: OnDemandVerificationStore.log,
+                            name: "persist_on_demand", signpostID: persistSignpostID,
+                            "error=%{public}@", errorMessage)
+                await MainActor.run { [weak self] in
+                    self?.reportError("Could not save verification cache: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 }

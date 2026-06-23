@@ -20,6 +20,11 @@ final class SearchRecentsStore: ObservableObject {
 
     @Published private(set) var entries: [String] = []
     private var writeGeneration: UInt64 = 0
+    /// Holds handles to detached `persist()` tasks so tests can deterministically
+    /// drain them before mutating `UserDefaults` directly. Production code never
+    /// reads this — `persist()` is eventually-consistent and the only race this
+    /// guards against is across test instances sharing one `UserDefaults` key.
+    private static var pendingPersistTasks: [Task<Void, Never>] = []
 
     init() {
         load()
@@ -53,9 +58,12 @@ final class SearchRecentsStore: ObservableObject {
         writeGeneration += 1
         let generation = writeGeneration
         let snapshot = entries
-        Task.detached(priority: .utility) { [writer = Self.writer] in
+        let task = Task.detached(priority: .utility) { [writer = Self.writer] in
             await writer.write(snapshot, generation: generation)
         }
+        #if DEBUG
+        Self.pendingPersistTasks.append(task)
+        #endif
     }
 
     private func load() {
@@ -72,4 +80,17 @@ final class SearchRecentsStore: ObservableObject {
             UserDefaults.standard.removeObject(forKey: Self.storageKey)
         }
     }
+
+    #if DEBUG
+    /// Drains detached `persist()` tasks from earlier tests so a test that
+    /// mutates `UserDefaults` directly can assert deterministically. Production
+    /// callers should never need this: the actor-serialized writer is already
+    /// eventually-consistent, and the race this guards against only exists
+    /// across test instances that share one `UserDefaults.standard` key.
+    static func _flushPendingWritesForTesting() async {
+        let tasks = pendingPersistTasks
+        pendingPersistTasks.removeAll()
+        for task in tasks { _ = await task.value }
+    }
+    #endif
 }
