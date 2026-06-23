@@ -160,7 +160,7 @@ public final class DuplicateHashCache: @unchecked Sendable {
         lock.lock()
         let snapshot = entries
         lock.unlock()
-let data: Data
+        let data: Data
         do {
             data = try JSONEncoder().encode(snapshot)
         } catch {

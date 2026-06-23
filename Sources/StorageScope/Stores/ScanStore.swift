@@ -632,7 +632,7 @@ func setSelectedView(_ view: SmartView) {
                    log: Self.log, type: .error, url.path, String(describing: error))
             isScanning = false
             progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Access denied")
-errorMessage = category?.userMessage ?? error.localizedDescription
+            errorMessage = category?.userMessage ?? error.localizedDescription
             return
         }
         replaceActiveRootAccess(with: scopedAccess)
@@ -709,7 +709,7 @@ errorMessage = category?.userMessage ?? error.localizedDescription
                                     progressContinuation.yield(progress)
                                 }
                             )
-return .result(scan)
+                            return .result(scan)
                         }
 
                         group.addTask {
@@ -749,12 +749,20 @@ return .result(scan)
                 let pathsScanned = Set(result.retainedItems.map { $0.url.standardizedFileURL.path })
                 let persistLog = Self.log
                 let persistSignpostID = Self.signpostID
-                Task.detached(priority: .utility) {
+                Task.detached(priority: .utility) { [weak self] in
                     os_signpost(.begin, log: persistLog, name: "persist", signpostID: persistSignpostID,
                                 "entries=%d", cacheToPersist.entryCount)
                     _ = cacheToPersist.purgeStale(except: pathsScanned)
-                    cacheToPersist.persist()
-                    os_signpost(.end, log: persistLog, name: "persist", signpostID: persistSignpostID)
+                    do {
+                        try cacheToPersist.persistThrowing()
+                        os_signpost(.end, log: persistLog, name: "persist", signpostID: persistSignpostID)
+                    } catch {
+                        os_signpost(.end, log: persistLog, name: "persist", signpostID: persistSignpostID,
+                                    "error=%{public}@", error.localizedDescription)
+                        await MainActor.run { [weak self] in
+                            self?.errorMessage = "Could not save scan cache: \(error.localizedDescription)"
+                        }
+                    }
                 }
                 recents.remember(url, scannedAt: result.finishedAt, totalBytes: result.totalBytes)
                 treeExpandedIDs = [result.rootItem.id]

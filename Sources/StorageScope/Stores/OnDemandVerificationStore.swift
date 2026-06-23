@@ -136,6 +136,9 @@ final class OnDemandVerificationStore: ObservableObject {
         let wasActive = verifyCancellationsByID[groupID] != nil || verifyTasksByID[groupID] != nil
         verifyCancellationsByID[groupID]?.cancel()
         verifyTasksByID[groupID]?.cancel()
+        verifyCancellationsByID.removeValue(forKey: groupID)
+        verifyTasksByID.removeValue(forKey: groupID)
+        verifyingGroupIDs.remove(groupID)
         return wasActive
     }
 
