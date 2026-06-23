@@ -42,9 +42,9 @@ struct OnDemandVerificationStoreTests {
 
     @Test("cancel mid-verify discards partial results and surfaces no error")
     func cancelMidVerifyDiscardsPartialResults() async throws {
-        // Build a fixture with a large (>1 MiB) file so the hasher spends measurable time
-        // inside the read loop where the ScanCancellation check can interrupt it.
-        let fixture = try makeFixture(fileSize: 8 * 1_048_576)
+        // Same-size fixture; size doesn't matter here because the cancel below fires
+        // before the verify Task ever begins executing (see rationale below).
+        let fixture = try makeFixture()
         defer { fixture.tearDown() }
 
         var reportedErrors: [String] = []
@@ -58,9 +58,15 @@ struct OnDemandVerificationStoreTests {
         let group = fixture.unverifiedGroup
         store.verify(group)
 
-        // Yield to give the detached hashing task a chance to start.
-        try await Task.sleep(for: .milliseconds(5))
-
+        // Cancel synchronously, before any `await` yields the main actor. `verify(_:)`
+        // populates `verifyTasksByID`/`verifyCancellationsByID` on the main actor without
+        // awaiting, so by the time we reach this line the outer verify Task is enqueued
+        // but has not started. Marking the task cancelled here means its first instruction
+        // (`try Task.checkCancellation()`) throws CancellationError, which the store maps
+        // to FileSystemScannerError.cancelled — partial results are discarded and no error
+        // is surfaced. Avoiding `Task.sleep` here keeps the assertion deterministic:
+        // relying on a 5 ms window assumed the detached hash was still mid-flight, which
+        // fails on runners that complete hashing before the sleep ends.
         let wasActive = store.cancelVerification(forGroupID: group.id)
         #expect(wasActive)
 
