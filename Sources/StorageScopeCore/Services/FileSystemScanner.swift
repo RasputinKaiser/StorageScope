@@ -1144,7 +1144,7 @@ private final class ScanAccumulator {
         limit: Int,
         by areInIncreasingPriorityOrder: (StorageItem, StorageItem) -> Bool
     ) -> [StorageItem] {
-        Array(items.sorted { lhs, rhs in
+Array(items.sorted { lhs, rhs in
             if areInIncreasingPriorityOrder(lhs, rhs) { return true }
             if areInIncreasingPriorityOrder(rhs, lhs) { return false }
             // Tie on the priority Comparator (equal displaySize). Fall back to URL path so

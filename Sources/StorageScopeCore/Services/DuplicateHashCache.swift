@@ -165,7 +165,7 @@ let data: Data
             data = try JSONEncoder().encode(snapshot)
         } catch {
             reportError?(.encodeFailed(underlyingDescription: error.localizedDescription))
-            return
+            throw error
         }
         let parent = cacheURL.deletingLastPathComponent()
         do {
@@ -178,7 +178,7 @@ let data: Data
                 url: cacheURL,
                 underlyingDescription: error.localizedDescription
             ))
-            return
+            throw error
         }
         do {
             try data.write(to: cacheURL, options: .atomic)
@@ -190,6 +190,7 @@ let data: Data
                 url: cacheURL,
                 underlyingDescription: error.localizedDescription
             ))
+            throw error
         }
     }
 
