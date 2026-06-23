@@ -757,10 +757,11 @@ func setSelectedView(_ view: SmartView) {
                         try cacheToPersist.persistThrowing()
                         os_signpost(.end, log: persistLog, name: "persist", signpostID: persistSignpostID)
                     } catch {
+                        let desc = error.localizedDescription
                         os_signpost(.end, log: persistLog, name: "persist", signpostID: persistSignpostID,
-                                    "error=%{public}@", error.localizedDescription)
+                                    "error=%{public}@", desc)
                         await MainActor.run { [weak self] in
-                            self?.errorMessage = "Could not save scan cache: \(error.localizedDescription)"
+                            self?.errorMessage = "Could not save scan cache: \(desc)"
                         }
                     }
                 }

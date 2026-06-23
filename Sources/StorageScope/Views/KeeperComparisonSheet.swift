@@ -6,7 +6,7 @@ struct KeeperComparisonSheet: View {
     let keeperItemID: String?
     let onSetKeeper: (StorageItem) -> Void
     let onDismiss: () -> Void
-    let onRevealError: (String) -> Void
+    @ObservedObject var store: ScanStore
 
     private var keeper: StorageItem? {
         group.items.first { $0.id == keeperItemID } ?? group.items.first
@@ -61,7 +61,7 @@ struct KeeperComparisonSheet: View {
                 if let keeper {
                     Button {
                         if let message = FileActionService.reveal(keeper.url) {
-                            onRevealError(message)
+                            store.errorMessage = message
                         }
                     } label: {
                         Label("Reveal", systemImage: "folder")
@@ -108,7 +108,7 @@ struct KeeperComparisonSheet: View {
         HStack {
             Button {
                 if let message = FileActionService.revealAll(group.items.map(\.url)) {
-                    onRevealError(message)
+                    store.errorMessage = message
                 }
             } label: {
                 Label("Reveal All in Finder", systemImage: "folder.badge.gearshape")

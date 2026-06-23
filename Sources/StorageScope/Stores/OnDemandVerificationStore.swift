@@ -133,13 +133,12 @@ final class OnDemandVerificationStore: ObservableObject {
     /// discarded. Returns `true` when a verify was active for the id.
     @discardableResult
     func cancelVerification(forGroupID groupID: String) -> Bool {
-        let wasActive = verifyCancellationsByID[groupID] != nil || verifyTasksByID[groupID] != nil
-        verifyCancellationsByID[groupID]?.cancel()
-        verifyTasksByID[groupID]?.cancel()
-        verifyCancellationsByID.removeValue(forKey: groupID)
-        verifyTasksByID.removeValue(forKey: groupID)
+        let cancellation = verifyCancellationsByID.removeValue(forKey: groupID)
+        let task = verifyTasksByID.removeValue(forKey: groupID)
+        cancellation?.cancel()
+        task?.cancel()
         verifyingGroupIDs.remove(groupID)
-        return wasActive
+        return cancellation != nil || task != nil
     }
 
     /// Cancel every in-flight on-demand verify and clear the `verifyingGroupIDs` set.
@@ -204,7 +203,7 @@ final class OnDemandVerificationStore: ObservableObject {
                             name: "persist_on_demand", signpostID: persistSignpostID,
                             "error=%{public}@", errorMessage)
                 await MainActor.run { [weak self] in
-                    self?.reportError("Could not save verification cache: \(error.localizedDescription)")
+                    self?.reportError("Could not save verification cache: \(errorMessage)")
                 }
             }
         }

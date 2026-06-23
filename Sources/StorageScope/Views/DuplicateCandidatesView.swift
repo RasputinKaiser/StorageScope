@@ -160,7 +160,7 @@ private struct VerifiedDuplicateGroupCard: View {
                 keeperItemID: store.keeperItemID(for: group),
                 onSetKeeper: { item in store.setKeeper(itemID: item.id, for: group) },
                 onDismiss: { showingComparison = false },
-                onRevealError: { store.errorMessage = $0 }
+                store: store
             )
         }
     }
