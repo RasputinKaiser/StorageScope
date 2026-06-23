@@ -71,6 +71,43 @@
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
+      <h2>v0.6.0 &mdash; Visual Refresh</h2>
+      <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.6.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.6.0/StorageScope-0.6.0.dmg">download .dmg</a></div>
+      <p>Visual refresh across the entire app, plus performance work on row diffs. The welcome screen was extracted into its own module and now has a hero layout; the inspector was redesigned with a tinted icon header and clearer button hierarchy; list rows adopt <code>Equatable</code> so SwiftUI can skip recompute on large scans.</p>
+
+      <h3>Visual refresh</h3>
+      <ul>
+        <li><strong>Welcome screen</strong> &mdash; full-width hero spanning both columns, spring transition when a scan starts/completes. Module extracted into <code>WelcomeView.swift</code> (<a href="https://github.com/RasputinKaiser/StorageScope/pull/90">PR #90</a>).</li>
+        <li><strong>Inspector redesign</strong> &mdash; tinted icon header (rounded rect background matching file type), two-column attribute grid, clear primary/secondary/trash button hierarchy.</li>
+        <li><strong>Card radius 12</strong> &mdash; all card backgrounds bumped from 8 &rarr; 12 pt, inner bars remain concentric.</li>
+        <li><strong>Storage Map</strong> &mdash; single unified card with dividers between rows, hover highlight per row.</li>
+        <li><strong>Hover states</strong> &mdash; all interactive list rows (Storage Map, Largest Files/Folders, Old Large Files, Folder Tree, Cleanup Review, Duplicate Review) highlight on hover.</li>
+        <li><strong>Metric cards</strong> &mdash; opaque material, tabular figures for numeric values.</li>
+        <li><strong>View transitions</strong> &mdash; switching between smart views fades smoothly instead of snapping.</li>
+        <li><strong>Sidebar Grant Access buttons</strong> &mdash; slimmed to compact icon + label style.</li>
+        <li><strong>Settings window</strong> &mdash; taller default size + scroll view so the Duplicate Hash Cache section isn't clipped.</li>
+      </ul>
+
+      <h3>Performance</h3>
+      <ul>
+        <li><code>StorageItemRow</code> and <code>DuplicateItemRow</code> adopted <code>Equatable</code> so SwiftUI skips diff/recompute for identity-equal rows.</li>
+        <li><code>CleanupCandidateRow</code> adopted <code>Equatable</code> and hoisted per-row state, reducing redundant diff work on the cleanup-review lane.</li>
+        <li><code>DuplicateItemList</code> render-path refactor extracted rows to <code>DuplicateFileRow</code> for per-row <code>@State</code> hover tracking.</li>
+      </ul>
+
+      <h3>Documentation</h3>
+      <ul>
+        <li>README overview screenshot refreshed to the current app UI.</li>
+      </ul>
+
+      <h3>Internal</h3>
+      <ul>
+        <li>WelcomeView lifted into its own file (PR #90); welcome and empty-state branch now owned by <code>DetailView</code>.</li>
+        <li>Removed <code>ensureAncestorsExpanded</code> from find-next navigation; auto-expand-on-Cmd+G reverted.</li>
+      </ul>
+    </section>
+
+    <section class="release">
       <h2>v0.5.3 &mdash; Performance measurement slice</h2>
       <div class="meta">Released 2026-06-22 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.5.3">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg">download .dmg</a></div>
       <p>Measurement-only release. No behavior changes, no scan-pipeline optimizations &mdash; this slice exists to validate (or invalidate) the bottleneck hypotheses in the v0.5.3 &rarr; v0.6.0 performance plan before any optimization commits. The premise: most proposed optimizations are waste unless the underlying bottleneck is real, so we measure first.</p>
@@ -314,14 +351,14 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg">Download v0.5.3 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.6.0/StorageScope-0.6.0.dmg">Download v0.6.0 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.5.3/StorageScope-0.5.3.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.6.0/StorageScope-0.6.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.5.3 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>v0.6.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>
