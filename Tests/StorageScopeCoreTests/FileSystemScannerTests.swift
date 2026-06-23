@@ -1009,7 +1009,9 @@ struct FileSystemScannerTests {
         #expect(report.enumerateDuration >= 0)
         #expect(report.verifyDuration >= 0)
         #expect(report.verifyDuration == report.duplicateVerificationDuration)
-        #expect(report.persistDuration == 0)
+        // No cache wired up: persistDuration is a no-op plus two Date() readouts, which
+        // can register sub-microsecond timing noise instead of an exact 0.
+        #expect(abs(report.persistDuration) < 0.001)
         #expect(report.totalDuration == report.enumerateDuration + report.verifyDuration + report.persistDuration)
         #expect(report.totalDuration >= report.verifyDuration)
 
