@@ -323,6 +323,15 @@ func setSelectedView(_ view: SmartView) {
         }
     }
 
+    /// Discriminator for `scan(_:)`'s TaskGroup children. Only the scan job yields a
+    /// `.result`; the progress consumer ends with `.progressConsumerFinished`. Scan
+    /// errors propagate by rethrowing out of `withThrowingTaskGroup` rather than being
+    /// wrapped here, so this enum stays `Sendable` (no `Error` payload).
+    private enum ScanOutcome: Sendable {
+        case result(StorageScan)
+        case progressConsumerFinished
+    }
+
     var scanStage: ScanStage {
         if !isScanning {
             return scan == nil ? .idle : .complete
@@ -484,6 +493,11 @@ func setSelectedView(_ view: SmartView) {
     }
 
     func scanRecentPath(_ path: String) {
+        // Same re-entry guard as `rescan()`: if a scan is already running, do nothing
+        // rather than racing a second scan for the same reason. Also avoids opening the
+        // NSOpenPanel re-grant fallback when the user's click has already started a scan.
+        guard !isScanning else { return }
+
         do {
             guard let resolvedURL = try bookmarkStore.resolve(path: path) else {
                 errorMessage = "StorageScope needs you to choose this folder again before rescanning it in the sandbox."
@@ -551,6 +565,12 @@ func setSelectedView(_ view: SmartView) {
     }
 
     func rescan() {
+        // Guard against re-entry: a second rescan while a scan is already in-flight is a
+        // no-op rather than cancelling-and-relaunching both (the previous behavior
+        // spawned racing scans where the loser's result was discarded). Matches the UI's
+        // `canRescan == !isScanning` gate so programmatic callers can't bypass it.
+        guard !isScanning else { return }
+
         guard let lastScannedURL = session.lastScannedURL else {
             chooseFolderAndScan()
             return
@@ -647,28 +667,62 @@ func setSelectedView(_ view: SmartView) {
 
             do {
                 let hashCache = self.hashCache
-                let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<StorageScan, Error>) in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        do {
+                // Bridge the scanner's synchronous progress callback into a structured async
+                // stream so the per-update actor hop happens from a structured child of
+                // scanTask, not an unstructured top-level Task. Two TaskGroup children:
+                //   1) The scanner itself on a user-initiated priority, yielding progress
+                //      into the stream as it goes.
+                //   2) A structured consumer forwarding each event to MainActor.
+                // Both inherit scanTask's cancellation: withTaskCancellationHandler propagates
+                // Task.cancel() into the scanner's ScanCancellation handle AND finishes the
+                // stream so the consumer exits cleanly.
+                let (progressStream, progressContinuation) = AsyncStream<ScanProgress>.makeStream()
+                let result = try await withTaskCancellationHandler {
+                    try await withThrowingTaskGroup(of: ScanOutcome.self) { group in
+                        group.addTask(priority: .userInitiated) {
+                            // Guarantee the stream finishes when the scanner exits — whether
+                            // by success, cancellation, or an unexpected thrown error. Without
+                            // this the progress-consumer sibling would block on `for await`
+                            // forever and the task group would hang waiting for it.
+                            defer { progressContinuation.finish() }
                             let scanner = FileSystemScanner(hashCache: hashCache)
                             let scan = try scanner.scan(
                                 root: url,
                                 options: options,
                                 cancellation: scanCancellation,
                                 progress: { progress in
-                                    Task { @MainActor [weak self, scanID, scanCancellation] in
-                                        guard let self, self.isCurrentScan(scanID, cancellation: scanCancellation) else {
-                                            return
-                                        }
-                                        self.progress = progress
-                                    }
+                                    progressContinuation.yield(progress)
                                 }
                             )
-                            continuation.resume(returning: scan)
-                        } catch {
-                            continuation.resume(throwing: error)
+                            return .result(scan)
                         }
+
+                        group.addTask {
+                            for await progress in progressStream {
+                                if Task.isCancelled { break }
+                                await MainActor.run { [weak self, scanID, scanCancellation] in
+                                    guard let self, self.isCurrentScan(scanID, cancellation: scanCancellation) else {
+                                        return
+                                    }
+                                    self.progress = progress
+                                }
+                            }
+                            return .progressConsumerFinished
+                        }
+
+                        while let outcome = try await group.next() {
+                            switch outcome {
+                            case .result(let scan):
+                                return scan
+                            case .progressConsumerFinished:
+                                continue
+                            }
+                        }
+                        throw CancellationError()
                     }
+                } onCancel: {
+                    scanCancellation.cancel()
+                    progressContinuation.finish()
                 }
 
                 guard !Task.isCancelled, isCurrentScan(scanID, cancellation: scanCancellation) else {
