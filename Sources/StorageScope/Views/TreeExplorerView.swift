@@ -101,9 +101,10 @@ private struct TreeNodeRow: View {
 
     private var visibleChildren: [StorageItem] {
         let subtreeMatchIDs = store.searchSubtreeMatchIDs
+        let sizeThreshold = store.filters.sizeFilter.threshold
         return item.children.filter { child in
-            child.displaySize >= store.filters.sizeFilter.threshold &&
-                (subtreeMatchIDs == nil || subtreeMatchIDs!.contains(child.id))
+            guard child.displaySize >= sizeThreshold else { return false }
+            return subtreeMatchIDs?.contains(child.id) ?? true
         }
     }
 

@@ -63,6 +63,7 @@ struct StorageItemTable: View {
                                     isSelected: store.selectedItemID == item.id,
                                     store: store
                                 )
+                                .equatable()
                                 Divider()
                             }
                         }
@@ -230,11 +231,18 @@ private struct SortableColumnHeader: View {
     }
 }
 
-private struct StorageItemRow: View {
+private struct StorageItemRow: View, Equatable {
     let item: StorageItem
     let isSelected: Bool
     @ObservedObject var store: ScanStore
     @State private var isHovered = false
+
+    // Excludes the shared `store` and `@State isHovered`: the former is stable
+    // across rows, the latter invalidates through SwiftUI's @State channel so
+    // it must not participate in the Equatable short-circuit.
+    static func == (lhs: StorageItemRow, rhs: StorageItemRow) -> Bool {
+        lhs.item == rhs.item && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Button {
