@@ -49,11 +49,13 @@ public final class ScanCancellation: @unchecked Sendable {
 public final class FileSystemScanner {
     public typealias ProgressHandler = (ScanProgress) -> Void
 
-    /// Bounded concurrency for duplicate-verification hashing. Scales with available cores
-    /// but caps at 8 to avoid file-handle pressure on huge machines.
+    /// Bounded concurrency for duplicate-verification hashing. Hashing is I/O-bound on
+    /// SSDs (file-read throughput, not CPU), so we deliberately undersubscribe the host
+    /// core count to avoid filling the GCD thread pool and pressuring the file-descriptor
+    /// table on broad scans. The min/max keeps the count in `[2, 6]` regardless of host.
     private static let hashConcurrency: Int = {
         let cores = ProcessInfo.processInfo.processorCount
-        return min(8, max(4, cores))
+        return min(6, max(2, cores / 2))
     }()
 
     /// os_signpost surface for Instruments. Subsystem mirrors the bundle identifier prefix;
@@ -152,7 +154,12 @@ public final class FileSystemScanner {
     /// Hashes every item in `group` and returns verified duplicate groups (matching SHA-256,
     /// count > 1). Use after a scan to verify a same-size candidate group that fell outside
     /// the auto-verification budget. Hits the persisted `hashCache` when items are unchanged,
-    /// so a re-verify is cheap. Cancellation cooperates with `ScanCancellation.check()`.
+    /// so a re-verify is cheap. Cancellation cooperates with `ScanCancellation.check()` and
+    /// propagates as `FileSystemScannerError.cancelled` once the user aborts — partial hashes
+    /// discovered before cancellation are NOT surfaced, because mixing verified and
+    /// cancelled-state results would mislead the caller into treating an aborted batch
+    /// as complete. Per-file read failures (vanished file, permission denied, etc.) are
+    /// logged via os_signpost and skipped, leaving the rest of the group verifiable.
     public func verifySizeGroup(
         _ group: DuplicateSizeGroup,
         cancellation: ScanCancellation? = nil
@@ -170,25 +177,24 @@ public final class FileSystemScanner {
         let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
         let cacheLock = NSLock()
 
-        let hashedItems: [HashedStorageItem] = group.items.compactMap { item in
-            try? cancellation?.check()
-            let cacheKey = DuplicateHashCache.LookupKey(item: item)
+        var hashedItems: [HashedStorageItem] = []
+        hashedItems.reserveCapacity(group.items.count)
 
-            if let cached = hashCache?.checksum(for: cacheKey) {
-                return HashedStorageItem(checksum: cached, item: item)
-            }
+        for item in group.items {
+            // Cooperative cancellation: re-check before opening I/O for the next file so a
+            // cancelled scan doesn't keep burning file descriptors or queuing reads behind
+            // the ioSemaphore. Cancellation aborts the whole on-demand verify because the
+            // caller asked us to stop.
+            try cancellation?.check()
 
-            ioSemaphore.wait()
-            defer { ioSemaphore.signal() }
-            guard let checksum = try? sha256Checksum(for: item.url, cancellation: cancellation) else {
-                return nil
+            if let hashed = try hashedFormItem(
+                item,
+                ioSemaphore: ioSemaphore,
+                cacheLock: cacheLock,
+                cancellation: cancellation
+            ) {
+                hashedItems.append(hashed)
             }
-            if let hashCache {
-                cacheLock.lock()
-                defer { cacheLock.unlock() }
-                hashCache.record(cacheKey, checksum: checksum)
-            }
-            return HashedStorageItem(checksum: checksum, item: item)
         }
 
         let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
@@ -211,7 +217,19 @@ public final class FileSystemScanner {
     ) throws -> StorageItem {
         try cancellation?.check()
 
-        let values = try? url.resourceValues(forKeys: resourceKeys)
+        // `url.resourceValues(forKeys:)` can fail (sandbox ACLs, unreachable APFS
+        // snapshots, removed media). Fall back to a nil-typed values entry and surface
+        // the failure through os_signpost so Instruments shows what was missed. The
+        // downstream code already handles `values == nil` by treating the entry as
+        // hidden/inaccessible, preserving the previous behavior.
+        let values: URLResourceValues?
+        do {
+            values = try url.resourceValues(forKeys: resourceKeys)
+        } catch {
+            values = nil
+            os_signpost(.event, log: Self.log, name: "resource_values_skip",
+                        "path=%{public}@ reason=%{public}@", url.path, "\(error)")
+        }
         let isHidden = values?.isHidden ?? false
         if isHidden && !options.includeHidden {
             return StorageItem(
@@ -406,8 +424,27 @@ public final class FileSystemScanner {
         let verifiedGroupsLock = NSLock()
         let cacheLock = NSLock()
         let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
+        // Cancellation is cooperative: concurrentPerform can't throw, so iterations record
+        // observed cancellation in a flag that we re-check after the call returns. This
+        // mirrors the pattern used by the parallel-directory-enumeration path in scanItem.
+        let cancellationLock = NSLock()
+        var didCancel = false
+
+        // Local helper for recording cancellation observed mid-batch — the 3-line lock/unlock
+        // sequence repeats from multiple iteration exits, so give it a name.
+        func markCancelled() {
+            cancellationLock.lock()
+            didCancel = true
+            cancellationLock.unlock()
+        }
 
         DispatchQueue.concurrentPerform(iterations: verificationGroups.count) { groupIndex in
+            // Bail before opening any file handles so a cancelled batch doesn't keep fanning
+            // out I/O while sibling iterations are still mid-hash.
+            if cancellation?.isCancelled ?? false {
+                return
+            }
+
             let verifySignpostID = OSSignpostID(log: Self.log, object: groupIndex as NSNumber)
             os_signpost(.begin, log: Self.log, name: "verify", signpostID: verifySignpostID,
                         "group=%d", groupIndex)
@@ -419,24 +456,25 @@ public final class FileSystemScanner {
                 try cancellation?.check()
                 let sizeGroup = verificationGroups[groupIndex]
 
-                let hashedItems = sizeGroup.items.compactMap { item -> HashedStorageItem? in
-                    let cacheKey = DuplicateHashCache.LookupKey(item: item)
+                var hashedItems: [HashedStorageItem] = []
+                hashedItems.reserveCapacity(sizeGroup.items.count)
 
-                    if let cached = hashCache?.checksum(for: cacheKey) {
-                        return HashedStorageItem(checksum: cached, item: item)
+                for item in sizeGroup.items {
+                    // Per-item cancellation probe keeps an outlier slow hash from orphaning
+                    // the rest of a group's work after the user cancels.
+                    if cancellation?.isCancelled ?? false {
+                        markCancelled()
+                        return
                     }
 
-                    ioSemaphore.wait()
-                    defer { ioSemaphore.signal() }
-                    guard let checksum = try? sha256Checksum(for: item.url, cancellation: cancellation) else {
-                        return nil
+                    if let hashed = try hashedFormItem(
+                        item,
+                        ioSemaphore: ioSemaphore,
+                        cacheLock: cacheLock,
+                        cancellation: cancellation
+                    ) {
+                        hashedItems.append(hashed)
                     }
-                    if let hashCache {
-                        cacheLock.lock()
-                        defer { cacheLock.unlock() }
-                        hashCache.record(cacheKey, checksum: checksum)
-                    }
-                    return HashedStorageItem(checksum: checksum, item: item)
                 }
 
                 let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
@@ -451,9 +489,18 @@ public final class FileSystemScanner {
                 verifiedGroupsLock.lock()
                 defer { verifiedGroupsLock.unlock() }
                 verifiedGroups.append(contentsOf: verifiedForSize)
+            } catch FileSystemScannerError.cancelled {
+                markCancelled()
             } catch {
+                // Unreachable at this scope: the inner loop catches every error type from
+                // `hashedFormItem`, and the only other throwing call is `cancellation?.check()`
+                // which produces `.cancelled`. Belt-and-braces guard keeps the iteration safe.
                 return
             }
+        }
+
+        if didCancel {
+            throw FileSystemScannerError.cancelled
         }
 
         return verifiedGroups.sorted { lhs, rhs in
@@ -504,11 +551,27 @@ public final class FileSystemScanner {
     }
 
     private func sha256Checksum(for url: URL, cancellation: ScanCancellation?) throws -> String {
+        // Probe cancellation before opening so a cancelled batch doesn't keep paying the
+        // cost of `FileHandle(forReadingFrom:)` for files that no one will ever read.
+        try cancellation?.check()
+
         let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
+        defer {
+            // close() can fail (e.g. NFS flush errors); surface it as an os_signpost event
+            // rather than silently swallowing via `try?`. The hash result on disk is
+            // already finalised by the time we get here, so a close failure is informational.
+            do {
+                try handle.close()
+            } catch {
+                os_signpost(.event, log: Self.log, name: "handle_close_failed",
+                            "path=%{public}@ reason=%{public}@", url.path, "\(error)")
+            }
+        }
 
         var hasher = SHA256()
         while true {
+            // Probe on every chunk so a slow read on a huge file still gets a cooperative
+            // cancellation window within one megabyte of additional I/O.
             try cancellation?.check()
             let data = try handle.read(upToCount: 1_048_576) ?? Data()
             if data.isEmpty {
@@ -518,6 +581,43 @@ public final class FileSystemScanner {
         }
 
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Hashes one item, consulting the persisted `hashCache` fast-path before falling back
+    /// to a full `sha256Checksum` read. I/O is throttled through `ioSemaphore`; cache writes
+    /// are serialised through `cacheLock`. Returns `nil` for per-file read failures (logged
+    /// via os_signpost so Instruments shows what was skipped), and re-throws
+    /// `FileSystemScannerError.cancelled` so the caller can abort the whole batch.
+    private func hashedFormItem(
+        _ item: StorageItem,
+        ioSemaphore: DispatchSemaphore,
+        cacheLock: NSLock,
+        cancellation: ScanCancellation?
+    ) throws -> HashedStorageItem? {
+        let cacheKey = DuplicateHashCache.LookupKey(item: item)
+
+        if let cached = hashCache?.checksum(for: cacheKey) {
+            return HashedStorageItem(checksum: cached, item: item)
+        }
+
+        ioSemaphore.wait()
+        defer { ioSemaphore.signal() }
+
+        do {
+            let checksum = try sha256Checksum(for: item.url, cancellation: cancellation)
+            if let hashCache {
+                cacheLock.lock()
+                defer { cacheLock.unlock() }
+                hashCache.record(cacheKey, checksum: checksum)
+            }
+            return HashedStorageItem(checksum: checksum, item: item)
+        } catch FileSystemScannerError.cancelled {
+            throw FileSystemScannerError.cancelled
+        } catch {
+            os_signpost(.event, log: Self.log, name: "hash_skip",
+                        "path=%{public}@ reason=%{public}@", item.url.path, "\(error)")
+            return nil
+        }
     }
 }
 
