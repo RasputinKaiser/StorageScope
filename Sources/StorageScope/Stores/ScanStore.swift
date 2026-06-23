@@ -1602,10 +1602,16 @@ extension ScanStore {
                 return .missingFolder(path: url.path)
             }
         }
-        if let bookmarkError = error as? SecurityScopedBookmarkError {
+        if let bookmarkError = error as? BookmarkError {
             switch bookmarkError {
             case .accessDenied(let url):
                 return .permissionDenied(path: url.path)
+            case .bookmarkDataInvalid(let path, underlying: _):
+                return .staleBookmark(path: path)
+            case .fileMissing(let url):
+                return .missingFolder(path: url.path)
+            case .bookmarkCreationFailed, .volumeNotMounted:
+                break
             }
         }
         let nsError = error as NSError

@@ -23,7 +23,7 @@ struct ScanStoreErrorHandlingTests {
     @Test("permission-denied bookmark errors include the affected URL")
     func permissionDeniedIncludesURL() throws {
         let url = URL(fileURLWithPath: "/tmp/storagescope-tester/restricted", isDirectory: true)
-        let category = try #require(ScanStore.categorize(SecurityScopedBookmarkError.accessDenied(url)))
+        let category = try #require(ScanStore.categorize(BookmarkError.accessDenied(url)))
         #expect(category == .permissionDenied(path: url.path))
         #expect(category.userMessage.contains(url.path))
     }
