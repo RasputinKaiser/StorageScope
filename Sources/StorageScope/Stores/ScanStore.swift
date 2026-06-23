@@ -12,6 +12,12 @@ final class ScanStore: ObservableObject {
     private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
     private static let signpostID = OSSignpostID(log: log)
 
+    /// Nonisolated `OSLog` handle so the cache's `@Sendable` error reporter can fire
+    /// from any `Task.detached(priority: .utility)` without crossing the `@MainActor`
+    /// boundary around `log`. Same subsystem/category so cache errors still group with
+    /// scan signposts in Instruments.
+    nonisolated private static let errorLog = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
+
     private static func defaultHashCacheURL() -> URL? {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
@@ -150,7 +156,15 @@ func setSelectedView(_ view: SmartView) {
     private var cancellation: ScanCancellation?
     private var scanTask: Task<Void, Never>?
     private let bookmarkStore = SecurityScopedBookmarkStore()
-    private let hashCache = DuplicateHashCache(cacheURL: ScanStore.defaultHashCacheURL())
+    private let hashCache = DuplicateHashCache(
+        cacheURL: ScanStore.defaultHashCacheURL(),
+        reportError: { error in
+            // `Self.log` is `@MainActor`-isolated (ScanStore is @MainActor). Cache errors
+            // can fire from any detached utility task, so capture the nonisolated OSLog
+            // here instead of touching the main-actor static from a `@Sendable` closure.
+            os_log("duplicate hash cache error: %{public}@", log: ScanStore.errorLog, type: .error, "\(error)")
+        }
+    )
 
     var duplicateHashCacheEntryCount: Int { hashCache.entryCount }
     var duplicateHashCacheLastPersistedAt: Date? { hashCache.lastPersistedAt }
