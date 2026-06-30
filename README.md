@@ -2,6 +2,8 @@
 
 [![Swift](https://github.com/RasputinKaiser/StorageScope/actions/workflows/swift.yml/badge.svg)](https://github.com/RasputinKaiser/StorageScope/actions/workflows/swift.yml)
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/W7W7C9TC7)
+
 StorageScope is a free open-source macOS disk space analyzer and Mac storage cleaner for finding the folders and files that are filling a Mac. It is a local-first macOS storage management app, built with SwiftUI/AppKit, for large-folder analysis, duplicate file review, disk usage analysis, and safer cleanup planning.
 
 The app scans only folders the user grants through macOS folder selection or stored security-scoped bookmarks. It does not upload scan results, file names, paths, contents, analytics, or identifiers.
