@@ -41,7 +41,7 @@ struct FilterStoreRedactionTests {
     @Test("returns real values when redaction is off")
     func realValuesWhenOff() {
         let store = makeFilterStore()
-        let file = makeFile("/Users/test/Movies/vacation.mp4")
+        let file = makeFile("/tmp/test-fixture/Movies/vacation.mp4")
 
         #expect(store.displayName(for: file) == "vacation.mp4")
         #expect(store.displayPath(for: file) == file.url.path)
@@ -51,7 +51,7 @@ struct FilterStoreRedactionTests {
     func stablePlaceholderForSameItem() {
         let store = makeFilterStore()
         store.redactionEnabled = true
-        let file = makeFile("/Users/test/Movies/vacation.mp4")
+        let file = makeFile("/tmp/test-fixture/Movies/vacation.mp4")
 
         let first = store.displayName(for: file)
         let second = store.displayName(for: file)
@@ -64,8 +64,8 @@ struct FilterStoreRedactionTests {
     func differentItemsDifferentPlaceholders() {
         let store = makeFilterStore()
         store.redactionEnabled = true
-        let fileA = makeFile("/Users/test/Movies/vacation.mp4")
-        let fileB = makeFile("/Users/test/Movies/wedding.mp4")
+        let fileA = makeFile("/tmp/test-fixture/Movies/vacation.mp4")
+        let fileB = makeFile("/tmp/test-fixture/Movies/wedding.mp4")
 
         let nameA = store.displayName(for: fileA)
         let nameB = store.displayName(for: fileB)
@@ -76,7 +76,7 @@ struct FilterStoreRedactionTests {
     func folderPlaceholder() {
         let store = makeFilterStore()
         store.redactionEnabled = true
-        let folder = makeFolder("/Users/test/Movies")
+        let folder = makeFolder("/tmp/test-fixture/Movies")
 
         let name = store.displayName(for: folder)
         #expect(name.hasPrefix("Folder "))
@@ -85,7 +85,7 @@ struct FilterStoreRedactionTests {
     @Test("toggling redaction off after being on immediately restores real names")
     func togglingOffRestoresRealNames() {
         let store = makeFilterStore()
-        let file = makeFile("/Users/test/Movies/vacation.mp4")
+        let file = makeFile("/tmp/test-fixture/Movies/vacation.mp4")
 
         store.redactionEnabled = true
         let masked = store.displayName(for: file)
@@ -100,7 +100,7 @@ struct FilterStoreRedactionTests {
     func displayPathMasksBothLevels() {
         let store = makeFilterStore()
         store.redactionEnabled = true
-        let file = makeFile("/Users/test/Movies/vacation.mp4")
+        let file = makeFile("/tmp/test-fixture/Movies/vacation.mp4")
 
         let path = store.displayPath(for: file)
         #expect(!path.contains("vacation"))
