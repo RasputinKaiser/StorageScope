@@ -155,7 +155,8 @@ private struct VerifiedDuplicateGroupCard: View {
                 onSelect: { store.selectedItemID = $0.id },
                 onOpen: { store.selectedItemID = $0.id; store.openSelectedItem() },
                 onReveal: { store.selectedItemID = $0.id; store.revealSelectedItem() },
-                onCopyPath: { store.selectedItemID = $0.id; store.copySelectedPath() }
+                onCopyPath: { store.selectedItemID = $0.id; store.copySelectedPath() },
+                onExclude: store.isScanning ? nil : { store.excludeFolder(atPath: $0.url.deletingLastPathComponent().standardizedFileURL.path) }
             )
         }
         .padding(14)
@@ -244,7 +245,8 @@ private struct DuplicateGroupCard: View {
                 onSelect: { store.selectedItemID = $0.id },
                 onOpen: { store.selectedItemID = $0.id; store.openSelectedItem() },
                 onReveal: { store.selectedItemID = $0.id; store.revealSelectedItem() },
-                onCopyPath: { store.selectedItemID = $0.id; store.copySelectedPath() }
+                onCopyPath: { store.selectedItemID = $0.id; store.copySelectedPath() },
+                onExclude: store.isScanning ? nil : { store.excludeFolder(atPath: $0.url.deletingLastPathComponent().standardizedFileURL.path) }
             )
         }
         .padding(14)
@@ -261,6 +263,7 @@ private struct DuplicateItemList: View {
     let onOpen: (StorageItem) -> Void
     let onReveal: (StorageItem) -> Void
     let onCopyPath: (StorageItem) -> Void
+    var onExclude: ((StorageItem) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -279,6 +282,8 @@ private struct DuplicateItemList: View {
                     onReveal(item)
                 } onCopyPath: {
                     onCopyPath(item)
+                } onExclude: {
+                    onExclude?(item)
                 }
                 .equatable()
 
@@ -299,6 +304,7 @@ private struct DuplicateFileRow: View, Equatable {
     let onOpen: () -> Void
     let onReveal: () -> Void
     let onCopyPath: () -> Void
+    var onExclude: (() -> Void)? = nil
     @State private var isHovered = false
 
     // Excludes the closures: not Equatable, and freshly allocated per render anyway.
@@ -353,6 +359,10 @@ private struct DuplicateFileRow: View, Equatable {
             }
             Button("Reveal in Finder") { onReveal() }
             Button("Copy Path") { onCopyPath() }
+            if let onExclude {
+                Divider()
+                Button("Exclude This Folder") { onExclude() }
+            }
         }
     }
 }

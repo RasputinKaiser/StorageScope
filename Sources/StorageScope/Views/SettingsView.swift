@@ -4,6 +4,7 @@ struct SettingsView: View {
     @ObservedObject var store: ScanStore
     @State private var showingClearCacheAlert = false
     @State private var cacheSnapshot: CacheSnapshot = .init(entryCount: 0, lastPersistedAt: nil)
+    @State private var newExcludedPath: String = ""
 
     var body: some View {
         ScrollView {
@@ -28,6 +29,45 @@ struct SettingsView: View {
                 }
 
                 SettingsFootnote("Hidden files, old-file age, and the duplicate threshold affect scan results. Existing results keep their previous scan options until you rescan.")
+            }
+
+            Divider()
+
+            SettingsSection(title: "Excluded Folders") {
+                Toggle("Exclude folders", isOn: store.filterBinding(\.excludeFoldersEnabled))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(store.filters.excludedPaths, id: \.self) { path in
+                        HStack {
+                            Text(path)
+                                .font(.callout)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button {
+                                store.filters.excludedPaths.removeAll { $0 == path }
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove this exclusion")
+                        }
+                    }
+                }
+
+                HStack {
+                    TextField("Folder name or path (e.g. node_modules, ~/Library/Caches)", text: $newExcludedPath)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Add") {
+                        let trimmed = newExcludedPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty, !store.filters.excludedPaths.contains(trimmed) else { return }
+                        store.filters.excludedPaths.append(trimmed)
+                        newExcludedPath = ""
+                    }
+                    .disabled(newExcludedPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                SettingsFootnote("Folder names (e.g. node_modules) match anywhere in the tree. Paths starting with ~ or / match only that exact folder and its contents. Excluded folders are skipped entirely during the next scan.")
             }
 
             Divider()

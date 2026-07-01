@@ -63,7 +63,11 @@ struct TreeExplorerView: View {
                             revealItem: { store.selectedItemID = $0.id; store.revealSelectedItem() },
                             copyItemPath: { store.selectedItemID = $0.id; store.copySelectedPath() },
                             trashItem: { store.selectedItemID = $0.id; store.moveSelectedItemToTrash() },
-                            canTrashItem: { store.canMoveItemToTrash($0) }
+                            canTrashItem: { store.canMoveItemToTrash($0) },
+                            excludeItem: { store.excludeFolder($0) },
+                            // Excluding mid-scan would silently no-op: excludeFolder() routes
+                            // through rescan(), which guards on !isScanning.
+                            canExcludeItem: { $0.isContainer && $0.id != store.scan?.rootItem.id && !store.isScanning }
                         )
                     }
                     .cardBackground()
@@ -111,6 +115,8 @@ private struct TreeNodeRow: View {
     let copyItemPath: (StorageItem) -> Void
     let trashItem: (StorageItem) -> Void
     let canTrashItem: (StorageItem) -> Bool
+    let excludeItem: (StorageItem) -> Void
+    let canExcludeItem: (StorageItem) -> Bool
     @State private var isHovered = false
 
     private var isExpanded: Bool {
@@ -201,6 +207,10 @@ private struct TreeNodeRow: View {
                 Button("Reveal in Finder") { revealItem(item) }
                 Button("Open") { openItem(item) }
                 Button("Copy Path") { copyItemPath(item) }
+                if canExcludeItem(item) {
+                    Divider()
+                    Button("Exclude This Folder") { excludeItem(item) }
+                }
                 Divider()
                 Button("Move to Trash", role: .destructive) { trashItem(item) }
                     .disabled(!canTrashItem(item))
@@ -223,7 +233,9 @@ private struct TreeNodeRow: View {
                         revealItem: revealItem,
                         copyItemPath: copyItemPath,
                         trashItem: trashItem,
-                        canTrashItem: canTrashItem
+                        canTrashItem: canTrashItem,
+                        excludeItem: excludeItem,
+                        canExcludeItem: canExcludeItem
                     )
                 }
             }

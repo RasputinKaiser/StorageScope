@@ -263,13 +263,31 @@ private struct ScanStatusFooter: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text(store.scanStage.title)
+                    Text(store.isScanPaused ? "Paused" : store.scanStage.title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                     Spacer(minLength: 4)
                     Text("\(store.progress.scannedItemCount.formatted()) items")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                }
+                if store.isScanPaused {
+                    Text("Scan paused — resume to continue")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                } else if let scanStartedAt = store.scanStartedAt {
+                    TimelineView(.periodic(from: scanStartedAt, by: 1)) { context in
+                        HStack(spacing: 6) {
+                            if store.progress.itemsPerSecond > 0 {
+                                Text("~\(Int(store.progress.itemsPerSecond.rounded())) items/sec")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Text(elapsedText(from: scanStartedAt, to: context.date))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                 }
                 Text(store.progress.currentPath)
                     .font(.caption2)
@@ -298,5 +316,12 @@ private struct ScanStatusFooter: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
+    }
+
+    private func elapsedText(from start: Date, to now: Date) -> String {
+        let elapsed = max(0, Int(now.timeIntervalSince(start)))
+        let minutes = elapsed / 60
+        let seconds = elapsed % 60
+        return minutes > 0 ? "\(minutes)m \(seconds)s" : "\(seconds)s"
     }
 }

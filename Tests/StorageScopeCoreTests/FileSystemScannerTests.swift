@@ -1431,6 +1431,228 @@ struct FileSystemScannerTests {
         #expect(!verifiedGroup.items.contains { $0.name == "c.bin" })
     }
 
+    @Test("exclusion by folder name skips the folder and its children")
+    func exclusionByNameSkipsFolderAndChildren() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let nodeModules = temporaryRoot.appendingPathComponent("node_modules", isDirectory: true)
+        try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
+        try writeFile(named: "dep.js", bytes: 5_000, in: nodeModules)
+        let nested = nodeModules.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try writeFile(named: "inner.js", bytes: 3_000, in: nested)
+        try writeFile(named: "keep.txt", bytes: 1_000, in: temporaryRoot)
+
+        let options = ScanOptions(
+            largeFileThreshold: 1,
+            duplicateCandidateThreshold: 1,
+            excludeEnabled: true,
+            excludedPathComponents: ["node_modules"]
+        )
+        let scan = try FileSystemScanner().scan(root: temporaryRoot, options: options)
+
+        #expect(!scan.retainedItems.contains { $0.name == "node_modules" })
+        #expect(!scan.retainedItems.contains { $0.name == "dep.js" })
+        #expect(!scan.retainedItems.contains { $0.name == "inner.js" })
+        #expect(scan.retainedItems.contains { $0.name == "keep.txt" })
+        #expect(!scan.largestFiles.contains { $0.name == "dep.js" })
+        // Excluded items are skipped entirely — not counted as scanned or inaccessible.
+        // Only the root directory and keep.txt are visited; node_modules and everything
+        // beneath it never gets stat'd or recursed into.
+        #expect(scan.scannedItemCount == 2)
+    }
+
+    @Test("exclusion by absolute prefix matches only the exact folder and its contents")
+    func exclusionByAbsolutePrefixMatchesExactFolder() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let caches = temporaryRoot.appendingPathComponent("Caches", isDirectory: true)
+        try FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true)
+        try writeFile(named: "blob.bin", bytes: 5_000, in: caches)
+        try writeFile(named: "keep.txt", bytes: 1_000, in: temporaryRoot)
+
+        let options = ScanOptions(
+            largeFileThreshold: 1,
+            duplicateCandidateThreshold: 1,
+            excludeEnabled: true,
+            excludedAbsolutePrefixes: [caches.standardizedFileURL.path]
+        )
+        let scan = try FileSystemScanner().scan(root: temporaryRoot, options: options)
+
+        #expect(!scan.retainedItems.contains { $0.name == "Caches" })
+        #expect(!scan.retainedItems.contains { $0.name == "blob.bin" })
+        #expect(scan.retainedItems.contains { $0.name == "keep.txt" })
+    }
+
+    @Test("exclusion toggle off applies no filtering even with matching entries configured")
+    func exclusionDisabledAppliesNoFiltering() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let nodeModules = temporaryRoot.appendingPathComponent("node_modules", isDirectory: true)
+        try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
+        try writeFile(named: "dep.js", bytes: 5_000, in: nodeModules)
+
+        let options = ScanOptions(
+            largeFileThreshold: 1,
+            duplicateCandidateThreshold: 1,
+            excludeEnabled: false,
+            excludedPathComponents: ["node_modules"]
+        )
+        let scan = try FileSystemScanner().scan(root: temporaryRoot, options: options)
+
+        #expect(scan.retainedItems.contains { $0.name == "node_modules" })
+        #expect(scan.retainedItems.contains { $0.name == "dep.js" })
+    }
+
+    @Test("snapshot mid-walk returns non-empty ranked lists marked isPartial")
+    func snapshotMidWalkReturnsPartialResults() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for index in 0..<40 {
+            try writeFile(named: "file-\(index).bin", bytes: 10_000 + index, in: temporaryRoot)
+        }
+
+        var snapshots: [StorageScan] = []
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(largeFileThreshold: 1, duplicateCandidateThreshold: 1),
+            onSnapshot: { snapshot in
+                snapshots.append(snapshot)
+            }
+        )
+
+        #expect(scan.isPartial == false)
+        // At least one mid-walk snapshot should have been captured (throttled cadence
+        // permitting — the "force" emit on the very first recorded item guarantees one).
+        let nonEmptySnapshot = snapshots.first { !$0.largestFiles.isEmpty }
+        #expect(nonEmptySnapshot != nil)
+        #expect(nonEmptySnapshot?.isPartial == true)
+    }
+
+    @Test("pause blocks scan progress and resume continues to completion")
+    func pauseBlocksProgressAndResumeCompletes() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for index in 0..<5_000 {
+            try writeFile(named: "file-\(index).bin", bytes: 1_000, in: temporaryRoot)
+        }
+
+        let cancellation = ScanCancellation()
+        let resultBox = LockedBox<Result<StorageScan, Error>?>(nil)
+        let lastCountBox = LockedBox<Int>(0)
+
+        let thread = Thread {
+            do {
+                let scan = try FileSystemScanner().scan(
+                    root: temporaryRoot,
+                    options: ScanOptions(largeFileThreshold: 1, duplicateCandidateThreshold: 1),
+                    cancellation: cancellation,
+                    progress: { progress in
+                        lastCountBox.value = progress.scannedItemCount
+                    }
+                )
+                resultBox.value = .success(scan)
+            } catch {
+                resultBox.value = .failure(error)
+            }
+        }
+        thread.start()
+
+        // Let the scan get moving, then pause it.
+        Thread.sleep(forTimeInterval: 0.02)
+        cancellation.pause()
+        // A handful of iterations already past their `waitIfPaused()` checkpoint (in-flight
+        // file I/O) can still land after `pause()` returns — this is expected concurrency
+        // slop, not a hang. Give those in-flight iterations a brief window to settle before
+        // sampling the "at pause" baseline.
+        Thread.sleep(forTimeInterval: 0.05)
+        let countAtPause = lastCountBox.value
+
+        // Verify it makes no further progress (beyond that same small in-flight slop) for a
+        // longer window while paused — the bulk of the 5,000-item tree should stay blocked.
+        Thread.sleep(forTimeInterval: 0.3)
+        let countWhilePaused = lastCountBox.value
+        #expect(countWhilePaused - countAtPause < 50)
+        #expect(countWhilePaused < 5_000)
+        #expect(resultBox.value == nil)
+
+        cancellation.resume()
+
+        let deadline = Date().addingTimeInterval(5)
+        while resultBox.value == nil, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+
+        switch resultBox.value {
+        case .success(let scan):
+            #expect(scan.scannedItemCount >= 5_000)
+        case .failure(let error):
+            Issue.record("Expected scan to complete after resume, got error: \(error)")
+        case nil:
+            Issue.record("Scan did not complete after resume within the deadline.")
+        }
+    }
+
+    @Test("cancel while paused unblocks the scan and it terminates as cancelled")
+    func cancelWhilePausedUnblocksScan() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for index in 0..<5_000 {
+            try writeFile(named: "file-\(index).bin", bytes: 1_000, in: temporaryRoot)
+        }
+
+        let cancellation = ScanCancellation()
+        let resultBox = LockedBox<Result<StorageScan, Error>?>(nil)
+
+        let thread = Thread {
+            do {
+                let scan = try FileSystemScanner().scan(
+                    root: temporaryRoot,
+                    options: ScanOptions(largeFileThreshold: 1, duplicateCandidateThreshold: 1),
+                    cancellation: cancellation
+                )
+                resultBox.value = .success(scan)
+            } catch {
+                resultBox.value = .failure(error)
+            }
+        }
+        thread.start()
+
+        Thread.sleep(forTimeInterval: 0.02)
+        cancellation.pause()
+        // Give the pause a real window to actually block the scan (a 5,000-item tree with
+        // parallel enumeration would otherwise finish before this test can prove the
+        // cancel-while-paused path, rather than the "already done" path).
+        Thread.sleep(forTimeInterval: 0.1)
+        #expect(resultBox.value == nil)
+        cancellation.cancel()
+
+        let deadline = Date().addingTimeInterval(5)
+        while resultBox.value == nil, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+
+        switch resultBox.value {
+        case .success:
+            Issue.record("Expected scan cancelled while paused to throw, but it completed.")
+        case .failure(let error):
+            #expect(error is FileSystemScannerError)
+            if case FileSystemScannerError.cancelled = error {
+                // Expected.
+            } else {
+                Issue.record("Expected FileSystemScannerError.cancelled, got \(error).")
+            }
+        case nil:
+            Issue.record("Scan did not terminate after cancel-while-paused within the deadline.")
+        }
+    }
+
     private func makeTemporaryRoot() throws -> URL {
         let temporaryRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("StorageScopeTests-\(UUID().uuidString)", isDirectory: true)
@@ -1539,5 +1761,31 @@ struct FileSystemScannerTests {
 
     private enum SimulatedMoveError: Error {
         case blocked
+    }
+}
+
+/// Minimal thread-safe box for cross-thread test assertions against a `Thread`-run scan
+/// (used by the pause/resume tests, which need a real OS thread rather than `Task` so
+/// `Thread.sleep` timing windows are meaningful against `DispatchQueue.concurrentPerform`
+/// worker threads).
+private final class LockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+
+    init(_ initial: Value) {
+        self.storage = initial
+    }
+
+    var value: Value {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            storage = newValue
+        }
     }
 }

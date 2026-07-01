@@ -90,12 +90,16 @@ struct CleanupReviewView: View {
                                 isChecked: store.selectedCleanupCandidateIDs.contains(candidate.id),
                                 isSelected: store.selectedItemID == candidate.item.id,
                                 canTrash: store.canMoveItemToTrash(candidate.item),
+                                // Excluding mid-scan would silently no-op: excludeFolder()
+                                // routes through rescan(), which guards on !isScanning.
+                                canExclude: candidate.item.isContainer && candidate.item.id != store.scan?.rootItem.id && !store.isScanning,
                                 onToggle: { store.toggleCleanupCandidate(candidate) },
                                 onIgnore: { store.ignoreCleanupCandidate(candidate) },
                                 onReveal: { store.selectedItemID = candidate.item.id; store.revealSelectedItem() },
                                 onOpen: { store.selectedItemID = candidate.item.id; store.openSelectedItem() },
                                 onCopyPath: { store.selectedItemID = candidate.item.id; store.copySelectedPath() },
-                                onTrash: { store.moveCleanupCandidateToTrash(candidate) }
+                                onTrash: { store.moveCleanupCandidateToTrash(candidate) },
+                                onExclude: { store.excludeFolder(candidate.item) }
                             )
                             .equatable()
                         }
@@ -291,12 +295,14 @@ private struct CleanupCandidateRow: View, Equatable {
     let isChecked: Bool
     let isSelected: Bool
     let canTrash: Bool
+    let canExclude: Bool
     let onToggle: () -> Void
     let onIgnore: () -> Void
     let onReveal: () -> Void
     let onOpen: () -> Void
     let onCopyPath: () -> Void
     let onTrash: () -> Void
+    let onExclude: () -> Void
     @State private var isHovered = false
 
     static func == (lhs: CleanupCandidateRow, rhs: CleanupCandidateRow) -> Bool {
@@ -304,6 +310,7 @@ private struct CleanupCandidateRow: View, Equatable {
             && lhs.isChecked == rhs.isChecked
             && lhs.isSelected == rhs.isSelected
             && lhs.canTrash == rhs.canTrash
+            && lhs.canExclude == rhs.canExclude
     }
 
     var body: some View {
@@ -372,6 +379,10 @@ private struct CleanupCandidateRow: View, Equatable {
             Button("Reveal in Finder") { onReveal() }
             Button("Open") { onOpen() }
             Button("Copy Path") { onCopyPath() }
+            if canExclude {
+                Divider()
+                Button("Exclude This Folder") { onExclude() }
+            }
             Divider()
             Button("Move to Trash", role: .destructive) { onTrash() }
                 .disabled(!canTrash)

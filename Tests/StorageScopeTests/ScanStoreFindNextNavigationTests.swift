@@ -33,11 +33,10 @@ struct ScanStoreFindNextNavigationTests {
         }
 
         store.scanDeveloperFixturePath(root.path)
-        // Give the async scan + debounce a moment to populate searchResultIDs.
-        try await Task.sleep(for: .milliseconds(400))
+        try await waitForScanToFinish(store)
 
         store.filters.searchText = "foo"
-        try await Task.sleep(for: .milliseconds(400))
+        try await waitForSearchResultIDs(store, atLeast: 3)
 
         guard let ids = store.filters.searchResultIDs, ids.count >= 3 else {
             Issue.record("expected >=3 searchResultIDs, got \(store.filters.searchResultIDs?.count ?? 0)")
@@ -72,9 +71,9 @@ struct ScanStoreFindNextNavigationTests {
         }
 
         store.scanDeveloperFixturePath(root.path)
-        try await Task.sleep(for: .milliseconds(400))
+        try await waitForScanToFinish(store)
         store.filters.searchText = "foo"
-        try await Task.sleep(for: .milliseconds(400))
+        try await waitForSearchResultIDs(store, atLeast: 3)
 
         guard let ids = store.filters.searchResultIDs, ids.count >= 3 else {
             Issue.record("expected >=3 searchResultIDs, got \(store.filters.searchResultIDs?.count ?? 0)")
@@ -87,5 +86,22 @@ struct ScanStoreFindNextNavigationTests {
 
         store.reverseSearchResult()
         #expect(store.currentSearchResultIndex == ids.count - 2)
+    }
+
+    /// Polls instead of a fixed sleep so this test stays reliable when the suite runs
+    /// under heavier parallel load (many concurrent scan/pause-resume tests can squeeze a
+    /// fixed timing budget) rather than assuming a specific wall-clock duration.
+    private func waitForScanToFinish(_ store: ScanStore, timeout: Duration = .seconds(5)) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while store.isScanning, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    private func waitForSearchResultIDs(_ store: ScanStore, atLeast count: Int, timeout: Duration = .seconds(5)) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while (store.filters.searchResultIDs?.count ?? 0) < count, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
     }
 }

@@ -63,11 +63,15 @@ struct StorageItemTable: View {
                                     isSelected: store.selectedItemID == item.id,
                                     searchText: store.filters.searchText,
                                     canTrash: store.canMoveItemToTrash(item),
+                                    // Excluding mid-scan would silently no-op: excludeFolder()
+                                    // routes through rescan(), which guards on !isScanning.
+                                    canExclude: item.isContainer && item.id != store.scan?.rootItem.id && !store.isScanning,
                                     onSelect: { store.selectedItemID = item.id },
                                     onOpen: { store.selectedItemID = item.id; store.openSelectedItem() },
                                     onReveal: { store.selectedItemID = item.id; store.revealSelectedItem() },
                                     onCopyPath: { store.selectedItemID = item.id; store.copySelectedPath() },
-                                    onTrash: { store.selectedItemID = item.id; store.moveSelectedItemToTrash() }
+                                    onTrash: { store.selectedItemID = item.id; store.moveSelectedItemToTrash() },
+                                    onExclude: { store.excludeFolder(item) }
                                 )
                                 .equatable()
                                 Divider()
@@ -242,11 +246,13 @@ private struct StorageItemRow: View, Equatable {
     let isSelected: Bool
     let searchText: String
     let canTrash: Bool
+    let canExclude: Bool
     let onSelect: () -> Void
     let onOpen: () -> Void
     let onReveal: () -> Void
     let onCopyPath: () -> Void
     let onTrash: () -> Void
+    let onExclude: () -> Void
     @State private var isHovered = false
 
     // Closures are excluded: they're stable references back to the store and
@@ -255,6 +261,7 @@ private struct StorageItemRow: View, Equatable {
     static func == (lhs: StorageItemRow, rhs: StorageItemRow) -> Bool {
         lhs.item == rhs.item && lhs.isSelected == rhs.isSelected
             && lhs.searchText == rhs.searchText && lhs.canTrash == rhs.canTrash
+            && lhs.canExclude == rhs.canExclude
     }
 
     var body: some View {
@@ -308,6 +315,10 @@ private struct StorageItemRow: View, Equatable {
             Button("Reveal in Finder") { onReveal() }
             Button("Open") { onOpen() }
             Button("Copy Path") { onCopyPath() }
+            if canExclude {
+                Divider()
+                Button("Exclude This Folder") { onExclude() }
+            }
             Divider()
             Button("Move to Trash", role: .destructive) { onTrash() }
                 .disabled(!canTrash)
