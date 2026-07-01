@@ -31,10 +31,10 @@ struct InspectorView: View {
                             }
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(item.name)
+                                Text(store.filters.displayName(for: item))
                                     .font(.title3.weight(.semibold))
                                     .lineLimit(3)
-                                Text(item.url.path)
+                                Text(store.filters.displayPath(for: item))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(3)
@@ -61,7 +61,7 @@ struct InspectorView: View {
 
                         if let candidate = store.selectedCleanupCandidate {
                             Divider()
-                            CleanupContextSection(candidate: candidate)
+                            CleanupContextSection(candidate: candidate, filters: store.filters)
                         }
 
                         Divider()
@@ -140,6 +140,7 @@ private enum InspectorAction: Hashable {
 
 private struct CleanupContextSection: View {
     let candidate: CleanupCandidate
+    @ObservedObject var filters: FilterStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -162,7 +163,7 @@ private struct CleanupContextSection: View {
                 InspectorMetric(title: "Kind", value: candidate.kind.displayName)
             }
 
-            InspectorMetric(title: "Path", value: candidate.item.url.path)
+            InspectorMetric(title: "Path", value: filters.displayPath(for: candidate.item))
             InspectorMetric(title: "Why flagged", value: candidate.trustDetails.flaggedReason)
             InspectorMetric(title: "Could break", value: candidate.trustDetails.couldBreak)
             InspectorMetric(title: "Safety note", value: candidate.trustDetails.safetyNote)

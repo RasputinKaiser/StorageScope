@@ -58,6 +58,8 @@ struct TreeExplorerView: View {
                             searchSubtreeMatchIDs: store.searchSubtreeMatchIDs,
                             sizeThreshold: store.filters.sizeFilter.threshold,
                             searchText: store.filters.searchText,
+                            redactionEnabled: store.filters.redactionEnabled,
+                            displayName: { store.filters.displayName(for: $0) },
                             selectItem: { store.selectedItemID = $0 },
                             openItem: { store.selectedItemID = $0.id; store.openSelectedItem() },
                             revealItem: { store.selectedItemID = $0.id; store.revealSelectedItem() },
@@ -105,6 +107,8 @@ private struct TreeNodeRow: View {
     let searchSubtreeMatchIDs: Set<String>?
     let sizeThreshold: Int64
     let searchText: String
+    let redactionEnabled: Bool
+    let displayName: (StorageItem) -> String
     let selectItem: (String) -> Void
     let openItem: (StorageItem) -> Void
     let revealItem: (StorageItem) -> Void
@@ -140,7 +144,7 @@ private struct TreeNodeRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(isExpanded ? "Collapse \(item.name)" : "Expand \(item.name)")
+                    .accessibilityLabel(isExpanded ? "Collapse \(displayName(item))" : "Expand \(displayName(item))")
                     .help(isExpanded ? "Collapse this folder" : "Expand this folder")
                 } else {
                     Color.clear
@@ -157,8 +161,13 @@ private struct TreeNodeRow: View {
 
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 8) {
-                                HighlightedText(item.name, query: searchText)
-                                    .lineLimit(1)
+                                if redactionEnabled {
+                                    Text(displayName(item))
+                                        .lineLimit(1)
+                                } else {
+                                    HighlightedText(item.name, query: searchText)
+                                        .lineLimit(1)
+                                }
                                 Spacer()
                                 Text(StorageFormat.bytes(item.displaySize))
                                     .font(.system(.body, design: .rounded).monospacedDigit())
@@ -192,7 +201,7 @@ private struct TreeNodeRow: View {
             .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
             .onHover { isHovered = $0 }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
+            .accessibilityLabel("\(displayName(item)), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint(item.isContainer && !item.children.isEmpty
                 ? "Click the disclosure triangle to expand or collapse"
@@ -218,6 +227,8 @@ private struct TreeNodeRow: View {
                         searchSubtreeMatchIDs: searchSubtreeMatchIDs,
                         sizeThreshold: sizeThreshold,
                         searchText: searchText,
+                        redactionEnabled: redactionEnabled,
+                        displayName: displayName,
                         selectItem: selectItem,
                         openItem: openItem,
                         revealItem: revealItem,

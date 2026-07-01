@@ -8,6 +8,7 @@ public struct TrashReviewPlan: Identifiable, Equatable, Sendable {
         public let confidence: CleanupCandidate.Confidence
         public let reclaimableBytes: Int64
         public let reason: String
+        public let isDirectory: Bool
 
         public init(candidate: CleanupCandidate) {
             id = candidate.id
@@ -16,6 +17,7 @@ public struct TrashReviewPlan: Identifiable, Equatable, Sendable {
             confidence = candidate.confidence
             reclaimableBytes = candidate.reclaimableBytes
             reason = candidate.reason
+            isDirectory = candidate.item.isContainer
         }
 
         public var isVerified: Bool {

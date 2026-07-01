@@ -81,6 +81,21 @@ final class FilterStore: ObservableObject {
         didSet { coordinateInvalidate() }
     }
 
+    /// Privacy toggle: when true, display-layer helpers (`displayName`/`displayPath`)
+    /// return stable generic placeholders instead of real file/folder names. Never
+    /// mutates `StorageItem` itself — trash/move/reveal-in-Finder keep using real paths.
+    @Published var redactionEnabled: Bool = false {
+        didSet { coordinateInvalidate() }
+    }
+
+    /// Maps a path string (either a `StorageItem.id`, which is
+    /// `url.standardizedFileURL.path`, or a synthetic ancestor path) to a small integer
+    /// assigned in first-seen order. Deliberately NOT reset on new scans — kept for the
+    /// app session so the same real path always maps to the same placeholder even across
+    /// rescans. Worst case placeholder numbers keep climbing across scans; that's harmless.
+    private var redactionOrdinals: [String: Int] = [:]
+    private var nextRedactionOrdinal = 1
+
     /// Scanner inclusion threshold for same-size duplicate candidacy, in MB. Default lowered
     /// from the old fixed 100MB (see `ScanOptionPolicy`) because at 100MB nearly every file
     /// in a typical folder (photos, PDFs, code, installers under a few dozen MB) never became
@@ -227,6 +242,64 @@ final class FilterStore: ObservableObject {
     func resetCleanupFilters() {
         resetDisplayFilters()
         cleanupLaneFilter = .all
+    }
+
+    /// Display-layer name for `item`. Returns the real `item.name` unchanged when
+    /// redaction is off. When on, returns a stable generic placeholder — "File N.ext"
+    /// (real extension preserved) for files/packages/aliases, "Folder N" for directories —
+    /// keyed by `item.id` so the same item always maps to the same placeholder.
+    func displayName(for item: StorageItem) -> String {
+        displayName(forURL: item.url, isDirectory: item.isContainer)
+    }
+
+    /// Display-layer full path for `item`, with every path component masked the same
+    /// way as `displayName`. Ancestor folders the caller doesn't have a `StorageItem`
+    /// for are masked generically by keying the ordinal map on path string rather than
+    /// requiring a `StorageItem` for every segment. A simple "parent/name" two-level
+    /// display is sufficient — call sites don't render every ancestor today.
+    func displayPath(for item: StorageItem) -> String {
+        guard redactionEnabled else { return item.url.path }
+        return "\(displayParentPath(for: item))/\(displayName(for: item))"
+    }
+
+    /// URL-based overload for call sites that only have a `URL` (e.g.
+    /// `TrashReviewPlan.Item`, which doesn't carry a full `StorageItem`). `isDirectory`
+    /// picks the "Folder N" vs. "File N.ext" label the same way `displayName(for:)` does.
+    /// `displayName(for:)` delegates here so file/folder branching and extension handling
+    /// live in one place.
+    func displayName(forURL url: URL, isDirectory: Bool) -> String {
+        guard redactionEnabled else { return url.lastPathComponent }
+        let ordinal = redactionOrdinal(for: url.standardizedFileURL.path)
+        if isDirectory {
+            return "Folder \(ordinal)"
+        }
+        let ext = url.pathExtension
+        return ext.isEmpty ? "File \(ordinal)" : "File \(ordinal).\(ext)"
+    }
+
+    /// URL-based overload of `displayParentPath(for:)` for call sites that only have a URL.
+    /// `displayParentPath(for:)` delegates here so the parent-ordinal lookup lives in one place.
+    func displayParentPath(forURL url: URL) -> String {
+        guard redactionEnabled else { return url.deletingLastPathComponent().path }
+        let parentPath = url.deletingLastPathComponent().standardizedFileURL.path
+        return "…/Folder \(redactionOrdinal(for: parentPath))"
+    }
+
+    /// Display-layer masked path for `item`'s *containing folder* only — no filename.
+    /// Mirrors `item.url.deletingLastPathComponent().path` when redaction is off. Used by
+    /// call sites that show the parent directory alongside a separately-rendered name.
+    func displayParentPath(for item: StorageItem) -> String {
+        displayParentPath(forURL: item.url)
+    }
+
+    private func redactionOrdinal(for path: String) -> Int {
+        if let existing = redactionOrdinals[path] {
+            return existing
+        }
+        let ordinal = nextRedactionOrdinal
+        redactionOrdinals[path] = ordinal
+        nextRedactionOrdinal += 1
+        return ordinal
     }
 
     /// Called by ScanStore when a new scan completes — rebuilds the subtree match index

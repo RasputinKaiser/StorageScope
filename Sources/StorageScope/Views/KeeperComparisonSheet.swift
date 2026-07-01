@@ -67,12 +67,12 @@ struct KeeperComparisonSheet: View {
                         Label("Reveal", systemImage: "folder")
                             .labelStyle(.iconOnly)
                     }
-                    .help("Reveal \(keeper.url.lastPathComponent) in Finder")
+                    .help("Reveal \(store.filters.displayName(for: keeper)) in Finder")
                 }
             }
 
             if let keeper {
-                KeeperComparisonRow(item: keeper, isKeeper: true) {
+                KeeperComparisonRow(item: keeper, filters: store.filters, isKeeper: true) {
                     onSetKeeper(keeper)
                 }
             }
@@ -92,7 +92,7 @@ struct KeeperComparisonSheet: View {
 
             VStack(spacing: 0) {
                 ForEach(Array(copies.enumerated()), id: \.element.id) { index, item in
-                    KeeperComparisonRow(item: item, isKeeper: false) {
+                    KeeperComparisonRow(item: item, filters: store.filters, isKeeper: false) {
                         onSetKeeper(item)
                     }
                     if index < copies.index(before: copies.endIndex) {
@@ -126,6 +126,7 @@ struct KeeperComparisonSheet: View {
 
 private struct KeeperComparisonRow: View {
     let item: StorageItem
+    @ObservedObject var filters: FilterStore
     let isKeeper: Bool
     let onSetKeeper: () -> Void
 
@@ -136,11 +137,11 @@ private struct KeeperComparisonRow: View {
                 .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.name)
+                Text(filters.displayName(for: item))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
 
-                Text(item.url.deletingLastPathComponent().path)
+                Text(filters.displayParentPath(for: item))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -163,7 +164,7 @@ private struct KeeperComparisonRow: View {
                     Label("Set as Keeper", systemImage: "checkmark.seal")
                         .labelStyle(.iconOnly)
                 }
-                .help("Make \(item.url.lastPathComponent) the keeper")
+                .help("Make \(filters.displayName(for: item)) the keeper")
                 .buttonStyle(.borderless)
             }
         }
