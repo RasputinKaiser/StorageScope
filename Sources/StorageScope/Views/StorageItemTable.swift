@@ -62,6 +62,9 @@ struct StorageItemTable: View {
                                     item: item,
                                     isSelected: store.selectedItemID == item.id,
                                     searchText: store.filters.searchText,
+                                    displayName: store.filters.displayName(for: item),
+                                    displayPath: store.filters.displayPath(for: item),
+                                    redactionEnabled: store.filters.redactionEnabled,
                                     canTrash: store.canMoveItemToTrash(item),
                                     // Excluding mid-scan would silently no-op: excludeFolder()
                                     // routes through rescan(), which guards on !isScanning.
@@ -245,6 +248,9 @@ private struct StorageItemRow: View, Equatable {
     let item: StorageItem
     let isSelected: Bool
     let searchText: String
+    let displayName: String
+    let displayPath: String
+    let redactionEnabled: Bool
     let canTrash: Bool
     let canExclude: Bool
     let onSelect: () -> Void
@@ -262,6 +268,8 @@ private struct StorageItemRow: View, Equatable {
         lhs.item == rhs.item && lhs.isSelected == rhs.isSelected
             && lhs.searchText == rhs.searchText && lhs.canTrash == rhs.canTrash
             && lhs.canExclude == rhs.canExclude
+            && lhs.displayName == rhs.displayName && lhs.displayPath == rhs.displayPath
+            && lhs.redactionEnabled == rhs.redactionEnabled
     }
 
     var body: some View {
@@ -273,15 +281,20 @@ private struct StorageItemRow: View, Equatable {
                         .frame(width: 18)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        HighlightedText(item.name, query: searchText)
-                            .lineLimit(1)
+                        if redactionEnabled {
+                            Text(displayName)
+                                .lineLimit(1)
+                        } else {
+                            HighlightedText(item.name, query: searchText)
+                                .lineLimit(1)
+                        }
 
-                        Text(item.url.path)
+                        Text(displayPath)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .help(item.url.path)
+                            .help(displayPath)
                     }
                 }
                 .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
@@ -307,7 +320,7 @@ private struct StorageItemRow: View, Equatable {
         .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
+        .accessibilityLabel("\(displayName), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint("Selects this storage item")
         .simultaneousGesture(TapGesture(count: 2).onEnded { onOpen() })

@@ -87,6 +87,8 @@ struct CleanupReviewView: View {
                         ForEach(store.cleanupCandidates) { candidate in
                             CleanupCandidateRow(
                                 candidate: candidate,
+                                displayName: store.filters.displayName(for: candidate.item),
+                                displayPath: store.filters.displayPath(for: candidate.item),
                                 isChecked: store.selectedCleanupCandidateIDs.contains(candidate.id),
                                 isSelected: store.selectedItemID == candidate.item.id,
                                 canTrash: store.canMoveItemToTrash(candidate.item),
@@ -292,6 +294,8 @@ private struct CleanupLaneStat: View {
 
 private struct CleanupCandidateRow: View, Equatable {
     let candidate: CleanupCandidate
+    let displayName: String
+    let displayPath: String
     let isChecked: Bool
     let isSelected: Bool
     let canTrash: Bool
@@ -311,6 +315,8 @@ private struct CleanupCandidateRow: View, Equatable {
             && lhs.isSelected == rhs.isSelected
             && lhs.canTrash == rhs.canTrash
             && lhs.canExclude == rhs.canExclude
+            && lhs.displayName == rhs.displayName
+            && lhs.displayPath == rhs.displayPath
     }
 
     var body: some View {
@@ -331,7 +337,7 @@ private struct CleanupCandidateRow: View, Equatable {
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(candidate.item.name)
+                        Text(displayName)
                             .font(.headline)
                             .lineLimit(1)
 
@@ -353,7 +359,7 @@ private struct CleanupCandidateRow: View, Equatable {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
 
-                    Text(candidate.item.url.path)
+                    Text(displayPath)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
@@ -369,7 +375,7 @@ private struct CleanupCandidateRow: View, Equatable {
         .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(candidate.item.name), \(candidate.kind.displayName), \(StorageFormat.bytes(candidate.reclaimableBytes))")
+        .accessibilityLabel("\(displayName), \(candidate.kind.displayName), \(StorageFormat.bytes(candidate.reclaimableBytes))")
         .accessibilityValue(isChecked ? "Selected" : "Not selected")
         .accessibilityHint("Toggles selection for cleanup")
         .contextMenu {
@@ -420,10 +426,10 @@ private struct IgnoredCleanupSection: View {
                                 .foregroundStyle(candidate.confidence.tint)
                                 .frame(width: 22)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(candidate.item.name)
+                                Text(store.filters.displayName(for: candidate.item))
                                     .font(.caption.weight(.semibold))
                                     .lineLimit(1)
-                                Text(candidate.item.url.path)
+                                Text(store.filters.displayPath(for: candidate.item))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)

@@ -84,6 +84,14 @@ struct SettingsView: View {
 
             Divider()
 
+            SettingsSection(title: "Privacy") {
+                Toggle("Redact file & folder names", isOn: store.filterBinding(\.redactionEnabled))
+
+                SettingsFootnote("Replaces file and folder names and paths shown in the app with generic placeholders. Sizes, dates, and counts stay real. Trash, move, and reveal-in-Finder still act on the real files.")
+            }
+
+            Divider()
+
             SettingsSection(title: "Duplicate Hash Cache") {
                 LabeledContent("Stored entries", value: cacheSnapshot.entryCount.formatted())
 

@@ -149,6 +149,7 @@ private struct VerifiedDuplicateGroupCard: View {
 
             DuplicateItemList(
                 items: group.items,
+                filters: store.filters,
                 selectedItemID: store.selectedItemID,
                 keeperItemID: store.keeperItemID(for: group),
                 onSetKeeper: { item in store.setKeeper(itemID: item.id, for: group) },
@@ -239,6 +240,7 @@ private struct DuplicateGroupCard: View {
 
             DuplicateItemList(
                 items: visibleItems,
+                filters: store.filters,
                 selectedItemID: store.selectedItemID,
                 keeperItemID: nil,
                 onSetKeeper: nil,
@@ -256,6 +258,7 @@ private struct DuplicateGroupCard: View {
 
 private struct DuplicateItemList: View {
     let items: [StorageItem]
+    @ObservedObject var filters: FilterStore
     let selectedItemID: String?
     var keeperItemID: String? = nil
     var onSetKeeper: ((StorageItem) -> Void)? = nil
@@ -271,6 +274,8 @@ private struct DuplicateItemList: View {
                 let isKeeper = keeperItemID == item.id
                 DuplicateFileRow(
                     item: item,
+                    displayName: filters.displayName(for: item),
+                    displayParentPath: filters.displayParentPath(for: item),
                     isKeeper: isKeeper,
                     isSelected: selectedItemID == item.id,
                     onSetKeeper: onSetKeeper != nil && !isKeeper ? { onSetKeeper?(item) } : nil
@@ -297,6 +302,8 @@ private struct DuplicateItemList: View {
 
 private struct DuplicateFileRow: View, Equatable {
     let item: StorageItem
+    let displayName: String
+    let displayParentPath: String
     let isKeeper: Bool
     let isSelected: Bool
     var onSetKeeper: (() -> Void)? = nil
@@ -310,6 +317,7 @@ private struct DuplicateFileRow: View, Equatable {
     // Excludes the closures: not Equatable, and freshly allocated per render anyway.
     static func == (lhs: DuplicateFileRow, rhs: DuplicateFileRow) -> Bool {
         lhs.item == rhs.item && lhs.isKeeper == rhs.isKeeper && lhs.isSelected == rhs.isSelected
+            && lhs.displayName == rhs.displayName && lhs.displayParentPath == rhs.displayParentPath
     }
 
     var body: some View {
@@ -317,7 +325,7 @@ private struct DuplicateFileRow: View, Equatable {
             HStack {
                 Image(systemName: "doc.fill")
                     .foregroundStyle(.secondary)
-                Text(item.name)
+                Text(displayName)
                     .lineLimit(1)
                 if isKeeper {
                     Text("Keeper")
@@ -329,7 +337,7 @@ private struct DuplicateFileRow: View, Equatable {
                         .help("Keeper — protected from Trash. Right-click any other copy in this group and choose \"Set as Keeper\" to reassign.")
                 }
                 Spacer()
-                Text(item.url.deletingLastPathComponent().path)
+                Text(displayParentPath)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -342,7 +350,7 @@ private struct DuplicateFileRow: View, Equatable {
         .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))\(isKeeper ? ", keeper" : "")")
+        .accessibilityLabel("\(displayName), file, \(StorageFormat.bytes(item.displaySize))\(isKeeper ? ", keeper" : "")")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint(isKeeper
             ? "Keeper copy — protected from Trash. Use another row's menu to reassign keeper."
