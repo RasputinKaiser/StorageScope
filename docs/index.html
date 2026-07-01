@@ -22,7 +22,7 @@
     "name": "StorageScope",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "macOS 14+",
-    "softwareVersion": "0.6.0",
+    "softwareVersion": "0.7.0",
     "datePublished": "2026-06-21",
     "dateModified": "2026-06-22",
     "programmingLanguage": "Swift",
@@ -646,7 +646,7 @@
       <div>
         <div class="hero-eyebrow">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="currentColor" opacity=".25"/><circle cx="6" cy="6" r="3" fill="currentColor"/></svg>
-          Free &amp; Open Source · v0.6.0
+          Free &amp; Open Source · v0.7.0
         </div>
         <h1>StorageScope</h1>
         <p class="lede">
@@ -654,9 +654,9 @@
           stale files, and verified duplicates — all processed locally, nothing uploaded.
         </p>
         <div class="actions">
-          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.6.0/StorageScope-0.6.0.dmg">
+          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 11.5L3.5 7H6V2h4v5h2.5L8 11.5Z" fill="white"/><rect x="2" y="13" width="12" height="1.5" rx=".75" fill="white"/></svg>
-            Download v0.6.0
+            Download v0.7.0
           </a>
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -667,7 +667,7 @@
         <p class="actions-note">
           macOS 14+ required
           <span class="divider">·</span>
-          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.6.0/StorageScope-0.6.0.dmg.sha256">SHA-256 checksum</a>
+          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg.sha256">SHA-256 checksum</a>
           <span class="divider">·</span>
           <a href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
         </p>
@@ -679,13 +679,14 @@
   </div>
 
   <main>
-    <section class="whats-new" aria-label="What's new in v0.6.0">
-      <p class="whats-new-heading">What's new in <span class="version-tag">v0.6.0</span></p>
+    <section class="whats-new" aria-label="What's new in v0.7.0">
+      <p class="whats-new-heading">What's new in <span class="version-tag">v0.7.0</span></p>
       <ul class="pill-list">
-        <li>Visual refresh: welcome hero, inspector redesign with tinted icon header, card radius 12, hover states across list rows, smooth view transitions</li>
-        <li>Storage Map unified into a single card with divider rows; metric cards use tabular figures and an opaque material</li>
-        <li>Performance: StorageItemRow, DuplicateItemRow, CleanupCandidateRow adopted <code>Equatable</code> so SwiftUI skips diff/recompute for identity-equal rows</li>
-        <li>WelcomeView extracted into its own module (<a href="https://github.com/RasputinKaiser/StorageScope/pull/90">#90</a>) and empty-state ownership moved from ContentView into DetailView</li>
+        <li>Folder exclusion list (node_modules, .git, caches by default) with an on/off toggle and a right-click "Exclude This Folder" action</li>
+        <li>Live streaming results: list views populate and re-rank during a scan instead of waiting for it to finish</li>
+        <li>Cancel keeps partial results — a cancelled scan stays browsable instead of resetting to empty</li>
+        <li>In-memory pause/resume for long scans, plus a live items/sec and elapsed-time readout</li>
+        <li>Redaction toggle: mask file and folder names in the UI with stable per-session placeholders, for screen-sharing or screenshots</li>
       </ul>
     </section>
 
@@ -794,7 +795,7 @@
         <span class="divider">·</span>
         <a href="architecture.html">Architecture</a>
       </div>
-      <div>v0.6.0 · macOS 14+ · SwiftUI/AppKit</div>
+      <div>v0.7.0 · macOS 14+ · SwiftUI/AppKit</div>
     </footer>
   </main>
 
