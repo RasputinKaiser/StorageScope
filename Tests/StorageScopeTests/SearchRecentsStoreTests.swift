@@ -118,12 +118,15 @@ struct SearchRecentsStoreTests {
         // Pin the in-flux state to prove it hasn't propagated yet.
         #expect(filters.query == "")
 
-        // Poll up to 2s for the 200ms debounce + main-actor hop to fire. A
+        // Poll up to 5s for the 200ms debounce + main-actor hop to fire. A
         // one-shot sleep sized for the happy path flakes on a loaded CI runner
         // where the cooperative pool hasn't scheduled the debounce task within
         // the grace window; polling lets a slow hop still land while preserving
         // the test's strict assertion that only the final "apple" snapshot wins.
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        // A prior 2s deadline still flaked in GitHub Actions (StorageScope #113/#114) —
+        // the observed failure ran 2.778s total, just past the 2s budget, so 5s
+        // buys real headroom over a runner hiccup rather than another near-miss.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while filters.query != "apple" && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
