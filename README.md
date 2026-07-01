@@ -10,7 +10,19 @@ The app scans only folders the user grants through macOS folder selection or sto
 
 The name is intentional: StorageScope is not a black-box cleaner. It scopes storage pressure, separates verified duplicates from review-only suggestions, and helps the user decide what to reclaim.
 
-![StorageScope overview](docs/images/storagescope-overview.png)
+**Current release:** v0.7.0, focused on scan control, live results, pause/resume, folder exclusions, and redacted presentation mode for screen sharing.
+
+[Download v0.7.0](https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg) · [Changelog](docs/changelog.html) · [Privacy](PRIVACY.md) · [GitHub Pages](https://rasputinkaiser.github.io/StorageScope/)
+
+![StorageScope v0.7.0 overview with redacted file and folder names](docs/images/storagescope-overview.png)
+
+## What's New In v0.7.0
+
+- Live scan results stream into the storage views while the scan is still running.
+- Pause, resume, and cancel controls keep long scans understandable and interruptible.
+- Folder exclusions let scans skip folders such as `node_modules`, `.git`, and cache directories entirely.
+- Redaction mode masks file and folder names/paths with stable placeholders for screenshots and screen sharing.
+- Cleanup Review keeps verified duplicate reclaim separate from review-only cleanup suggestions.
 
 ## Highlights
 
@@ -23,6 +35,18 @@ The name is intentional: StorageScope is not a black-box cleaner. It scopes stor
 - Confirmed file actions for Reveal in Finder, Open, Copy Path, and Move to Trash.
 - Transactional cleanup batches that collapse nested selections, disclose mixed-confidence risk, use macOS Trash APIs, and roll back earlier moves if a later move fails.
 - Broad-scan memory controls that retain a bounded UI tree while preserving full-scan summary results.
+
+## Screenshots
+
+The screenshots below were captured from the v0.7.0 macOS build with redaction mode enabled, so placeholder names are visible while sizes, counts, and cleanup classifications remain real.
+
+| Overview | Cleanup Review |
+| --- | --- |
+| ![StorageScope overview showing reclaim lanes and redacted folder names](docs/images/storagescope-v070-overview-redacted.png) | ![StorageScope cleanup review showing verified duplicate reclaim and redacted file names](docs/images/storagescope-v070-cleanup-redacted.png) |
+
+| Privacy Setting |
+| --- |
+| ![StorageScope settings showing the Redact file and folder names toggle enabled](docs/images/storagescope-v070-settings-redaction.png) |
 
 ## Use Cases
 
