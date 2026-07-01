@@ -73,7 +73,7 @@
     <section class="release">
       <h2>v0.7.0 &mdash; Scan Control and Privacy</h2>
       <div class="meta">Released 2026-07-01 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.7.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg">download .dmg</a></div>
-      <p>Scan control and privacy release. Adds a folder exclusion list so scans can skip <code>node_modules</code>, <code>.git</code>, and cache directories entirely; results now stream into list views live during a scan instead of only appearing at the end; cancelling a scan keeps its partial results browsable instead of discarding them; scans can be paused and resumed in place, with a live items/sec and elapsed-time readout; and a new redaction toggle masks file/folder names in the UI for screen-sharing.</p>
+      <p>Scan control and privacy release. Adds a folder exclusion list so scans can skip <code>node_modules</code>, <code>.git</code>, and cache directories entirely; results now stream into list views live during a scan instead of only appearing at the end; cancelling a scan keeps its partial results browsable instead of discarding them; scans can be paused and resumed in place, with a live items/sec and elapsed-time readout; and a new redaction toggle masks file/folder names in the UI for screen-sharing. Interface rendering also got faster: cached type breakdowns, cheaper size bars, and less main-thread disk I/O.</p>
 
       <h3>Scan control</h3>
       <ul>
@@ -87,6 +87,15 @@
       <h3>Privacy</h3>
       <ul>
         <li><strong>Redaction toggle</strong> &mdash; a new Settings section masks file and folder names/paths across the UI with stable, per-session generic placeholders (e.g. "File 3.mp4", "Folder 1") while keeping sizes, dates, and counts real. Trash/move/reveal actions are unaffected since only display text is masked.</li>
+      </ul>
+
+      <h3>Interface performance</h3>
+      <ul>
+        <li><strong>Canvas size bars</strong> &mdash; the proportional size bars in Tree Explorer, Type Breakdown, and the Overview storage map are now drawn with a shared <code>Canvas</code> view instead of a per-row <code>GeometryReader</code>, removing an extra layout pass for every visible row on large expanded trees.</li>
+        <li><strong>Cached type breakdowns</strong> &mdash; the File Type Breakdown and Category Mix lists cache per scan + search query instead of re-filtering every extension on every render while typing.</li>
+        <li><strong>O(1) Expand All enablement</strong> &mdash; the Tree Explorer toolbar no longer re-walks the entire retained tree on every selection or expansion change to decide whether "Expand All" applies; container IDs are cached per scan.</li>
+        <li><strong>Cached volume capacity</strong> &mdash; the sidebar Volumes section no longer performs synchronous disk I/O on every render to show "free of total" capacity; values cache per volume and refresh with the volume list.</li>
+        <li><strong>Lighter list dividers</strong> &mdash; row lists no longer allocate an enumerated tuple array per render just to skip the trailing divider.</li>
       </ul>
     </section>
 

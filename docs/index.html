@@ -15,6 +15,9 @@
   <meta name="twitter:title" content="StorageScope - Free macOS disk space analyzer">
   <meta name="twitter:image" content="https://rasputinkaiser.github.io/StorageScope/images/storagescope-overview.png">
   <link rel="icon" type="image/png" href="images/storagescope-overview.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -24,7 +27,7 @@
     "operatingSystem": "macOS 14+",
     "softwareVersion": "0.7.0",
     "datePublished": "2026-06-21",
-    "dateModified": "2026-06-22",
+    "dateModified": "2026-07-01",
     "programmingLanguage": "Swift",
     "license": "https://opensource.org/license/mit",
     "description": "Free open-source macOS disk space analyzer and Mac storage cleaner for large folders, stale files, duplicate review, and local-first cleanup planning.",
@@ -39,54 +42,47 @@
   </script>
   <style>
     :root {
-      color-scheme: light dark;
-      --accent: #0a84ff;
-      --accent-hover: #0070e0;
-      --accent-glow: rgba(10, 132, 255, 0.18);
-      --text: #1d1d1f;
-      --muted: #6e6e73;
-      --subtle: #86868b;
-      --bg: #f5f5f7;
-      --panel: #ffffff;
-      --panel-raised: #ffffff;
-      --border: #d8dee4;
-      --border-light: #e8eaed;
-      --img-outline: rgba(0, 0, 0, 0.08);
-      --hero-grad-start: #f0f6ff;
-      --hero-grad-end: #f5f5f7;
-      --pill-bg: #eef4ff;
-      --pill-border: #c5d9f7;
-      --pill-text: #1a56c4;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --text: #f5f5f7;
-        --muted: #a1a1a6;
-        --subtle: #86868b;
-        --bg: #0d0d0f;
-        --panel: #1c1c1e;
-        --panel-raised: #252528;
-        --border: #2c2c2e;
-        --border-light: #2c2c2e;
-        --img-outline: rgba(255, 255, 255, 0.06);
-        --hero-grad-start: #0d1829;
-        --hero-grad-end: #0d0d0f;
-        --pill-bg: rgba(10, 132, 255, 0.12);
-        --pill-border: rgba(10, 132, 255, 0.3);
-        --pill-text: #6eb3ff;
-      }
+      color-scheme: dark;
+      --ink: #0a0d14;
+      --surface: #11172290;
+      --surface-solid: #131a28;
+      --surface-2: #1a2133;
+      --line: #222c44;
+      --line-soft: #1a2338;
+      --text: #e9edf6;
+      --muted: #9aa3ba;
+      --faint: #6b7490;
+      --blue: #56a0ff;
+      --blue-deep: #2f7de8;
+      --amber: #ffb454;
+      --violet: #b18cff;
+      --green: #6fd08c;
+      --teal: #45c8bb;
+      --rose: #ff7d88;
+      --mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+      --display: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
     }
 
     * { box-sizing: border-box; }
 
+    html { scroll-behavior: smooth; }
+
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
-      background: var(--bg);
+      font-family: var(--body);
+      background: var(--ink);
       color: var(--text);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+    }
+
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+      border-radius: 6px;
     }
 
     /* ── Nav ── */
@@ -94,147 +90,144 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      background: rgba(245, 245, 247, 0.82);
-      backdrop-filter: saturate(180%) blur(20px);
-      -webkit-backdrop-filter: saturate(180%) blur(20px);
-      border-bottom: 1px solid var(--border-light);
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .site-nav {
-        background: rgba(13, 13, 15, 0.82);
-        border-bottom-color: var(--border);
-      }
+      background: rgba(10, 13, 20, 0.78);
+      backdrop-filter: saturate(160%) blur(18px);
+      -webkit-backdrop-filter: saturate(160%) blur(18px);
+      border-bottom: 1px solid var(--line-soft);
     }
 
     .nav-inner {
-      max-width: 1120px;
+      max-width: 1140px;
       margin: 0 auto;
       padding: 0 24px;
-      height: 52px;
+      height: 56px;
       display: flex;
       align-items: center;
       gap: 24px;
     }
 
-    .site-nav .brand {
-      font-weight: 700;
-      font-size: 1rem;
+    .brand {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 8px;
       color: var(--text);
       text-decoration: none;
-      letter-spacing: -0.01em;
       flex-shrink: 0;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 1.02rem;
+      letter-spacing: -0.01em;
+    }
+
+    .brand .ver {
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 0.72rem;
+      color: var(--blue);
+      background: rgba(86, 160, 255, 0.10);
+      border: 1px solid rgba(86, 160, 255, 0.28);
+      padding: 1px 7px;
+      border-radius: 999px;
     }
 
     .site-nav nav {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      gap: 2px;
       margin-left: auto;
     }
 
     .site-nav nav a {
       color: var(--muted);
       text-decoration: none;
-      font-size: 0.875rem;
-      padding: 5px 10px;
-      border-radius: 6px;
+      font-size: 0.86rem;
+      padding: 6px 10px;
+      border-radius: 7px;
       transition: color 150ms ease, background 150ms ease;
     }
 
     .site-nav nav a:hover {
       color: var(--text);
-      background: rgba(0,0,0,0.05);
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .site-nav nav a:hover {
-        background: rgba(255,255,255,0.07);
-      }
+      background: rgba(255, 255, 255, 0.06);
     }
 
     /* ── Layout ── */
     main {
-      max-width: 1120px;
+      max-width: 1140px;
       margin: 0 auto;
-      padding: 0 24px 80px;
+      padding: 0 24px 88px;
     }
 
     /* ── Hero ── */
     .hero-wrap {
-      background: linear-gradient(160deg, var(--hero-grad-start) 0%, var(--hero-grad-end) 55%);
-      margin: 0 -24px;
-      padding: 72px 24px 64px;
       position: relative;
       overflow: hidden;
-    }
-
-    .hero-wrap::before {
-      content: "";
-      position: absolute;
-      top: -80px;
-      right: -60px;
-      width: 420px;
-      height: 420px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(10,132,255,0.10) 0%, transparent 70%);
-      pointer-events: none;
+      border-bottom: 1px solid var(--line-soft);
+      background:
+        radial-gradient(1100px 480px at 78% -10%, rgba(47, 125, 232, 0.16) 0%, transparent 60%),
+        radial-gradient(700px 380px at 12% 108%, rgba(177, 140, 255, 0.07) 0%, transparent 60%);
     }
 
     .hero {
-      max-width: 1072px;
+      max-width: 1140px;
       margin: 0 auto;
+      padding: 84px 24px 72px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(340px, 1.4fr);
-      gap: 48px;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 1.15fr);
+      gap: 56px;
       align-items: center;
-      position: relative;
     }
 
     .hero-eyebrow {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--accent);
-      background: var(--pill-bg);
-      border: 1px solid var(--pill-border);
-      padding: 4px 10px;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      font-weight: 500;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 5px 12px;
       border-radius: 999px;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
+    }
+
+    .hero-eyebrow .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px rgba(111, 208, 140, 0.8);
+    }
+
+    .hero-eyebrow strong {
+      color: var(--text);
+      font-weight: 600;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(2.6rem, 5.5vw, 4.5rem);
-      line-height: 1;
-      letter-spacing: -0.03em;
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(2.5rem, 5.2vw, 3.9rem);
+      line-height: 1.02;
+      letter-spacing: -0.035em;
       text-wrap: balance;
-      background: linear-gradient(135deg, var(--text) 40%, var(--muted) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
     }
 
-    @media (prefers-color-scheme: dark) {
-      h1 {
-        background: linear-gradient(135deg, #f5f5f7 40%, #86868b 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
-    }
+    h1 .accent { color: var(--blue); }
 
     .lede {
       color: var(--muted);
-      font-size: 1.15rem;
-      line-height: 1.6;
-      margin: 20px 0 28px;
+      font-size: 1.08rem;
+      line-height: 1.65;
+      margin: 22px 0 30px;
+      max-width: 46ch;
       text-wrap: pretty;
     }
+
+    .lede strong { color: var(--text); font-weight: 600; }
 
     .actions {
       display: flex;
@@ -242,132 +235,297 @@
       gap: 10px;
     }
 
-    .actions-note {
-      margin: 14px 0 0;
-      color: var(--subtle);
-      font-size: 0.85rem;
-    }
-
-    .actions-note a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    .actions-note a:hover { text-decoration: underline; }
-
     a.button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      min-height: 44px;
-      padding: 0 20px;
-      border-radius: 10px;
+      gap: 8px;
+      min-height: 46px;
+      padding: 0 22px;
+      border-radius: 11px;
       text-decoration: none;
       font-weight: 600;
-      font-size: 0.925rem;
-      border: 1px solid var(--border);
+      font-size: 0.94rem;
+      border: 1px solid var(--line);
       color: var(--text);
-      background: var(--panel);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 1px rgba(0,0,0,0.04);
-      transition: transform 120ms cubic-bezier(0.2,0,0,1), box-shadow 120ms ease;
+      background: var(--surface-solid);
+      transition: transform 130ms cubic-bezier(0.2, 0, 0, 1), border-color 130ms ease, background 130ms ease, box-shadow 130ms ease;
     }
 
     a.button:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+      border-color: #33415f;
+      background: var(--surface-2);
       transform: translateY(-1px);
     }
 
-    a.button:active { transform: scale(0.97); box-shadow: none; }
+    a.button:active { transform: scale(0.97); }
 
     a.primary {
-      background: var(--accent);
+      background: linear-gradient(180deg, var(--blue) 0%, var(--blue-deep) 100%);
       border-color: transparent;
       color: #fff;
-      box-shadow: 0 2px 8px rgba(10,132,255,0.30), 0 1px 2px rgba(10,132,255,0.20);
+      box-shadow: 0 2px 14px rgba(47, 125, 232, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.18);
     }
 
     a.primary:hover {
-      background: var(--accent-hover);
-      box-shadow: 0 6px 20px rgba(10,132,255,0.35), 0 2px 6px rgba(10,132,255,0.20);
+      background: linear-gradient(180deg, #6cadff 0%, #3a87ef 100%);
+      box-shadow: 0 6px 22px rgba(47, 125, 232, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.18);
     }
 
-    .screenshot-wrap {
-      position: relative;
+    .actions-note {
+      margin: 16px 0 0;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 0.76rem;
     }
 
-    .screenshot {
-      width: 100%;
+    .actions-note a { color: var(--muted); text-decoration: none; }
+    .actions-note a:hover { color: var(--blue); }
+    .divider { margin: 0 6px; opacity: 0.45; }
+
+    /* ── Scan window (signature) ── */
+    .scan-window {
+      background: var(--surface-solid);
+      border: 1px solid var(--line);
       border-radius: 14px;
-      border: 1px solid var(--img-outline);
       box-shadow:
-        0 0 0 1px rgba(255,255,255,0.06),
-        0 24px 60px rgba(0, 0, 0, 0.18),
-        0 8px 20px rgba(0, 0, 0, 0.12);
-      display: block;
+        0 0 0 1px rgba(255, 255, 255, 0.03),
+        0 30px 70px rgba(0, 0, 0, 0.55),
+        0 10px 24px rgba(0, 0, 0, 0.4);
+      overflow: hidden;
+      font-family: var(--mono);
     }
 
-    /* ── What's New ── */
-    .whats-new {
-      margin: 40px 0 0;
-      padding: 20px 24px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    .scan-chrome {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(255, 255, 255, 0.02);
     }
 
-    .whats-new-heading {
-      margin: 0 0 12px;
-      font-size: 0.875rem;
+    .scan-chrome .dots { display: flex; gap: 6px; flex-shrink: 0; }
+    .scan-chrome .dots span {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #2c3550;
+    }
+
+    .scan-title {
+      font-size: 0.72rem;
+      color: var(--faint);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .scan-title strong { color: var(--muted); font-weight: 500; }
+
+    .scan-rows { padding: 8px 14px 6px; }
+
+    .scan-row {
+      display: grid;
+      grid-template-columns: minmax(0, 34%) minmax(0, 1fr) 74px;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 2px;
+    }
+
+    .scan-row + .scan-row { border-top: 1px solid var(--line-soft); }
+
+    .scan-name {
+      font-size: 0.76rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .scan-name .path { color: var(--faint); }
+
+    .scan-bytes {
+      font-size: 0.74rem;
       color: var(--muted);
-      font-weight: 600;
-      letter-spacing: 0.01em;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
     }
 
-    .whats-new-heading .version-tag {
-      color: var(--accent);
+    .bar {
+      height: 9px;
+      border-radius: 5px;
+      background: #1b2338;
+      overflow: hidden;
     }
 
-    .pill-list {
+    .bar i {
+      display: block;
+      height: 100%;
+      border-radius: 5px;
+      width: var(--w);
+      background: var(--bar-color, var(--blue));
+      animation: grow 900ms cubic-bezier(0.2, 0.6, 0.2, 1) both;
+      animation-delay: var(--d, 0ms);
+      transform-origin: left center;
+    }
+
+    @keyframes grow {
+      from { transform: scaleX(0); }
+      to { transform: scaleX(1); }
+    }
+
+    .scan-footer {
       display: flex;
       flex-wrap: wrap;
-      gap: 7px;
-      padding: 0;
-      margin: 0;
-      list-style: none;
+      align-items: center;
+      gap: 8px 14px;
+      padding: 11px 14px;
+      border-top: 1px solid var(--line-soft);
+      background: rgba(255, 255, 255, 0.02);
+      font-size: 0.72rem;
+      color: var(--muted);
     }
 
-    .pill-list li {
+    .chip {
       display: inline-flex;
       align-items: center;
-      padding: 5px 11px;
+      gap: 6px;
+      padding: 3px 10px;
       border-radius: 999px;
-      border: 1px solid var(--pill-border);
-      background: var(--pill-bg);
-      color: var(--pill-text);
-      font-size: 0.82rem;
+      font-size: 0.7rem;
       font-weight: 500;
-      line-height: 1.3;
+      border: 1px solid;
     }
 
-    /* ── Feature Grid ── */
+    .chip.verified {
+      color: var(--green);
+      border-color: rgba(111, 208, 140, 0.35);
+      background: rgba(111, 208, 140, 0.08);
+    }
+
+    .chip.review {
+      color: var(--amber);
+      border-color: rgba(255, 180, 84, 0.35);
+      background: rgba(255, 180, 84, 0.08);
+    }
+
+    .scan-footer .reclaim { margin-left: auto; color: var(--text); }
+
+    /* ── Sections ── */
     .section-label {
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      font-weight: 500;
+      letter-spacing: 0.09em;
       text-transform: uppercase;
-      color: var(--accent);
-      margin: 56px 0 6px;
+      color: var(--blue);
+      margin: 72px 0 8px;
     }
 
     .section-title {
-      margin: 0 0 20px;
-      font-size: 1.7rem;
+      margin: 0 0 8px;
+      font-family: var(--display);
       font-weight: 700;
-      letter-spacing: -0.02em;
+      font-size: clamp(1.5rem, 2.6vw, 2rem);
+      letter-spacing: -0.025em;
+      text-wrap: balance;
     }
 
+    .section-sub {
+      margin: 0 0 28px;
+      color: var(--muted);
+      max-width: 62ch;
+      text-wrap: pretty;
+    }
+
+    .section-sub a { color: var(--blue); text-decoration: none; }
+    .section-sub a:hover { text-decoration: underline; }
+
+    /* ── What's new ── */
+    .whats-new {
+      margin-top: 56px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface-solid);
+      overflow: hidden;
+    }
+
+    .whats-new-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .whats-new-head .tag {
+      font-family: var(--mono);
+      font-weight: 600;
+      font-size: 0.78rem;
+      color: var(--blue);
+    }
+
+    .whats-new-head h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .whats-new-head a {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    .whats-new-head a:hover { color: var(--blue); }
+
+    .whats-new-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line-soft);
+    }
+
+    .new-item {
+      background: var(--surface-solid);
+      padding: 16px 20px;
+    }
+
+    .new-item h3 {
+      margin: 0 0 5px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .new-item h3::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 2px;
+      background: var(--mark, var(--blue));
+      flex-shrink: 0;
+    }
+
+    .new-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.55;
+      text-wrap: pretty;
+    }
+
+    /* ── Features ── */
     .grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -375,138 +533,120 @@
     }
 
     .feat-card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 22px 22px 20px;
-      transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+      background: var(--surface-solid);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 22px;
+      transition: border-color 150ms ease, transform 150ms ease;
     }
 
     .feat-card:hover {
+      border-color: #33415f;
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-      border-color: var(--accent);
     }
 
-    .feat-icon {
-      font-size: 1.5rem;
-      line-height: 1;
-      margin-bottom: 12px;
-      display: block;
+    .feat-mark {
+      display: inline-block;
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      margin-bottom: 14px;
+      background: color-mix(in srgb, var(--mark) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--mark) 34%, transparent);
+      position: relative;
     }
 
-    .feat-card h2 {
+    .feat-mark::after {
+      content: "";
+      position: absolute;
+      inset: 11px;
+      border-radius: 3px;
+      background: var(--mark);
+    }
+
+    .feat-card h3 {
       margin: 0 0 8px;
-      font-size: 0.975rem;
-      font-weight: 650;
-      letter-spacing: -0.01em;
+      font-family: var(--display);
+      font-size: 0.98rem;
+      font-weight: 700;
+      letter-spacing: -0.015em;
     }
 
     .feat-card p {
       margin: 0;
       color: var(--muted);
-      font-size: 0.9rem;
-      line-height: 1.55;
+      font-size: 0.89rem;
+      line-height: 1.6;
       text-wrap: pretty;
     }
 
-    /* ── How it works ── */
+    /* ── Steps ── */
     .steps {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
-      position: relative;
-    }
-
-    .steps::before {
-      content: "";
-      position: absolute;
-      top: 26px;
-      left: calc(33.33% - 14px);
-      right: calc(33.33% - 14px);
-      height: 1px;
-      background: linear-gradient(90deg, var(--border), var(--accent), var(--border));
-      opacity: 0.5;
     }
 
     .step {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      background: var(--surface-solid);
+      border: 1px solid var(--line);
+      border-radius: 13px;
       padding: 22px;
-      position: relative;
     }
 
     .step .num {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: var(--accent);
-      color: white;
-      font-weight: 700;
-      font-size: 0.875rem;
-      margin-bottom: 14px;
-      box-shadow: 0 2px 8px rgba(10,132,255,0.3);
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--blue);
+      display: block;
+      margin-bottom: 12px;
     }
 
-    .step h2 {
+    .step h3 {
       margin: 0 0 8px;
-      font-size: 0.975rem;
-      font-weight: 650;
+      font-family: var(--display);
+      font-size: 0.98rem;
+      font-weight: 700;
+      letter-spacing: -0.015em;
     }
 
     .step p {
       margin: 0;
       color: var(--muted);
-      font-size: 0.9rem;
-      line-height: 1.55;
+      font-size: 0.89rem;
+      line-height: 1.6;
     }
 
     /* ── Privacy ── */
     .privacy {
-      margin-top: 14px;
-      padding: 28px 28px 24px;
-      background: linear-gradient(135deg, rgba(10,132,255,0.04) 0%, var(--panel) 60%);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
-
-    .privacy-header {
-      display: flex;
-      align-items: flex-start;
-      gap: 14px;
-      margin-bottom: 16px;
-    }
-
-    .privacy-icon {
-      font-size: 1.8rem;
-      line-height: 1;
-      flex-shrink: 0;
-      margin-top: 2px;
+      border: 1px solid rgba(111, 208, 140, 0.22);
+      border-radius: 14px;
+      background:
+        radial-gradient(600px 220px at 8% 0%, rgba(111, 208, 140, 0.07) 0%, transparent 60%),
+        var(--surface-solid);
+      padding: 30px;
     }
 
     .privacy h2 {
-      margin: 0 0 4px;
-      font-size: 1.15rem;
+      margin: 0 0 6px;
+      font-family: var(--display);
+      font-size: 1.35rem;
       font-weight: 700;
-      letter-spacing: -0.01em;
+      letter-spacing: -0.02em;
     }
 
     .privacy-subtitle {
       color: var(--muted);
-      font-size: 0.9rem;
-      margin: 0;
+      margin: 0 0 20px;
+      max-width: 64ch;
     }
 
     .privacy-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      padding-left: 0;
+      gap: 10px 24px;
+      padding: 0;
       margin: 0;
       list-style: none;
     }
@@ -514,33 +654,33 @@
     .privacy-grid li {
       display: flex;
       align-items: flex-start;
-      gap: 8px;
+      gap: 10px;
       font-size: 0.9rem;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.55;
     }
 
     .privacy-grid li::before {
       content: "✓";
-      color: var(--accent);
+      color: var(--green);
       font-weight: 700;
       flex-shrink: 0;
-      margin-top: 1px;
+    }
+
+    /* ── Screenshot ── */
+    .shot {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.35);
+      display: block;
     }
 
     /* ── Links ── */
-    .links h2 {
-      font-size: 1rem;
-      font-weight: 650;
-      margin: 0 0 12px;
-      color: var(--muted);
-      letter-spacing: 0.01em;
-    }
-
     .links ul {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
+      gap: 10px;
       padding: 0;
       margin: 0;
       list-style: none;
@@ -549,37 +689,35 @@
     .links li a {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 10px 14px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 9px;
+      gap: 8px;
+      padding: 13px 16px;
+      background: var(--surface-solid);
+      border: 1px solid var(--line);
+      border-radius: 11px;
       color: var(--text);
       text-decoration: none;
       font-size: 0.9rem;
       font-weight: 500;
-      transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+      transition: border-color 150ms ease, transform 150ms ease;
     }
 
     .links li a::after {
       content: "→";
-      color: var(--muted);
+      color: var(--faint);
       margin-left: auto;
+      transition: transform 150ms ease, color 150ms ease;
     }
 
-    .links li a:hover {
-      border-color: var(--accent);
-      box-shadow: 0 2px 8px rgba(10,132,255,0.10);
-      transform: translateX(2px);
-    }
+    .links li a:hover { border-color: #33415f; }
+    .links li a:hover::after { transform: translateX(3px); color: var(--blue); }
 
     /* ── Footer ── */
     footer.site-footer {
-      margin-top: 60px;
-      padding-top: 24px;
-      border-top: 1px solid var(--border);
-      color: var(--subtle);
-      font-size: 0.875rem;
+      margin-top: 72px;
+      padding-top: 26px;
+      border-top: 1px solid var(--line-soft);
+      color: var(--faint);
+      font-size: 0.85rem;
       display: flex;
       flex-wrap: wrap;
       gap: 8px 16px;
@@ -592,36 +730,32 @@
       transition: color 150ms ease;
     }
 
-    footer.site-footer a:hover { color: var(--accent); }
+    footer.site-footer a:hover { color: var(--blue); }
 
-    .divider { margin: 0 4px; opacity: 0.4; }
-
-    /* ── Spacing utilities ── */
-    .mt-section { margin-top: 56px; }
+    footer .mono { font-family: var(--mono); font-size: 0.76rem; }
 
     /* ── Responsive ── */
-    @media (max-width: 860px) {
-      .hero-wrap { padding: 48px 24px 40px; }
-
-      .hero,
-      .grid,
-      .steps {
+    @media (max-width: 920px) {
+      .hero {
         grid-template-columns: 1fr;
+        gap: 44px;
+        padding: 56px 24px 52px;
       }
 
-      .hero { gap: 32px; }
-
-      .steps::before { display: none; }
-
-      .privacy-grid,
-      .links ul { grid-template-columns: 1fr; }
-
-      .site-nav nav { gap: 2px; }
-      .site-nav nav a { font-size: 0.82rem; padding: 4px 8px; }
+      .grid, .steps, .whats-new-grid { grid-template-columns: 1fr; }
+      .privacy-grid, .links ul { grid-template-columns: 1fr; }
+      .site-nav nav a { font-size: 0.8rem; padding: 5px 8px; }
     }
 
-    @media (max-width: 540px) {
+    @media (max-width: 560px) {
       .site-nav nav { display: none; }
+      .scan-row { grid-template-columns: minmax(0, 42%) minmax(0, 1fr) 64px; gap: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .bar i { animation: none; }
+      a.button, .feat-card, .links li a { transition: none; }
     }
   </style>
 </head>
@@ -629,7 +763,7 @@
 
   <div class="site-nav" role="banner">
     <div class="nav-inner">
-      <a class="brand" href="./">StorageScope</a>
+      <a class="brand" href="./">StorageScope <span class="ver">v0.7.0</span></a>
       <nav aria-label="Site navigation">
         <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
@@ -644,14 +778,12 @@
   <div class="hero-wrap">
     <div class="hero">
       <div>
-        <div class="hero-eyebrow">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="currentColor" opacity=".25"/><circle cx="6" cy="6" r="3" fill="currentColor"/></svg>
-          Free &amp; Open Source · v0.7.0
-        </div>
-        <h1>StorageScope</h1>
+        <p class="hero-eyebrow"><span class="dot" aria-hidden="true"></span> Free &amp; open source · <strong>MIT</strong> · macOS 14+</p>
+        <h1>See what's eating <span class="accent">your disk.</span></h1>
         <p class="lede">
-          A free, open-source macOS disk space analyzer. Find large folders,
-          stale files, and verified duplicates — all processed locally, nothing uploaded.
+          StorageScope is a free, open-source disk space analyzer for macOS.
+          It ranks large folders, stale files, and <strong>SHA-256-verified duplicates</strong>,
+          then plans cleanup you confirm — <strong>without uploading a byte</strong>.
         </p>
         <div class="actions">
           <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg">
@@ -665,110 +797,175 @@
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
         </div>
         <p class="actions-note">
-          macOS 14+ required
+          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg.sha256">sha256 checksum</a>
           <span class="divider">·</span>
-          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg.sha256">SHA-256 checksum</a>
+          <a href="https://github.com/RasputinKaiser/StorageScope/releases">all releases</a>
           <span class="divider">·</span>
-          <a href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
+          <a href="privacy.html">privacy</a>
         </p>
       </div>
-      <div class="screenshot-wrap">
-        <img class="screenshot" src="images/storagescope-overview.png" alt="StorageScope macOS disk space analyzer showing storage views, cleanup review, folder tree, and inspector panes">
+
+      <div class="scan-window" role="img" aria-label="Illustration of a StorageScope scan: ranked folders with proportional size bars, plus verified duplicate groups found">
+        <div class="scan-chrome">
+          <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+          <p class="scan-title"><strong>Scanning ~</strong> · 412,384 items · 91,240 items/s</p>
+        </div>
+        <div class="scan-rows">
+          <div class="scan-row">
+            <span class="scan-name"><span class="path">~/</span>Movies</span>
+            <span class="bar"><i style="--w: 96%; --d: 60ms; --bar-color: var(--violet)"></i></span>
+            <span class="scan-bytes">64.5 GB</span>
+          </div>
+          <div class="scan-row">
+            <span class="scan-name"><span class="path">~/Library/…/</span>Docker.raw</span>
+            <span class="bar"><i style="--w: 88%; --d: 140ms; --bar-color: var(--blue)"></i></span>
+            <span class="scan-bytes">59.4 GB</span>
+          </div>
+          <div class="scan-row">
+            <span class="scan-name"><span class="path">~/Pictures/</span>Photos Library</span>
+            <span class="bar"><i style="--w: 71%; --d: 220ms; --bar-color: var(--green)"></i></span>
+            <span class="scan-bytes">48.1 GB</span>
+          </div>
+          <div class="scan-row">
+            <span class="scan-name"><span class="path">~/Library/</span>Caches</span>
+            <span class="bar"><i style="--w: 57%; --d: 300ms; --bar-color: var(--rose)"></i></span>
+            <span class="scan-bytes">38.2 GB</span>
+          </div>
+          <div class="scan-row">
+            <span class="scan-name"><span class="path">~/Library/…/</span>DerivedData</span>
+            <span class="bar"><i style="--w: 33%; --d: 380ms; --bar-color: var(--amber)"></i></span>
+            <span class="scan-bytes">21.7 GB</span>
+          </div>
+          <div class="scan-row">
+            <span class="scan-name"><span class="path">~/dev/…/</span>node_modules</span>
+            <span class="bar"><i style="--w: 20%; --d: 460ms; --bar-color: var(--amber)"></i></span>
+            <span class="scan-bytes">12.9 GB</span>
+          </div>
+          <div class="scan-row">
+            <span class="scan-name"><span class="path">~/</span>Downloads</span>
+            <span class="bar"><i style="--w: 14%; --d: 540ms; --bar-color: var(--teal)"></i></span>
+            <span class="scan-bytes">9.3 GB</span>
+          </div>
+        </div>
+        <div class="scan-footer">
+          <span class="chip verified">✓ 3 verified duplicate groups</span>
+          <span class="chip review">⚠ 12 review suggestions</span>
+          <span class="reclaim">41.8 GB reclaimable</span>
+        </div>
       </div>
     </div>
   </div>
 
   <main>
     <section class="whats-new" aria-label="What's new in v0.7.0">
-      <p class="whats-new-heading">What's new in <span class="version-tag">v0.7.0</span></p>
-      <ul class="pill-list">
-        <li>Folder exclusion list (node_modules, .git, caches by default) with an on/off toggle and a right-click "Exclude This Folder" action</li>
-        <li>Live streaming results: list views populate and re-rank during a scan instead of waiting for it to finish</li>
-        <li>Cancel keeps partial results — a cancelled scan stays browsable instead of resetting to empty</li>
-        <li>In-memory pause/resume for long scans, plus a live items/sec and elapsed-time readout</li>
-        <li>Redaction toggle: mask file and folder names in the UI with stable per-session placeholders, for screen-sharing or screenshots</li>
-      </ul>
+      <div class="whats-new-head">
+        <span class="tag">v0.7.0</span>
+        <h2>Scan control, privacy, and a faster interface</h2>
+        <a href="changelog.html">Full changelog →</a>
+      </div>
+      <div class="whats-new-grid">
+        <div class="new-item" style="--mark: var(--blue)">
+          <h3>Folder exclusions</h3>
+          <p>Skip <code>node_modules</code>, <code>.git</code>, and caches entirely, with an editable list and a right-click "Exclude This Folder" action.</p>
+        </div>
+        <div class="new-item" style="--mark: var(--teal)">
+          <h3>Live streaming results</h3>
+          <p>Ranked views populate and re-sort while the scan runs — no more waiting for the end to see anything.</p>
+        </div>
+        <div class="new-item" style="--mark: var(--green)">
+          <h3>Cancel keeps results</h3>
+          <p>Cancelling a scan keeps the partial results browsable instead of resetting to an empty window.</p>
+        </div>
+        <div class="new-item" style="--mark: var(--amber)">
+          <h3>Pause &amp; resume</h3>
+          <p>Long scans pause and resume in place, with a live items/sec rate and elapsed-time readout.</p>
+        </div>
+        <div class="new-item" style="--mark: var(--violet)">
+          <h3>Redaction mode</h3>
+          <p>Mask file and folder names with stable placeholders for screen-sharing — sizes and counts stay real.</p>
+        </div>
+        <div class="new-item" style="--mark: var(--rose)">
+          <h3>Snappier UI</h3>
+          <p>Cached type breakdowns, lighter row rendering, and no per-row layout passes — smoother scrolling on big scans.</p>
+        </div>
+      </div>
     </section>
 
-    <div class="mt-section">
-      <p class="section-label">Features</p>
-      <h2 class="section-title">Everything you need to reclaim disk space</h2>
-      <div class="grid" aria-label="StorageScope features">
-        <div class="feat-card">
-          <span class="feat-icon" aria-hidden="true">🔭</span>
-          <h2>macOS disk space analyzer</h2>
-          <p>Rank largest folders, old large files, file types, installers, archives, disk images, caches, and build artifacts.</p>
-        </div>
-        <div class="feat-card">
-          <span class="feat-icon" aria-hidden="true">🧹</span>
-          <h2>Mac storage cleaner planning</h2>
-          <p>Separate verified duplicate reclaim, review-suggested cleanup, and access gaps before anything moves to Trash.</p>
-        </div>
-        <div class="feat-card">
-          <span class="feat-icon" aria-hidden="true">🔍</span>
-          <h2>Duplicate file review</h2>
-          <p>Start from same-size candidates, verify matches with SHA-256, and keep hashing work bounded to what you need.</p>
-        </div>
-        <div class="feat-card">
-          <span class="feat-icon" aria-hidden="true">⚡</span>
-          <h2>Parallel, performant scans</h2>
-          <p>Recurses sibling directories concurrently and scales hash verification with available cores, with deterministic child order.</p>
-        </div>
-        <div class="feat-card">
-          <span class="feat-icon" aria-hidden="true">⚖️</span>
-          <h2>Keeper comparison</h2>
-          <p>Side-by-side sheet lets you reassign the keeper of a verified duplicate group with size, date, and path at a glance.</p>
-        </div>
-        <div class="feat-card">
-          <span class="feat-icon" aria-hidden="true">🗑️</span>
-          <h2>Transactional Trash</h2>
-          <p>Batch moves go to Trash via macOS APIs and roll back earlier moves if a later one fails — never silent permanent deletion.</p>
-        </div>
+    <p class="section-label">Features</p>
+    <h2 class="section-title">Everything you need to reclaim disk space</h2>
+    <p class="section-sub">A macOS disk space analyzer, storage cleaner, and duplicate file finder in one sandboxed app.</p>
+    <div class="grid" aria-label="StorageScope features">
+      <div class="feat-card" style="--mark: var(--blue)">
+        <span class="feat-mark" aria-hidden="true"></span>
+        <h3>macOS disk space analyzer</h3>
+        <p>Rank largest folders, old large files, file types, installers, archives, disk images, caches, and build artifacts.</p>
+      </div>
+      <div class="feat-card" style="--mark: var(--teal)">
+        <span class="feat-mark" aria-hidden="true"></span>
+        <h3>Mac storage cleaner planning</h3>
+        <p>Separate verified duplicate reclaim, review-suggested cleanup, and access gaps before anything moves to Trash.</p>
+      </div>
+      <div class="feat-card" style="--mark: var(--green)">
+        <span class="feat-mark" aria-hidden="true"></span>
+        <h3>Duplicate file review</h3>
+        <p>Start from same-size candidates, verify matches with SHA-256, and keep hashing work bounded to what you need.</p>
+      </div>
+      <div class="feat-card" style="--mark: var(--amber)">
+        <span class="feat-mark" aria-hidden="true"></span>
+        <h3>Parallel, performant scans</h3>
+        <p>Recurses sibling directories concurrently and scales hash verification with available cores, with deterministic child order.</p>
+      </div>
+      <div class="feat-card" style="--mark: var(--violet)">
+        <span class="feat-mark" aria-hidden="true"></span>
+        <h3>Keeper comparison</h3>
+        <p>Side-by-side sheet lets you reassign the keeper of a verified duplicate group with size, date, and path at a glance.</p>
+      </div>
+      <div class="feat-card" style="--mark: var(--rose)">
+        <span class="feat-mark" aria-hidden="true"></span>
+        <h3>Transactional Trash</h3>
+        <p>Batch moves go to Trash via macOS APIs and roll back earlier moves if a later one fails — never silent permanent deletion.</p>
       </div>
     </div>
 
-    <div class="mt-section">
-      <p class="section-label">How it works</p>
-      <h2 class="section-title">Three steps to a cleaner Mac</h2>
-      <div class="steps" aria-label="How StorageScope works">
-        <div class="step">
-          <span class="num" aria-hidden="true">1</span>
-          <h2>Grant folders</h2>
-          <p>Pick folders through macOS folder selection or persist access with security-scoped bookmarks. Nothing is uploaded.</p>
-        </div>
-        <div class="step">
-          <span class="num" aria-hidden="true">2</span>
-          <h2>Scan and review</h2>
-          <p>See ranked storage pressure, file types, and verified duplicates with a keeper per group, then mark cleanup candidates.</p>
-        </div>
-        <div class="step">
-          <span class="num" aria-hidden="true">3</span>
-          <h2>Send to Trash</h2>
-          <p>Confirm a batched, transactional move to Trash that rolls back on partial failure. You stay in control of every change.</p>
-        </div>
+    <p class="section-label">How it works</p>
+    <h2 class="section-title">Three steps to a cleaner Mac</h2>
+    <div class="steps" aria-label="How StorageScope works">
+      <div class="step">
+        <span class="num" aria-hidden="true">01</span>
+        <h3>Grant folders</h3>
+        <p>Pick folders through macOS folder selection or persist access with security-scoped bookmarks. Nothing is uploaded.</p>
+      </div>
+      <div class="step">
+        <span class="num" aria-hidden="true">02</span>
+        <h3>Scan and review</h3>
+        <p>See ranked storage pressure, file types, and verified duplicates with a keeper per group, then mark cleanup candidates.</p>
+      </div>
+      <div class="step">
+        <span class="num" aria-hidden="true">03</span>
+        <h3>Send to Trash</h3>
+        <p>Confirm a batched, transactional move to Trash that rolls back on partial failure. You stay in control of every change.</p>
       </div>
     </div>
 
-    <div class="mt-section">
-      <div class="privacy" aria-label="Privacy posture">
-        <div class="privacy-header">
-          <span class="privacy-icon" aria-hidden="true">🔒</span>
-          <div>
-            <h2>Local-first by design</h2>
-            <p class="privacy-subtitle">StorageScope never sends scan data off your Mac. Sandboxed and MIT licensed — read every line.</p>
-          </div>
-        </div>
-        <ul class="privacy-grid">
-          <li>No uploads of scan results, file names, paths, or hashes</li>
-          <li>No analytics, identifiers, or telemetry in the binary</li>
-          <li>Sandboxed with security-scoped bookmarks for folder access</li>
-          <li>Cleanup uses macOS Trash, not silent permanent deletion</li>
-        </ul>
-      </div>
+    <p class="section-label">In the app</p>
+    <h2 class="section-title">The whole picture, one window</h2>
+    <p class="section-sub">Ranked storage views, cleanup review, folder tree, and inspector — the same scan, four ways to read it.</p>
+    <img class="shot" src="images/storagescope-overview.png" alt="StorageScope macOS disk space analyzer showing storage views, cleanup review, folder tree, and inspector panes" loading="lazy">
+
+    <div class="privacy" style="margin-top: 72px" aria-label="Privacy posture">
+      <h2>Nothing leaves this Mac</h2>
+      <p class="privacy-subtitle">StorageScope never sends scan data off your machine. It is sandboxed, MIT licensed, and small enough to read every line.</p>
+      <ul class="privacy-grid">
+        <li>No uploads of scan results, file names, paths, or hashes</li>
+        <li>No analytics, identifiers, or telemetry in the binary</li>
+        <li>Sandboxed with security-scoped bookmarks for folder access</li>
+        <li>Cleanup uses macOS Trash, not silent permanent deletion</li>
+      </ul>
     </div>
 
-    <div class="links mt-section" aria-label="StorageScope guides">
-      <h2>Guides</h2>
+    <div class="links" aria-label="StorageScope guides">
+      <p class="section-label">Guides</p>
+      <h2 class="section-title">Read more</h2>
       <ul>
         <li><a href="macos-disk-space-analyzer.html">Free macOS disk space analyzer</a></li>
         <li><a href="mac-storage-cleaner.html">Open-source Mac storage cleaner</a></li>
@@ -795,7 +992,7 @@
         <span class="divider">·</span>
         <a href="architecture.html">Architecture</a>
       </div>
-      <div>v0.7.0 · macOS 14+ · SwiftUI/AppKit</div>
+      <div class="mono">v0.7.0 · macOS 14+ · SwiftUI/AppKit</div>
     </footer>
   </main>
 
