@@ -43,21 +43,24 @@ struct OverviewView: View {
                             InsightCard(
                                 title: isFiltered ? "Largest Matching File" : "Largest File",
                                 item: store.items(for: .largestFiles).first,
-                                systemImage: "doc.fill"
+                                systemImage: "doc.fill",
+                                filters: store.filters
                             ) { item in
                                 store.selectedItemID = item.id
                             }
                             InsightCard(
                                 title: isFiltered ? "Largest Matching Folder" : "Largest Folder",
                                 item: store.items(for: .largestFolders).first,
-                                systemImage: "folder.fill"
+                                systemImage: "folder.fill",
+                                filters: store.filters
                             ) { item in
                                 store.selectedItemID = item.id
                             }
                             InsightCard(
                                 title: isFiltered ? "Oldest Matching Large File" : "Oldest Large File",
                                 item: store.oldLargeFiles.first,
-                                systemImage: "clock.fill"
+                                systemImage: "clock.fill",
+                                filters: store.filters
                             ) { item in
                                 store.selectedItemID = item.id
                             }
@@ -279,7 +282,8 @@ private struct SizeDistributionView: View {
                             StorageMapRow(
                                 item: item,
                                 maxSize: maxSize,
-                                isSelected: store.selectedItemID == item.id
+                                isSelected: store.selectedItemID == item.id,
+                                displayName: store.filters.displayName(for: item)
                             ) {
                                 store.selectedItemID = item.id
                             }
@@ -308,6 +312,7 @@ private struct StorageMapRow: View, Equatable {
     let item: StorageScopeCore.StorageItem
     let maxSize: Int64
     let isSelected: Bool
+    let displayName: String
     let onTap: () -> Void
     @State private var isHovered = false
 
@@ -315,6 +320,7 @@ private struct StorageMapRow: View, Equatable {
     // freshly allocated per render anyway, same pattern as StorageItemRow.
     static func == (lhs: StorageMapRow, rhs: StorageMapRow) -> Bool {
         lhs.item == rhs.item && lhs.maxSize == rhs.maxSize && lhs.isSelected == rhs.isSelected
+            && lhs.displayName == rhs.displayName
     }
 
     var body: some View {
@@ -326,7 +332,7 @@ private struct StorageMapRow: View, Equatable {
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
-                        Text(item.name)
+                        Text(displayName)
                             .lineLimit(1)
                         Spacer()
                         Text(StorageFormat.bytes(item.displaySize))
@@ -356,7 +362,7 @@ private struct StorageMapRow: View, Equatable {
         .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(item.name), \(StorageFormat.bytes(item.displaySize))")
+        .accessibilityLabel("\(displayName), \(StorageFormat.bytes(item.displaySize))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint("Selects this storage item")
     }
@@ -366,6 +372,7 @@ private struct InsightCard: View {
     let title: String
     let item: StorageScopeCore.StorageItem?
     let systemImage: String
+    let filters: FilterStore
     var onTap: ((StorageScopeCore.StorageItem) -> Void)? = nil
 
     var body: some View {
@@ -391,12 +398,12 @@ private struct InsightCard: View {
             }
 
             if let item {
-                Text(item.name)
+                Text(filters.displayName(for: item))
                     .font(.subheadline.weight(.medium))
                     .lineLimit(2)
                 Text(StorageFormat.bytes(item.displaySize))
                     .font(.title3.weight(.semibold).monospacedDigit())
-                Text(item.url.deletingLastPathComponent().path)
+                Text(filters.displayParentPath(for: item))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

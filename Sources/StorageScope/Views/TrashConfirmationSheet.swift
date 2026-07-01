@@ -16,6 +16,7 @@ struct TrashReviewActions {
 
 struct TrashConfirmationSheet: View {
     let plan: TrashReviewPlan
+    @ObservedObject var filters: FilterStore
     let actions: TrashReviewActions
 
     var body: some View {
@@ -53,6 +54,7 @@ struct TrashConfirmationSheet: View {
                             systemImage: "checkmark.seal.fill",
                             tint: .green,
                             items: plan.verifiedItems,
+                            filters: filters,
                             reveal: actions.reveal,
                             revealAll: actions.revealAll,
                             open: actions.open,
@@ -69,6 +71,7 @@ struct TrashConfirmationSheet: View {
                             systemImage: "exclamationmark.octagon.fill",
                             tint: .orange,
                             items: plan.reviewItems,
+                            filters: filters,
                             reveal: actions.reveal,
                             revealAll: actions.revealAll,
                             open: actions.open,
@@ -124,6 +127,7 @@ private struct TrashReviewSection: View {
     let systemImage: String
     let tint: Color
     let items: [TrashReviewPlan.Item]
+    let filters: FilterStore
     let reveal: (TrashReviewPlan.Item) -> Void
     let revealAll: ([TrashReviewPlan.Item]) -> Void
     let open: (TrashReviewPlan.Item) -> Void
@@ -175,7 +179,7 @@ private struct TrashReviewSection: View {
 
             VStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    TrashReviewRow(item: item, reveal: reveal, open: open, remove: remove, isMoving: isMoving)
+                    TrashReviewRow(item: item, filters: filters, reveal: reveal, open: open, remove: remove, isMoving: isMoving)
 
                     if index < items.index(before: items.endIndex) {
                         Divider()
@@ -189,10 +193,19 @@ private struct TrashReviewSection: View {
 
 private struct TrashReviewRow: View {
     let item: TrashReviewPlan.Item
+    let filters: FilterStore
     let reveal: (TrashReviewPlan.Item) -> Void
     let open: (TrashReviewPlan.Item) -> Void
     let remove: (TrashReviewPlan.Item) -> Void
     let isMoving: Bool
+
+    private var displayName: String {
+        filters.displayName(forURL: item.url, isDirectory: item.isDirectory)
+    }
+
+    private var displayParentPath: String {
+        filters.displayParentPath(forURL: item.url)
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -202,7 +215,7 @@ private struct TrashReviewRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(item.url.lastPathComponent)
+                    Text(displayName)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
 
@@ -211,7 +224,7 @@ private struct TrashReviewRow: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text(item.url.deletingLastPathComponent().path)
+                Text(displayParentPath)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -231,7 +244,7 @@ private struct TrashReviewRow: View {
                 Label("Open", systemImage: "arrow.up.right.square")
                     .labelStyle(.iconOnly)
             }
-            .help("Open \(item.url.lastPathComponent) in its default app")
+            .help("Open \(displayName) in its default app")
 
             Button {
                 reveal(item)
@@ -239,7 +252,7 @@ private struct TrashReviewRow: View {
                 Label("Reveal in Finder", systemImage: "folder")
                     .labelStyle(.iconOnly)
             }
-            .help("Reveal \(item.url.lastPathComponent) in Finder")
+            .help("Reveal \(displayName) in Finder")
 
             Button {
                 remove(item)
@@ -247,11 +260,11 @@ private struct TrashReviewRow: View {
                 Label("Remove from batch", systemImage: "minus.circle")
                     .labelStyle(.iconOnly)
             }
-            .help("Remove \(item.url.lastPathComponent) from this Trash batch")
+            .help("Remove \(displayName) from this Trash batch")
             .disabled(isMoving)
         }
         .padding(12)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.url.lastPathComponent), \(StorageFormat.bytes(item.reclaimableBytes))")
+        .accessibilityLabel("\(displayName), \(StorageFormat.bytes(item.reclaimableBytes))")
     }
 }

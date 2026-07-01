@@ -130,6 +130,7 @@ struct ContentView: View {
         .sheet(item: $store.pendingTrashReviewPlan) { plan in
             TrashConfirmationSheet(
                 plan: plan,
+                filters: store.filters,
                 actions: TrashReviewActions(
                     isMoving: store.isMovingToTrash,
                     reveal: { store.revealTrashReviewItem($0) },
