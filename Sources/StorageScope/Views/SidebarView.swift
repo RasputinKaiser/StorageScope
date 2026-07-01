@@ -42,7 +42,13 @@ struct SidebarView: View {
 
                         VStack(spacing: 2) {
                             ForEach(store.recents.entries) { entry in
-                                RecentScanRow(entry: entry) {
+                                RecentScanRow(
+                                    entry: entry,
+                                    displayTitle: store.filters.displayName(forURL: URL(fileURLWithPath: entry.path), isDirectory: true),
+                                    displayPath: store.filters.redactionEnabled
+                                        ? "…/\(store.filters.displayName(forURL: URL(fileURLWithPath: entry.path), isDirectory: true))"
+                                        : entry.path
+                                ) {
                                     store.scanRecentPath(entry.path)
                                 } forgetAction: {
                                     store.recents.forget(path: entry.path)
@@ -223,6 +229,8 @@ private struct SidebarPathButton: View {
 
 private struct RecentScanRow: View {
     let entry: RecentScanEntry
+    let displayTitle: String
+    let displayPath: String
     let scanAction: () -> Void
     let forgetAction: () -> Void
 
@@ -233,7 +241,8 @@ private struct RecentScanRow: View {
         // subtitle frozen after first paint, so rescans showed the wrong number.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             SidebarPathButton(
-                path: entry.path,
+                path: displayPath,
+                title: displayTitle,
                 systemImage: "clock.arrow.circlepath",
                 subtitle: subtitleText
             ) {
@@ -289,7 +298,7 @@ private struct ScanStatusFooter: View {
                         }
                     }
                 }
-                Text(store.progress.currentPath)
+                Text(currentPathDisplay)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(2)
@@ -300,11 +309,11 @@ private struct ScanStatusFooter: View {
                 Text("\(scan.scannedItemCount.formatted()) items scanned")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(scan.rootURL.path)
+                Text(rootPathDisplay(for: scan.rootURL))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(2)
-                    .help(scan.rootURL.path)
+                    .help(store.filters.redactionEnabled ? "" : scan.rootURL.path)
             } else {
                 Label("No scan yet", systemImage: "internaldrive")
                     .font(.headline)
@@ -316,6 +325,17 @@ private struct ScanStatusFooter: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
+    }
+
+    private var currentPathDisplay: String {
+        guard store.filters.redactionEnabled else { return store.progress.currentPath }
+        let url = URL(fileURLWithPath: store.progress.currentPath)
+        return "\(store.filters.displayParentPath(forURL: url))/\(store.filters.displayName(forURL: url, isDirectory: false))"
+    }
+
+    private func rootPathDisplay(for rootURL: URL) -> String {
+        guard store.filters.redactionEnabled else { return rootURL.path }
+        return "…/\(store.filters.displayName(forURL: rootURL, isDirectory: true))"
     }
 
     private func elapsedText(from start: Date, to now: Date) -> String {

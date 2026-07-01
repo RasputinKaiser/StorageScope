@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import StorageScopeCore
 import SwiftUI
@@ -230,18 +231,41 @@ func setSelectedView(_ view: SmartView) {
     }
     #endif
 
-    lazy var onDemandVerification: OnDemandVerificationStore = OnDemandVerificationStore(
-        hashCache: hashCache,
-        scanLookup: { [weak self] in self?.scan },
-        coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() },
-        reportError: { [weak self] message in self?.errorMessage = message }
-    )
+    /// Forwards `onDemandVerification.objectWillChange` the same way `filtersCancellable`
+    /// does for `filters` below — views read `store.onDemandVerification.verifyingGroupIDs`
+    /// directly through `@ObservedObject var store: ScanStore` without observing the nested
+    /// store itself, so without this the "Verify Now" spinner wouldn't live-update either.
+    private var onDemandVerificationCancellable: AnyCancellable?
 
-    lazy var filters = FilterStore(
-        scanLookup: { [weak self] in self?.scan },
-        coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() },
-        recordSearchRecent: { [weak self] term in self?.searchRecents.add(term) }
-    )
+    lazy var onDemandVerification: OnDemandVerificationStore = {
+        let store = OnDemandVerificationStore(
+            hashCache: hashCache,
+            scanLookup: { [weak self] in self?.scan },
+            coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() },
+            reportError: { [weak self] message in self?.errorMessage = message }
+        )
+        onDemandVerificationCancellable = store.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        return store
+    }()
+
+    /// Keeps `filters.objectWillChange` forwarded into this store's own `objectWillChange`
+    /// (set up alongside `filters` below). Without this, views that hold `@ObservedObject
+    /// var store: ScanStore` (every view in the app) never re-render when a `FilterStore`
+    /// property changes directly — e.g. flipping a Settings toggle updated the underlying
+    /// value, but the checkbox/stepper visually stayed stuck until some unrelated action
+    /// (like navigating to a different sidebar view) happened to trigger `ScanStore`'s own
+    /// `objectWillChange` and force a fresh re-render that picked up the already-changed value.
+    private var filtersCancellable: AnyCancellable?
+
+    lazy var filters: FilterStore = {
+        let store = FilterStore(
+            scanLookup: { [weak self] in self?.scan },
+            coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() },
+            recordSearchRecent: { [weak self] term in self?.searchRecents.add(term) }
+        )
+        filtersCancellable = store.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        return store
+    }()
 
     /// Typed Binding<T> for any writable FilterStore property — used by Picker/Stepper/Toggle
     /// in views since `$store.filters.X` can't traverse ObservableObject's sub-store boundary.

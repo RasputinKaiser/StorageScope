@@ -93,9 +93,9 @@ private struct ScanHeaderView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(store.scan?.rootURL.lastPathComponent.nonEmpty ?? "Scanning...")
+                    Text(titleText)
                         .font(.title2.weight(.semibold))
-                    Text(store.scan?.rootURL.path ?? store.progress.currentPath)
+                    Text(pathText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -137,6 +137,22 @@ private struct ScanHeaderView: View {
             }
         }
         .padding(20)
+    }
+
+    private var titleText: String {
+        guard let rootURL = store.scan?.rootURL else { return "Scanning..." }
+        guard store.filters.redactionEnabled else { return rootURL.lastPathComponent.nonEmpty ?? rootURL.path }
+        return store.filters.displayName(forURL: rootURL, isDirectory: true)
+    }
+
+    private var pathText: String {
+        guard let rootURL = store.scan?.rootURL else {
+            guard store.filters.redactionEnabled else { return store.progress.currentPath }
+            let url = URL(fileURLWithPath: store.progress.currentPath)
+            return "\(store.filters.displayParentPath(forURL: url))/\(store.filters.displayName(forURL: url, isDirectory: false))"
+        }
+        guard store.filters.redactionEnabled else { return rootURL.path }
+        return "…/\(store.filters.displayName(forURL: rootURL, isDirectory: true))"
     }
 }
 
