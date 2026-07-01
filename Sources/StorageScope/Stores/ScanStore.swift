@@ -29,6 +29,22 @@ final class ScanStore: ObservableObject {
         return caches.appendingPathComponent("StorageScopeDuplicateHashCache.json")
     }
 
+    /// Splits `FilterStore.excludedPaths` into `ScanOptions`'s two exclusion fields: an
+    /// entry starting with `~` or `/` is an absolute-prefix match, everything else is a
+    /// bare folder-name match against any path component.
+    private static func splitExcludedPaths(_ paths: [String]) -> (components: [String], prefixes: [String]) {
+        var components: [String] = []
+        var prefixes: [String] = []
+        for path in paths {
+            if path.hasPrefix("~") || path.hasPrefix("/") {
+                prefixes.append(path)
+            } else {
+                components.append(path)
+            }
+        }
+        return (components, prefixes)
+    }
+
     struct ScanOptionsSnapshot: Equatable {
         let includeHiddenFiles: Bool
         let oldFileAgeDays: Int
@@ -165,6 +181,11 @@ func setSelectedView(_ view: SmartView) {
     private var activeScanID: UUID?
     private var cancellation: ScanCancellation?
     private var scanTask: Task<Void, Never>?
+    /// Previous progress tick's (item count, timestamp) for the EMA rate calculation in
+    /// the progress-consumer closure. Reset to nil on scan start and scan resume so a
+    /// paused interval isn't counted as a near-zero-rate tick.
+    private var lastRateTick: (count: Int, date: Date)?
+    private var smoothedItemsPerSecond: Double = 0
     private let bookmarkStore = SecurityScopedBookmarkStore()
     private let hashCache = DuplicateHashCache(
         cacheURL: ScanStore.defaultHashCacheURL(),
@@ -344,6 +365,15 @@ func setSelectedView(_ view: SmartView) {
         case progressConsumerFinished
     }
 
+    /// One tick on the progress stream: the throttled `ScanProgress` update, paired with
+    /// the same-cadence in-progress `StorageScan` snapshot when the scanner produced one.
+    /// Folding both into one stream keeps a single consumer child task rather than two,
+    /// while still letting `session.scan` update live as list views read it.
+    private struct ScanTick: Sendable {
+        let progress: ScanProgress
+        let snapshot: StorageScan?
+    }
+
     var scanStage: ScanStage {
         if !isScanning {
             return scan == nil ? .idle : .complete
@@ -375,6 +405,22 @@ func setSelectedView(_ view: SmartView) {
 
     var canCancelScan: Bool {
         session.canCancelScan
+    }
+
+    var canPauseScan: Bool {
+        session.canPauseScan
+    }
+
+    var canResumeScan: Bool {
+        session.canResumeScan
+    }
+
+    var isScanPaused: Bool {
+        session.isScanPaused
+    }
+
+    var scanStartedAt: Date? {
+        session.scanStartedAt
     }
 
     var canUseSelectedItemActions: Bool {
@@ -638,15 +684,106 @@ func setSelectedView(_ view: SmartView) {
 
         if activeScanID == cancelledScanID {
             let pathLabel = session.lastScannedURL?.lastPathComponent ?? "Scan"
+            // `scan` may already hold the last streamed partial snapshot (or a fully
+            // completed scan) by the time cancellation lands — preserve it rather than
+            // resetting progress to a zeroed-out state, so partial results stay visible.
             session.lastCancellationMessage = scan != nil
-                ? "Scan of \(pathLabel) was canceled. Previous results are still shown; rescan when you are ready."
+                ? "Scan of \(pathLabel) was canceled. Partial results are shown; rescan when you are ready."
                 : "Scan of \(pathLabel) was canceled. Rescan or pick another folder when ready."
             activeScanID = nil
             cancellation = nil
             scanTask = nil
             isScanning = false
-            progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Scan cancelled")
+            session.isScanPaused = false
+            progress = ScanProgress(
+                scannedItemCount: scan?.scannedItemCount ?? progress.scannedItemCount,
+                totalBytes: scan?.totalBytes ?? progress.totalBytes,
+                currentPath: "Scan cancelled"
+            )
         }
+    }
+
+    func excludeFolder(_ item: StorageItem) {
+        // Standardized to match `isExcluded`'s comparison path in the scanner (which
+        // standardizes the child URL before comparing) — otherwise a folder reached via a
+        // symlinked ancestor or non-canonical path segment would never match on rescan.
+        excludeFolder(atPath: item.url.standardizedFileURL.path)
+    }
+
+    /// Path-based entry point for contexts that don't have a folder `StorageItem` on hand —
+    /// Duplicate Review rows are always files, so "Exclude This Folder" there targets the
+    /// file's containing directory rather than the file itself.
+    func excludeFolder(atPath path: String) {
+        guard !filters.excludedPaths.contains(path) else {
+            return
+        }
+        filters.excludedPaths.append(path)
+        // Force the master toggle on: without it the exclusion list is never applied to
+        // ScanOptions and the folder the user just chose wouldn't actually be excluded.
+        // Side effect: this also activates the pre-seeded default entries (node_modules,
+        // .git, etc.) if the user hadn't enabled exclusion before — acceptable since those
+        // defaults exist for exactly this purpose and the alternative (a no-op click) is worse.
+        filters.excludeFoldersEnabled = true
+        rescan()
+    }
+
+    private func pauseResumeGuardedScanID() -> UUID? {
+        guard isScanning, let activeScanID else {
+            return nil
+        }
+        return activeScanID
+    }
+
+    func pauseScan() {
+        guard pauseResumeGuardedScanID() != nil, let cancellation else {
+            return
+        }
+        cancellation.pause()
+        session.isScanPaused = true
+    }
+
+    func resumeScan() {
+        guard pauseResumeGuardedScanID() != nil, let cancellation else {
+            return
+        }
+        cancellation.resume()
+        session.isScanPaused = false
+        lastRateTick = nil
+    }
+
+    /// Computes items/sec from the delta against the previous tick and smooths with an
+    /// EMA (0.3 instant / 0.7 previous) so the displayed rate doesn't jitter tick to tick.
+    /// Returns `progress` unchanged but with `itemsPerSecond` filled in. Called only from
+    /// the progress-consumer closure (MainActor), never from the scanner itself, so the
+    /// rate reflects wall-clock delivery time rather than scan-thread timing.
+    private func rateAnnotatedProgress(_ progress: ScanProgress) -> ScanProgress {
+        defer { lastRateTick = (progress.scannedItemCount, Date()) }
+
+        guard let lastRateTick else {
+            return progress
+        }
+
+        let itemDelta = progress.scannedItemCount - lastRateTick.count
+        let timeDelta = Date().timeIntervalSince(lastRateTick.date)
+        guard itemDelta > 0, timeDelta > 0 else {
+            return ScanProgress(
+                scannedItemCount: progress.scannedItemCount,
+                totalBytes: progress.totalBytes,
+                currentPath: progress.currentPath,
+                phase: progress.phase,
+                itemsPerSecond: smoothedItemsPerSecond
+            )
+        }
+
+        let instantRate = Double(itemDelta) / timeDelta
+        smoothedItemsPerSecond = 0.3 * instantRate + 0.7 * smoothedItemsPerSecond
+        return ScanProgress(
+            scannedItemCount: progress.scannedItemCount,
+            totalBytes: progress.totalBytes,
+            currentPath: progress.currentPath,
+            phase: progress.phase,
+            itemsPerSecond: smoothedItemsPerSecond
+        )
     }
 
     private func scanUserGrantedURL(_ url: URL, access: SecurityScopedResourceAccess? = nil) {
@@ -689,16 +826,24 @@ func setSelectedView(_ view: SmartView) {
         session.lastErrorCategory = nil
         session.resultsNeedRefresh = false
         isScanning = true
+        session.isScanPaused = false
+        session.scanStartedAt = Date()
+        lastRateTick = nil
+        smoothedItemsPerSecond = 0
         progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: url.path)
 
         let scanID = UUID()
         let thresholds = ScanOptionPolicy.interactiveScanThresholds()
+        let (excludedComponents, excludedPrefixes) = Self.splitExcludedPaths(filters.excludedPaths)
         let options = ScanOptions(
             includeHidden: filters.includeHiddenFiles,
             oldFileAgeDays: filters.oldFileAgeDays,
             largeFileThreshold: thresholds.largeFileThreshold,
             duplicateCandidateThreshold: Int64(filters.duplicateCandidateThresholdMB) * 1_000_000,
-            maxRankedResults: Self.rankedResultsCap
+            maxRankedResults: Self.rankedResultsCap,
+            excludeEnabled: filters.excludeFoldersEnabled,
+            excludedPathComponents: excludedComponents,
+            excludedAbsolutePrefixes: excludedPrefixes
         )
         let optionsSnapshot = currentScanOptions
         let scanCancellation = ScanCancellation()
@@ -721,7 +866,14 @@ func setSelectedView(_ view: SmartView) {
                 // Both inherit scanTask's cancellation: withTaskCancellationHandler propagates
                 // Task.cancel() into the scanner's ScanCancellation handle AND finishes the
                 // stream so the consumer exits cleanly.
-                let (progressStream, progressContinuation) = AsyncStream<ScanProgress>.makeStream()
+                let (progressStream, progressContinuation) = AsyncStream<ScanTick>.makeStream()
+                // The scanner's `progress` and `onSnapshot` callbacks fire at the same
+                // throttled cadence (`onSnapshot` is invoked from inside `emitProgressLocked`
+                // right after the progress callback) but as two separate calls. Pair the
+                // latest snapshot with the next progress tick on this side rather than adding
+                // a second stream, so the consumer only has one `for await` loop to drain.
+                let pendingSnapshotLock = NSLock()
+                var pendingSnapshot: StorageScan?
                 let result = try await withTaskCancellationHandler {
                     try await withThrowingTaskGroup(of: ScanOutcome.self) { group in
                         group.addTask(priority: .userInitiated) {
@@ -736,20 +888,35 @@ func setSelectedView(_ view: SmartView) {
                                 options: options,
                                 cancellation: scanCancellation,
                                 progress: { progress in
-                                    progressContinuation.yield(progress)
+                                    pendingSnapshotLock.lock()
+                                    let snapshot = pendingSnapshot
+                                    pendingSnapshot = nil
+                                    pendingSnapshotLock.unlock()
+                                    progressContinuation.yield(ScanTick(progress: progress, snapshot: snapshot))
+                                },
+                                onSnapshot: { snapshot in
+                                    pendingSnapshotLock.lock()
+                                    pendingSnapshot = snapshot
+                                    pendingSnapshotLock.unlock()
                                 }
                             )
                             return .result(scan)
                         }
 
                         group.addTask {
-                            for await progress in progressStream {
+                            for await tick in progressStream {
                                 if Task.isCancelled { break }
                                 await MainActor.run { [weak self, scanID, scanCancellation] in
                                     guard let self, self.isCurrentScan(scanID, cancellation: scanCancellation) else {
                                         return
                                     }
-                                    self.progress = progress
+                                    self.progress = self.rateAnnotatedProgress(tick.progress)
+                                    if let snapshot = tick.snapshot {
+                                        // Non-final assignment: `scan` will be overwritten again
+                                        // when the scan completes (or left as-is if cancelled),
+                                        // same field either way.
+                                        self.scan = snapshot
+                                    }
                                 }
                             }
                             return .progressConsumerFinished
@@ -815,6 +982,7 @@ func setSelectedView(_ view: SmartView) {
                     currentPath: "Scan complete"
                 )
                 isScanning = false
+                session.isScanPaused = false
                 refreshMountedVolumes()
                 clearActiveScan(scanID, cancellation: scanCancellation)
             } catch FileSystemScannerError.cancelled {
@@ -822,10 +990,18 @@ func setSelectedView(_ view: SmartView) {
                     return
                 }
                 isScanning = false
+                session.isScanPaused = false
                 markResultsNeedRefreshWhenCurrentScanCompletes = false
                 selectedViewWhenCurrentScanCompletes = nil
                 selectVerifiedCleanupWhenCurrentScanCompletes = false
-                progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: "Scan cancelled")
+                // Preserve whatever the last streamed snapshot published to `scan` (or, if no
+                // snapshot ever arrived, leave it nil) rather than discarding it — cancel now
+                // keeps partial results instead of wiping the in-progress state.
+                progress = ScanProgress(
+                    scannedItemCount: scan?.scannedItemCount ?? progress.scannedItemCount,
+                    totalBytes: scan?.totalBytes ?? progress.totalBytes,
+                    currentPath: "Scan cancelled"
+                )
                 // Intentionally quiet: cancellation is not an alert-worthy failure. The footer
                 // already surfaces "Scan cancelled"; surfacing errorMessage here would pop a
                 // redundant alert after every Cmd+. Clear lastErrorCategory so a stale category

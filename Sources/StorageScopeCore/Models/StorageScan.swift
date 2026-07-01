@@ -29,6 +29,7 @@ public struct StorageScan: Sendable {
     public let duplicateVerificationDuration: TimeInterval
     public let enumerateDuration: TimeInterval
     public let cleanupCandidates: [CleanupCandidate]
+    public let isPartial: Bool
     private let itemLookupByID: [String: StorageItem]
 
     public init(
@@ -53,7 +54,8 @@ public struct StorageScan: Sendable {
         duplicateCandidateLimitReached: Bool = false,
         duplicateVerificationDuration: TimeInterval = 0,
         enumerateDuration: TimeInterval = 0,
-        cleanupCandidates: [CleanupCandidate]
+        cleanupCandidates: [CleanupCandidate],
+        isPartial: Bool = false
     ) {
         self.rootURL = rootURL
         self.startedAt = startedAt
@@ -77,6 +79,7 @@ public struct StorageScan: Sendable {
         self.duplicateVerificationDuration = duplicateVerificationDuration
         self.enumerateDuration = enumerateDuration
         self.cleanupCandidates = cleanupCandidates
+        self.isPartial = isPartial
         self.itemLookupByID = Self.buildItemLookup(
             retainedItems: retainedItems,
             largestFiles: largestFiles,
@@ -383,12 +386,20 @@ public struct ScanProgress: Sendable {
     public let totalBytes: Int64
     public let currentPath: String
     public let phase: ScanPhase
+    public let itemsPerSecond: Double
 
-    public init(scannedItemCount: Int, totalBytes: Int64, currentPath: String, phase: ScanPhase = .enumerating) {
+    public init(
+        scannedItemCount: Int,
+        totalBytes: Int64,
+        currentPath: String,
+        phase: ScanPhase = .enumerating,
+        itemsPerSecond: Double = 0
+    ) {
         self.scannedItemCount = scannedItemCount
         self.totalBytes = totalBytes
         self.currentPath = currentPath
         self.phase = phase
+        self.itemsPerSecond = itemsPerSecond
     }
 }
 
@@ -403,6 +414,9 @@ public struct ScanOptions: Sendable {
     public var maxRankedResults: Int
     public var maxChildrenPerDirectory: Int
     public var maxRetainedItems: Int
+    public var excludeEnabled: Bool
+    public var excludedPathComponents: [String]
+    public var excludedAbsolutePrefixes: [String]
 
     public init(
         includeHidden: Bool = false,
@@ -414,7 +428,10 @@ public struct ScanOptions: Sendable {
         maxDuplicateCandidateItems: Int = 5_000,
         maxRankedResults: Int = 500,
         maxChildrenPerDirectory: Int = 200,
-        maxRetainedItems: Int = 25_000
+        maxRetainedItems: Int = 25_000,
+        excludeEnabled: Bool = false,
+        excludedPathComponents: [String] = [],
+        excludedAbsolutePrefixes: [String] = []
     ) {
         self.includeHidden = includeHidden
         self.oldFileAgeDays = oldFileAgeDays
@@ -426,5 +443,8 @@ public struct ScanOptions: Sendable {
         self.maxRankedResults = maxRankedResults
         self.maxChildrenPerDirectory = maxChildrenPerDirectory
         self.maxRetainedItems = maxRetainedItems
+        self.excludeEnabled = excludeEnabled
+        self.excludedPathComponents = excludedPathComponents
+        self.excludedAbsolutePrefixes = excludedAbsolutePrefixes
     }
 }

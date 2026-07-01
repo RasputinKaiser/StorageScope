@@ -108,6 +108,22 @@ final class FilterStore: ObservableObject {
         didSet { coordinateInvalidate() }
     }
 
+    /// Master toggle for the folder-exclusion list below. Off by default so existing
+    /// scans are unaffected until the user opts in.
+    @Published var excludeFoldersEnabled: Bool = false {
+        didSet { coordinateInvalidate() }
+    }
+
+    /// Name-based entries (matched against any path component, e.g. `node_modules`) and
+    /// absolute-prefix entries (starting with `~` or `/`, e.g. `~/Library/Caches`) live in
+    /// one flat list here; `ScanStore` splits them into `ScanOptions`'s two fields when
+    /// building scan options.
+    @Published var excludedPaths: [String] = [
+        "node_modules", ".git", "~/Library/Caches", "~/Library/Application Support"
+    ] {
+        didSet { coordinateInvalidate() }
+    }
+
     /// Set when the user clicks a row on `TypeBreakdownView` — narrows downstream views
     /// (currently `.largestFiles`) to files whose `fileExtension` matches. Cleared on its own
     /// when the user dismisses the corresponding chip, or anytime `query` changes so the user

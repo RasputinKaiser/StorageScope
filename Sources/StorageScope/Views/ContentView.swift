@@ -88,6 +88,15 @@ struct ContentView: View {
 
                 if store.isScanning {
                     Button {
+                        store.canPauseScan ? store.pauseScan() : store.resumeScan()
+                    } label: {
+                        Label(
+                            store.canResumeScan ? "Resume" : "Pause",
+                            systemImage: store.canResumeScan ? "play.circle" : "pause.circle"
+                        )
+                    }
+
+                    Button {
                         store.cancelScan()
                     } label: {
                         Label("Cancel", systemImage: "xmark.circle")

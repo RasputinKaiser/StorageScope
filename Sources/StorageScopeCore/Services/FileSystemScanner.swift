@@ -17,21 +17,27 @@ public enum FileSystemScannerError: LocalizedError {
 }
 
 public final class ScanCancellation: @unchecked Sendable {
-    private let lock = NSLock()
+    // `NSCondition` replaces the plain `NSLock` used previously so `waitIfPaused()` can
+    // block cooperatively (via `wait()`) instead of spinning, while `cancel()`/`resume()`
+    // broadcast to wake any threads parked in `waitIfPaused()`. All prior lock/unlock call
+    // sites now lock/unlock through the same condition instance.
+    private let condition = NSCondition()
     private var cancelled = false
+    private var paused = false
 
     public init() {}
 
     public func cancel() {
-        lock.lock()
-        defer { lock.unlock() }
+        condition.lock()
         cancelled = true
+        condition.broadcast()
+        condition.unlock()
     }
 
     public func check() throws {
-        lock.lock()
-        defer { lock.unlock() }
+        condition.lock()
         let shouldCancel = cancelled
+        condition.unlock()
 
         if shouldCancel {
             throw FileSystemScannerError.cancelled
@@ -40,9 +46,46 @@ public final class ScanCancellation: @unchecked Sendable {
 
     /// Non-throwing probe used inside `DispatchQueue.concurrentPerform`, which cannot propagate thrown errors.
     public var isCancelled: Bool {
-        lock.lock()
-        defer { lock.unlock() }
+        condition.lock()
+        defer { condition.unlock() }
         return cancelled
+    }
+
+    public func pause() {
+        condition.lock()
+        paused = true
+        condition.unlock()
+    }
+
+    public func resume() {
+        condition.lock()
+        paused = false
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    public var isPaused: Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return paused
+    }
+
+    /// Blocks the calling thread while paused. Re-checks `cancelled` on every wake so a
+    /// `cancel()` issued while paused unblocks immediately rather than waiting on a
+    /// `resume()` that may never come.
+    ///
+    /// Caution: called from inside `DispatchQueue.concurrentPerform` closures during wide
+    /// directory recursion. `concurrentPerform` dispatches onto the shared, bounded GCD
+    /// worker-thread pool — a pause held while many wide-directory iterations are parked
+    /// here simultaneously can approach that pool's thread ceiling and starve unrelated work
+    /// on the process. Not solved here; flagged as a known limitation for very wide
+    /// directories (thousands of siblings) combined with a long pause.
+    public func waitIfPaused() {
+        condition.lock()
+        while paused && !cancelled {
+            condition.wait()
+        }
+        condition.unlock()
     }
 }
 
@@ -87,7 +130,8 @@ public final class FileSystemScanner {
         root rootURL: URL,
         options: ScanOptions = ScanOptions(),
         cancellation: ScanCancellation? = nil,
-        progress: ProgressHandler? = nil
+        progress: ProgressHandler? = nil,
+        onSnapshot: ((StorageScan) -> Void)? = nil
     ) throws -> StorageScan {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory) else {
@@ -98,7 +142,7 @@ public final class FileSystemScanner {
                     "root=%{public}@", rootURL.path)
 
         let startedAt = Date()
-        let accumulator = ScanAccumulator(options: options, progress: progress)
+        let accumulator = ScanAccumulator(options: options, progress: progress, onSnapshot: onSnapshot, rootURL: rootURL, startedAt: startedAt)
         let rootItem = try scanItem(
             at: rootURL,
             options: options,
@@ -148,7 +192,8 @@ public final class FileSystemScanner {
                 rootID: rootItem.id,
                 verifiedDuplicateGroups: verifiedDuplicateGroups,
                 limit: options.maxRankedResults
-            )
+            ),
+            isPartial: false
         )
     }
 
@@ -217,6 +262,7 @@ public final class FileSystemScanner {
         accumulator: ScanAccumulator,
         depth: Int
     ) throws -> StorageItem {
+        cancellation?.waitIfPaused()
         try cancellation?.check()
 
         // `url.resourceValues(forKeys:)` can fail (sandbox ACLs, unreachable APFS
@@ -328,7 +374,17 @@ public final class FileSystemScanner {
                     }
 
                     do {
+                        cancellation?.waitIfPaused()
                         try cancellation?.check()
+
+                        if options.excludeEnabled, Self.isExcluded(childURLs[index], options: options) {
+                            // Skip entirely: don't stat, count, or recurse. Leave the slot nil
+                            // so the `for case let child?` filter below treats it as absent,
+                            // matching the established "skip this child" pattern used for
+                            // per-child errors elsewhere in this loop.
+                            return
+                        }
+
                         let child = try scanItem(
                             at: childURLs[index],
                             options: options,
@@ -409,6 +465,28 @@ public final class FileSystemScanner {
             accumulator.recordItem(item)
             return item
         }
+    }
+
+    /// True when `url` matches an exclusion rule: its last path component names an
+    /// excluded folder name (e.g. `node_modules`, `.git`), or its standardized path starts
+    /// with an excluded absolute prefix (tilde-expanded, e.g. `~/Library/Caches`).
+    private static func isExcluded(_ url: URL, options: ScanOptions) -> Bool {
+        if options.excludedPathComponents.contains(url.lastPathComponent) {
+            return true
+        }
+
+        guard !options.excludedAbsolutePrefixes.isEmpty else {
+            return false
+        }
+
+        let standardizedPath = url.standardizedFileURL.path
+        for prefix in options.excludedAbsolutePrefixes {
+            let expandedPrefix = (prefix as NSString).expandingTildeInPath
+            if standardizedPath == expandedPrefix || standardizedPath.hasPrefix(expandedPrefix + "/") {
+                return true
+            }
+        }
+        return false
     }
 
     private func verifiedDuplicateGroups(
@@ -710,6 +788,9 @@ private final class ScanAccumulator {
 
     private let options: ScanOptions
     private let progress: FileSystemScanner.ProgressHandler?
+    private let onSnapshot: ((StorageScan) -> Void)?
+    private let rootURL: URL
+    private let startedAt: Date
     private var lastProgressDate = Date.distantPast
     private let oldFileCutoff: Date
     private var retainedItemCount: Int
@@ -729,14 +810,27 @@ private final class ScanAccumulator {
     var totalBytes: Int64 = 0
 
     /// Guards every mutable field above. Held briefly during directory enumeration's
-    /// record*() calls; the user `progress` closure is invoked under this lock, so it must
-    /// not re-enter the accumulator. Contention is bounded because the scan's bottleneck is
-    /// `contentsOfDirectory`+`resourceValues` I/O outside the lock.
+    /// record*() calls; the user `progress` and `onSnapshot` closures are both invoked
+    /// under this lock, so neither must re-enter the accumulator or block for long — every
+    /// concurrentPerform worker thread recording an item serializes on whichever thread is
+    /// currently inside one of these callbacks. Contention is bounded today because both
+    /// callbacks only do cheap NSLock bookkeeping on the ScanStore side; a callback that
+    /// becomes non-trivial (e.g. blocking on a busy MainActor) would serialize the whole
+    /// scan on this lock.
     private let lock = NSLock()
 
-    init(options: ScanOptions, progress: FileSystemScanner.ProgressHandler?) {
+    init(
+        options: ScanOptions,
+        progress: FileSystemScanner.ProgressHandler?,
+        onSnapshot: ((StorageScan) -> Void)? = nil,
+        rootURL: URL = URL(fileURLWithPath: "/"),
+        startedAt: Date = Date()
+    ) {
         self.options = options
         self.progress = progress
+        self.onSnapshot = onSnapshot
+        self.rootURL = rootURL
+        self.startedAt = startedAt
         self.retainedItemCount = 1
         self.oldFileCutoff = Calendar.current.date(
             byAdding: .day,
@@ -963,17 +1057,73 @@ private final class ScanAccumulator {
     }
 
     private func emitProgressLocked(path: String, force: Bool = false, phase: ScanPhase = .enumerating) {
-        guard let progress else {
-            return
-        }
-
         let now = Date()
         guard force || scannedItemCount == 1 || scannedItemCount.isMultiple(of: 25) || now.timeIntervalSince(lastProgressDate) > 0.35 else {
             return
         }
 
         lastProgressDate = now
-        progress(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path, phase: phase))
+        // Snapshot fires before progress (not after): ScanStore's progress consumer reads
+        // whatever the most recent onSnapshot call staged before it yields the paired
+        // ScanTick. Firing progress first would pair each tick with the *previous* tick's
+        // snapshot — a one-tick lag that leaves cancel-preserved partial results stale by
+        // a full throttle interval.
+        if let onSnapshot {
+            onSnapshot(snapshotLocked())
+        }
+        progress?(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path, phase: phase))
+    }
+
+    /// Builds a `StorageScan` from current in-progress state under the caller's held lock.
+    /// Duplicate verification hasn't run yet mid-scan, so `verifiedDuplicateGroups` is
+    /// always empty here. `rootItem`/`retainedItems` use a minimal placeholder root — list
+    /// views driven by streaming snapshots read `largestFiles`/`largestFolders`/
+    /// `oldLargeFiles`/counts, not the tree, so a full retained-tree rebuild mid-scan isn't
+    /// warranted.
+    private func snapshotLocked() -> StorageScan {
+        let placeholderRoot = StorageItem(
+            url: rootURL,
+            kind: .folder,
+            byteSize: totalBytes,
+            allocatedSize: totalBytes,
+            modifiedAt: nil,
+            immediateChildCount: 0,
+            descendantCount: scannedItemCount,
+            isReadable: true
+        )
+        return StorageScan(
+            rootURL: rootURL,
+            startedAt: startedAt,
+            finishedAt: Date(),
+            rootItem: placeholderRoot,
+            retainedItems: [],
+            scannedItemCount: scannedItemCount,
+            inaccessibleItemCount: inaccessibleItemCount,
+            totalBytes: totalBytes,
+            largestFiles: sortedRankedItems(largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
+            largestFolders: sortedRankedItems(largestFolderItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
+            oldLargeFiles: sortedRankedItems(oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
+            typeBreakdown: typeBreakdown,
+            categoryBreakdown: categoryBreakdown,
+            duplicateSizeGroups: [],
+            verifiedDuplicateGroups: [],
+            duplicateCandidateItemLimit: duplicateCandidateItemLimit,
+            duplicateCandidateItemsRetained: duplicateCandidateItemCount,
+            duplicateCandidateItemsConsidered: duplicateCandidateConsideredCount,
+            duplicateCandidateLimitReached: duplicateCandidateLimitReached,
+            duplicateVerificationDuration: 0,
+            enumerateDuration: Date().timeIntervalSince(startedAt),
+            cleanupCandidates: [],
+            isPartial: true
+        )
+    }
+
+    /// Thread-safe public entry point for `snapshot()` — acquires the lock itself so
+    /// callers outside the accumulator (e.g. tests) don't need to know about locking.
+    func snapshot() -> StorageScan {
+        lock.lock()
+        defer { lock.unlock() }
+        return snapshotLocked()
     }
 
     private func recordFileLocked(_ item: StorageItem) {

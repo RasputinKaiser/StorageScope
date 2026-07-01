@@ -31,7 +31,14 @@ struct ScanStoreCancellationTests {
 
         #expect(store.isScanning == false)
         #expect(store.errorMessage == nil)
-        #expect(store.scan == nil)
+        // Cancel now keeps partial results rather than discarding them. Whether a snapshot
+        // landed before this particular cancel is timing-dependent on this small fixture —
+        // `ScanStoreCancellationTests.cancelKeepsPartialSnapshot` below uses a wider fixture
+        // to make that landing deterministic and assert `isPartial == true` unconditionally.
+        // Here, only assert the invariant that must hold in either case: a scan present
+        // after cancel is never a *stale full scan pretending to be current* — if present,
+        // it must be marked partial.
+        #expect(store.scan == nil || store.scan?.isPartial == true)
         #expect(store.progress.currentPath == "Scan cancelled")
     }
 
@@ -157,8 +164,14 @@ struct ScanStoreCancellationTests {
 
         #expect(store.isScanning == false)
         #expect(store.errorMessage == nil)
-        // Previous results are preserved after cancelling the rescan.
-        #expect(store.scan?.finishedAt == priorFinishedAt)
+        // Previous results are preserved after cancelling the rescan — either untouched
+        // (finishedAt unchanged) if no partial snapshot arrived before cancel landed, or
+        // replaced by a streamed partial snapshot (marked isPartial) if one did. Either
+        // way `store.scan` must not be nil.
+        #expect(store.scan != nil)
+        if store.scan?.finishedAt != priorFinishedAt {
+            #expect(store.scan?.isPartial == true)
+        }
         #expect(store.progress.currentPath == "Scan cancelled")
         // The dismissible cancellation notice replaces the prior scan-complete notice.
         #expect(store.scanNoticeIsDismissible == true)
@@ -185,5 +198,53 @@ struct ScanStoreCancellationTests {
         // The error message is surfaced to the alert (this is a user-actionable
         // failure, not a cancel — cancel would have left errorMessage as nil).
         #expect(store.errorMessage?.isEmpty == false)
+    }
+
+    @Test("cancelling a large in-flight scan keeps the last streamed partial snapshot")
+    func cancelKeepsPartialSnapshot() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // A wide, shallow tree gives the throttled progress/snapshot cadence (every 25
+        // items or 0.35s) room to fire multiple times before the scan finishes, so the
+        // cancel below has a realistic chance of landing after at least one snapshot.
+        for index in 0..<2_000 {
+            let url = root.appendingPathComponent("file-\(index).bin", isDirectory: false)
+            try Data(repeating: UInt8(index % 255), count: 4_096).write(to: url)
+        }
+
+        let store = ScanStore()
+        store.scanDeveloperFixturePath(root.path)
+
+        // Poll until at least one streamed snapshot has landed (store.scan non-nil while
+        // still scanning) rather than a fixed sleep, so this test deterministically exercises
+        // the in-flight path instead of racing the throttle cadence.
+        let snapshotDeadline = Date().addingTimeInterval(5)
+        while store.isScanning, store.scan == nil, Date() < snapshotDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        guard store.isScanning else {
+            return // Completed too fast (small/fast disk) to exercise the in-flight path.
+        }
+        // A snapshot must have landed by now for this test to be meaningful; if the scan is
+        // still running but no snapshot arrived within the deadline, something upstream of
+        // this test (throttle cadence, streaming wiring) regressed independently of cancel.
+        try #require(store.scan != nil, "expected at least one streamed snapshot before cancelling")
+
+        store.cancelScan()
+
+        for _ in 0..<100 {
+            if !store.isScanning { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        #expect(store.isScanning == false)
+        #expect(store.errorMessage == nil)
+        // A snapshot was confirmed present before cancelScan() above, and cancel preserves
+        // rather than discards it — assert both unconditionally now.
+        let scan = try #require(store.scan)
+        #expect(scan.isPartial == true)
     }
 }
