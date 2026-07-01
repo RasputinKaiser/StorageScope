@@ -29,51 +29,35 @@
     }
   }
   </script>
-  <style>
-    :root { color-scheme: light dark; --accent: #0a84ff; --text: #1d1d1f; --muted: #5f6368; --bg: #f5f5f7; --panel: #fff; --border: #d8dee4; }
-    @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #101114; --panel: #1b1d22; --border: #2f343d; } }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
-    main { max-width: 880px; margin: 0 auto; padding: 56px 24px 72px; }
-    h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 1; margin: 0 0 18px; text-wrap: balance; }
-    h2 { margin-top: 36px; text-wrap: balance; }
-    p, li { color: var(--muted); line-height: 1.6; text-wrap: pretty; }
-    a { color: var(--accent); }
-    .actions-note { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
-    .release { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px; margin-top: 24px; }
-    .release h2 { margin-top: 0; font-size: 1.25rem; }
-    .release .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
-    .release ul { margin: 8px 0 0; padding-left: 20px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-    .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--panel); font-weight: 650; transition: transform 100ms cubic-bezier(0.2, 0, 0, 1); }
-    .button:active { transform: scale(0.96); }
-    .primary { background: var(--accent); border-color: var(--accent); color: white; }
-    .site-nav { display:flex; flex-wrap:wrap; align-items:baseline; gap:16px 24px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
-    .site-nav .brand { font-weight:700; color:var(--text); text-decoration:none; font-size:1.05rem; }
-    .site-nav nav { display:flex; flex-wrap:wrap; gap:18px; margin-left:auto; }
-    .site-nav nav a { color:var(--muted); text-decoration:none; font-size:0.95rem; transition: color 150ms cubic-bezier(0.2, 0, 0, 1); }
-    .site-nav nav a:hover { color:var(--accent); }
-    footer.site-footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted); font-size:0.95rem; display:flex; flex-wrap:wrap; gap:8px 16px; justify-content:space-between; }
-    footer.site-footer a { color:inherit; }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
-  <main>
-    <header class="site-nav" aria-label="Site navigation">
-      <a class="brand" href="./">StorageScope</a>
-      <nav>
+
+  <div class="site-nav" role="banner">
+    <div class="nav-inner">
+      <a class="brand" href="./">StorageScope <span class="ver">v0.7.0</span></a>
+      <nav aria-label="Site navigation">
         <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
-        <a href="duplicate-file-finder-macos.html">Duplicate finder</a>
-        <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative</a>
+        <a href="duplicate-file-finder-macos.html">Duplicates</a>
+        <a href="open-source-cleanmymac-alternative.html">vs CleanMyMac</a>
+        <a href="keyboard-shortcuts.html">Shortcuts</a>
+        <a href="changelog.html">Changelog</a>
       </nav>
-    </header>
+    </div>
+  </div>
+
+  <main>
     <h1>Changelog</h1>
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
 
     <section class="release">
       <h2>v0.7.0 &mdash; Scan Control and Privacy</h2>
       <div class="meta">Released 2026-07-01 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.7.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg">download .dmg</a></div>
-      <p>Scan control and privacy release. Adds a folder exclusion list so scans can skip <code>node_modules</code>, <code>.git</code>, and cache directories entirely; results now stream into list views live during a scan instead of only appearing at the end; cancelling a scan keeps its partial results browsable instead of discarding them; scans can be paused and resumed in place, with a live items/sec and elapsed-time readout; and a new redaction toggle masks file/folder names in the UI for screen-sharing.</p>
+      <p>Scan control and privacy release. Adds a folder exclusion list so scans can skip <code>node_modules</code>, <code>.git</code>, and cache directories entirely; results now stream into list views live during a scan instead of only appearing at the end; cancelling a scan keeps its partial results browsable instead of discarding them; scans can be paused and resumed in place, with a live items/sec and elapsed-time readout; and a new redaction toggle masks file/folder names in the UI for screen-sharing. Interface rendering also got faster: cached type breakdowns, cheaper size bars, and less main-thread disk I/O.</p>
 
       <h3>Scan control</h3>
       <ul>
@@ -87,6 +71,15 @@
       <h3>Privacy</h3>
       <ul>
         <li><strong>Redaction toggle</strong> &mdash; a new Settings section masks file and folder names/paths across the UI with stable, per-session generic placeholders (e.g. "File 3.mp4", "Folder 1") while keeping sizes, dates, and counts real. Trash/move/reveal actions are unaffected since only display text is masked.</li>
+      </ul>
+
+      <h3>Interface performance</h3>
+      <ul>
+        <li><strong>Canvas size bars</strong> &mdash; the proportional size bars in Tree Explorer, Type Breakdown, and the Overview storage map are now drawn with a shared <code>Canvas</code> view instead of a per-row <code>GeometryReader</code>, removing an extra layout pass for every visible row on large expanded trees.</li>
+        <li><strong>Cached type breakdowns</strong> &mdash; the File Type Breakdown and Category Mix lists cache per scan + search query instead of re-filtering every extension on every render while typing.</li>
+        <li><strong>O(1) Expand All enablement</strong> &mdash; the Tree Explorer toolbar no longer re-walks the entire retained tree on every selection or expansion change to decide whether "Expand All" applies; container IDs are cached per scan.</li>
+        <li><strong>Cached volume capacity</strong> &mdash; the sidebar Volumes section no longer performs synchronous disk I/O on every render to show "free of total" capacity; values cache per volume and refresh with the volume list.</li>
+        <li><strong>Lighter list dividers</strong> &mdash; row lists no longer allocate an enumerated tuple array per render just to skip the trailing divider.</li>
       </ul>
     </section>
 
@@ -377,8 +370,24 @@
     <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
-      <div>StorageScope &middot; MIT License &middot; <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="faq.html">FAQ</a></div>
-      <div>v0.7.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div>
+        StorageScope
+        &middot;
+        MIT License
+        &middot;
+        <a href="https://github.com/RasputinKaiser/StorageScope">GitHub</a>
+        &middot;
+        <a href="https://github.com/RasputinKaiser/StorageScope/releases">Releases</a>
+        &middot;
+        <a href="privacy.html">Privacy</a>
+        &middot;
+        <a href="changelog.html">Changelog</a>
+        &middot;
+        <a href="faq.html">FAQ</a>
+        &middot;
+        <a href="architecture.html">Architecture</a>
+      </div>
+      <div class="site-footer-meta">v0.7.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

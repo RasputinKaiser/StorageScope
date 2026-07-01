@@ -270,7 +270,8 @@ private struct DuplicateItemList: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            let lastItemID = items.last?.id
+            ForEach(items) { item in
                 let isKeeper = keeperItemID == item.id
                 DuplicateFileRow(
                     item: item,
@@ -292,7 +293,7 @@ private struct DuplicateItemList: View {
                 }
                 .equatable()
 
-                if index < items.index(before: items.endIndex) {
+                if item.id != lastItemID {
                     Divider()
                 }
             }

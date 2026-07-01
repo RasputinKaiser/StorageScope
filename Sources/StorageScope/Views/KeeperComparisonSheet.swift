@@ -91,11 +91,12 @@ struct KeeperComparisonSheet: View {
             }
 
             VStack(spacing: 0) {
-                ForEach(Array(copies.enumerated()), id: \.element.id) { index, item in
+                let lastItemID = copies.last?.id
+                ForEach(copies) { item in
                     KeeperComparisonRow(item: item, filters: store.filters, isKeeper: false) {
                         onSetKeeper(item)
                     }
-                    if index < copies.index(before: copies.endIndex) {
+                    if item.id != lastItemID {
                         Divider()
                     }
                 }

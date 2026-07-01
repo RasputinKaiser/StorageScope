@@ -45,15 +45,10 @@ struct TypeBreakdownView: View {
                                         .font(.system(.body, design: .rounded).weight(.semibold))
                                         .frame(width: 110, alignment: .leading)
 
-                                    GeometryReader { geometry in
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(.quaternary)
-                                            .overlay(alignment: .leading) {
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(stat.category.barTint.opacity(0.72))
-                                                    .frame(width: max(8, geometry.size.width * CGFloat(Double(stat.totalBytes) / Double(maxCategoryBytes))))
-                                            }
-                                    }
+                                    SizeBar(
+                                        fraction: Double(stat.totalBytes) / Double(maxCategoryBytes),
+                                        fill: stat.category.barTint.opacity(0.72)
+                                    )
                                     .frame(height: 10)
                                     .accessibilityHidden(true)
 
@@ -128,15 +123,10 @@ private struct FileTypeRowLabel: View, Equatable {
                 .foregroundStyle(.secondary)
                 .frame(width: 86, alignment: .leading)
 
-            GeometryReader { geometry in
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(.quaternary)
-                    .overlay(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(stat.category.barTint.opacity(0.72))
-                            .frame(width: max(8, geometry.size.width * CGFloat(Double(stat.totalBytes) / Double(maxBytes))))
-                    }
-            }
+            SizeBar(
+                fraction: Double(stat.totalBytes) / Double(maxBytes),
+                fill: stat.category.barTint.opacity(0.72)
+            )
             .frame(height: 10)
             .accessibilityHidden(true)
 
