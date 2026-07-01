@@ -11,6 +11,7 @@ struct SettingsView: View {
             SettingsSection(title: "Scan Options") {
                 Toggle("Include hidden files", isOn: store.filterBinding(\.includeHiddenFiles))
                 Stepper("Treat files older than \(store.oldFileAgeDays) days as old", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
+                Stepper("Detect duplicates \(store.duplicateCandidateThresholdMB) MB or larger", value: store.filterBinding(\.duplicateCandidateThresholdMB), in: 1...500, step: 1)
 
                 if let status = store.scanOptionsStatusText {
                     HStack {
@@ -26,7 +27,7 @@ struct SettingsView: View {
                     }
                 }
 
-                SettingsFootnote("Hidden files and old-file age affect scan results. Existing results keep their previous scan options until you rescan.")
+                SettingsFootnote("Hidden files, old-file age, and the duplicate threshold affect scan results. Existing results keep their previous scan options until you rescan.")
             }
 
             Divider()

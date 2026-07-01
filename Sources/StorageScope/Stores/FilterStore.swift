@@ -81,6 +81,18 @@ final class FilterStore: ObservableObject {
         didSet { coordinateInvalidate() }
     }
 
+    /// Scanner inclusion threshold for same-size duplicate candidacy, in MB. Default lowered
+    /// from the old fixed 100MB (see `ScanOptionPolicy`) because at 100MB nearly every file
+    /// in a typical folder (photos, PDFs, code, installers under a few dozen MB) never became
+    /// a candidate, so Duplicate Review found almost nothing for most users' real folders.
+    /// 10MB still excludes the long tail of tiny files (source, text, thumbnails) that would
+    /// blow up hashing volume, while catching the common duplicate cases. The verify byte/file
+    /// budget (`ScanOptions.duplicateVerificationByteLimit`/`maxDuplicateVerificationFiles`)
+    /// remains the wall-time safety valve regardless of how low this goes.
+    @Published var duplicateCandidateThresholdMB: Int = 10 {
+        didSet { coordinateInvalidate() }
+    }
+
     /// Set when the user clicks a row on `TypeBreakdownView` — narrows downstream views
     /// (currently `.largestFiles`) to files whose `fileExtension` matches. Cleared on its own
     /// when the user dismisses the corresponding chip, or anytime `query` changes so the user

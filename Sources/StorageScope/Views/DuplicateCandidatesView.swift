@@ -24,7 +24,9 @@ struct DuplicateCandidatesView: View {
                     FilterRecoveryView(
                         title: "No Duplicate Leads",
                         systemImage: "checkmark.seal",
-                        description: store.hasActiveDisplayFilters ? "No duplicate leads match the active display filters." : "Try scanning a broader folder.",
+                        description: store.hasActiveDisplayFilters
+                            ? "No duplicate leads match the active display filters."
+                            : "No files at or above \(store.duplicateCandidateThresholdMB) MB had matching sizes. Lower the duplicate threshold in Settings to include smaller files.",
                         filters: store.activeDisplayFilterDescriptions,
                         state: store.displayRecoveryState,
                         clearTitle: "Clear Filters"
@@ -278,6 +280,7 @@ private struct DuplicateItemList: View {
                 } onCopyPath: {
                     onCopyPath(item)
                 }
+                .equatable()
 
                 if index < items.index(before: items.endIndex) {
                     Divider()
@@ -287,7 +290,7 @@ private struct DuplicateItemList: View {
     }
 }
 
-private struct DuplicateFileRow: View {
+private struct DuplicateFileRow: View, Equatable {
     let item: StorageItem
     let isKeeper: Bool
     let isSelected: Bool
@@ -297,6 +300,11 @@ private struct DuplicateFileRow: View {
     let onReveal: () -> Void
     let onCopyPath: () -> Void
     @State private var isHovered = false
+
+    // Excludes the closures: not Equatable, and freshly allocated per render anyway.
+    static func == (lhs: DuplicateFileRow, rhs: DuplicateFileRow) -> Bool {
+        lhs.item == rhs.item && lhs.isKeeper == rhs.isKeeper && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Button(action: onSelect) {
@@ -325,7 +333,7 @@ private struct DuplicateFileRow: View {
             .contentShape(Rectangle())
             .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(item.name), file, \(StorageFormat.bytes(item.displaySize))\(isKeeper ? ", keeper" : "")")

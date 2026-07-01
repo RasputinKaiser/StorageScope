@@ -38,7 +38,7 @@ struct TypeBreakdownView: View {
                         Text("Category Mix")
                             .font(.subheadline.weight(.semibold))
 
-                        VStack(spacing: 0) {
+                        LazyVStack(spacing: 0) {
                             ForEach(categoryStats) { stat in
                                 HStack(spacing: 14) {
                                     Text(stat.category.rawValue)
@@ -55,6 +55,7 @@ struct TypeBreakdownView: View {
                                             }
                                     }
                                     .frame(height: 10)
+                                    .accessibilityHidden(true)
 
                                     Text(StorageFormat.bytes(stat.totalBytes))
                                         .font(.system(.body, design: .rounded).monospacedDigit())
@@ -62,9 +63,11 @@ struct TypeBreakdownView: View {
 
                                     VStack(alignment: .trailing, spacing: 2) {
                                         Text(stat.extensionCountLabel)
+                                            .monospacedDigit()
                                         Text(stat.fileCountLabel)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
+                                            .monospacedDigit()
                                     }
                                     .foregroundStyle(.secondary)
                                     .frame(width: 86, alignment: .trailing)
@@ -81,7 +84,7 @@ struct TypeBreakdownView: View {
                         .cardBackground()
                     }
 
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(stats) { stat in
                             Button {
                                 store.focusFileType(stat)
@@ -91,6 +94,7 @@ struct TypeBreakdownView: View {
                                     maxBytes: maxBytes,
                                     isFocused: isFocused(fileTypeFocus: store.filters.fileTypeFocus, stat: stat)
                                 )
+                                .equatable()
                             }
                             .buttonStyle(.plain)
                             .accessibilityElement(children: .ignore)
@@ -108,7 +112,7 @@ struct TypeBreakdownView: View {
     }
 }
 
-private struct FileTypeRowLabel: View {
+private struct FileTypeRowLabel: View, Equatable {
     let stat: FileTypeStat
     let maxBytes: Int64
     let isFocused: Bool
@@ -134,6 +138,7 @@ private struct FileTypeRowLabel: View {
                     }
             }
             .frame(height: 10)
+            .accessibilityHidden(true)
 
             Text(StorageFormat.bytes(stat.totalBytes))
                 .font(.system(.body, design: .rounded).monospacedDigit())
@@ -141,6 +146,7 @@ private struct FileTypeRowLabel: View {
 
             Text(stat.fileCountLabel)
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
                 .frame(width: 86, alignment: .trailing)
 
             Image(systemName: isFocused ? "checkmark.circle.fill" : "chevron.right")

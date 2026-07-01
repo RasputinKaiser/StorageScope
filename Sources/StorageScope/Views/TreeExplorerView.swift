@@ -136,7 +136,7 @@ private struct TreeNodeRow: View {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 14, height: 14)
+                            .frame(width: 22, height: 22)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -144,7 +144,7 @@ private struct TreeNodeRow: View {
                     .help(isExpanded ? "Collapse this folder" : "Expand this folder")
                 } else {
                     Color.clear
-                        .frame(width: 14, height: 14)
+                        .frame(width: 22, height: 22)
                 }
 
                 Button {
@@ -175,11 +175,14 @@ private struct TreeNodeRow: View {
                                     }
                             }
                             .frame(height: 7)
+                            // Purely decorative — the row's own accessibilityLabel/Value already
+                            // states the size; without this, VoiceOver can land on an unlabeled bar.
+                            .accessibilityHidden(true)
                         }
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableRow)
             }
             .padding(.leading, CGFloat(depth * 18) + 12)
             .padding(.trailing, 12)

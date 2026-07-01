@@ -274,6 +274,7 @@ private struct StorageItemRow: View, Equatable {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .help(item.url.path)
                     }
                 }
                 .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
@@ -296,7 +297,7 @@ private struct StorageItemRow: View, Equatable {
             .selectionBackground(isSelected: isSelected)
             .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(item.name), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")

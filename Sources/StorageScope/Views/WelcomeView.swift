@@ -173,7 +173,7 @@ private struct WelcomeCapabilityCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
         .cardBackground()
-        .shadow(color: .black.opacity(isHovered ? 0.09 : 0), radius: isHovered ? 10 : 0, y: isHovered ? 3 : 0)
+        .shadow(color: Color(nsColor: .shadowColor).opacity(isHovered ? 0.18 : 0), radius: isHovered ? 10 : 0, y: isHovered ? 3 : 0)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.primary.opacity(isHovered ? 0.06 : 0), lineWidth: 1)

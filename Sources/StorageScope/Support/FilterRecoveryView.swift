@@ -62,11 +62,16 @@ struct FilterRecoveryView: View {
                 }
             }
         } actions: {
-            Button(clearTitle) {
-                clearAction()
+            // Only show Clear when there's actually something to clear — with no active
+            // filters this button was previously a visible no-op, which is what made BUG-1's
+            // "no items" empty states read as broken rather than as honest "nothing here".
+            if !filters.isEmpty {
+                Button(clearTitle) {
+                    clearAction()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
     }
 

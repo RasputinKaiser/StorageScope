@@ -72,8 +72,8 @@ struct ScanStoreKeeperAndIgnoreTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        // ScanStore.scan uses ScanOptionPolicy.interactiveScanThresholds(), which sets
-        // duplicateCandidateThreshold to 100 MB. Use sparse files just over that threshold so
+        // ScanStore.scan uses filters.duplicateCandidateThresholdMB (default 10 MB) as the
+        // duplicate-candidacy threshold. Use sparse files comfortably over that default so
         // duplicate candidate capture and SHA-256 verification both run, without writing 200 MB.
         try writeSparseDuplicate(at: root.appendingPathComponent("copy-a.bin"), bytes: 101_000_000, seed: 0x41)
         try writeSparseDuplicate(at: root.appendingPathComponent("copy-b.bin"), bytes: 101_000_000, seed: 0x41)
