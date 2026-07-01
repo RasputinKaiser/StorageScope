@@ -180,15 +180,11 @@ private struct TreeNodeRow: View {
                                     .foregroundStyle(.secondary)
                             }
 
-                            GeometryReader { geometry in
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(.quaternary)
-                                    .overlay(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(.tint.opacity(depth == 0 ? 0.85 : 0.62))
-                                            .frame(width: max(6, geometry.size.width * CGFloat(Double(item.displaySize) / Double(rootSize))))
-                                    }
-                            }
+                            SizeBar(
+                                fraction: Double(item.displaySize) / Double(rootSize),
+                                fill: .tint.opacity(depth == 0 ? 0.85 : 0.62),
+                                minimumWidth: 6
+                            )
                             .frame(height: 7)
                             // Purely decorative — the row's own accessibilityLabel/Value already
                             // states the size; without this, VoiceOver can land on an unlabeled bar.

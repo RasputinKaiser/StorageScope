@@ -213,6 +213,19 @@ func setSelectedView(_ view: SmartView) {
     private var cachedReclaimPlan = ReclaimPlan(sections: [], primaryAction: nil)
     private var cachedItemsKey: ItemsCacheKey?
     private var cachedItems: [StorageItem] = []
+
+    /// Key for the type/category breakdown caches. Only the scan identity and the search
+    /// query feed those computations, so the key deliberately omits the other filter dims —
+    /// a size-filter or sort change must not evict a still-valid breakdown.
+    private struct TypeBreakdownCacheKey: Equatable {
+        let scanFinishedAt: Date
+        let query: String
+    }
+
+    private var cachedFilteredTypeBreakdownKey: TypeBreakdownCacheKey?
+    private var cachedFilteredTypeBreakdown: [FileTypeStat] = []
+    private var cachedFilteredCategoryBreakdownKey: TypeBreakdownCacheKey?
+    private var cachedFilteredCategoryBreakdown: [FileCategoryStat] = []
     private var cachedOldLargeFilesKey: DerivedCacheKey?
     private var cachedOldLargeFiles: [StorageItem] = []
     private var cachedDuplicateGroupsKey: DerivedCacheKey?
@@ -328,9 +341,8 @@ func setSelectedView(_ view: SmartView) {
     }
 
     var canExpandAllTree: Bool {
-        guard let rootItem = scan?.rootItem else { return false }
-        let allContainers = allTreeContainerIDs(in: rootItem)
-        return !allContainers.allSatisfy { treeExpandedIDs.contains($0) }
+        let containers = treeContainerIDs
+        return !containers.isEmpty && !containers.isSubset(of: treeExpandedIDs)
     }
 
     var canCollapseTree: Bool {
@@ -341,8 +353,26 @@ func setSelectedView(_ view: SmartView) {
     /// same retention criteria as the scan itself, so big scans only expand what's actually
     /// visible — the renderer never sees the dropped children.
     func expandEntireTree() {
-        guard let rootItem = scan?.rootItem else { return }
-        treeExpandedIDs = allTreeContainerIDs(in: rootItem)
+        guard scan != nil else { return }
+        treeExpandedIDs = treeContainerIDs
+    }
+
+    private var cachedTreeContainerIDsScanFinishedAt: Date?
+    private var cachedTreeContainerIDs: Set<String> = []
+
+    /// Container IDs of the retained tree, cached per scan identity. `canExpandAllTree` is
+    /// read on every TreeExplorerView body pass (toolbar enablement), and each selection or
+    /// expansion change re-evaluates that body — without this cache every click re-walked
+    /// the entire retained tree just to produce one Bool.
+    private var treeContainerIDs: Set<String> {
+        guard let scan else { return [] }
+        if cachedTreeContainerIDsScanFinishedAt == scan.finishedAt {
+            return cachedTreeContainerIDs
+        }
+        let ids = allTreeContainerIDs(in: scan.rootItem)
+        cachedTreeContainerIDsScanFinishedAt = scan.finishedAt
+        cachedTreeContainerIDs = ids
+        return ids
     }
 
     /// Collapses every container — reverts the tree to a single root row.
@@ -632,7 +662,15 @@ func setSelectedView(_ view: SmartView) {
 
     func refreshMountedVolumes() {
         cachedMountedVolumes = resolveMountedVolumes()
+        cachedVolumeCapacityDescriptions.removeAll()
     }
+
+    /// Cached per volume URL for the same reason as `cachedMountedVolumes`: SidebarView
+    /// renders one capacity string per volume on every body pass, and the underlying
+    /// `resourceValues` fetch is synchronous disk I/O on the main actor. Outer Optional
+    /// distinguishes "not fetched yet" from a cached nil (values unavailable). Cleared
+    /// alongside the volume list in `refreshMountedVolumes()`.
+    private var cachedVolumeCapacityDescriptions: [URL: String?] = [:]
 
     private func resolveMountedVolumes() -> [URL] {
         let keys: [URLResourceKey] = [
@@ -659,6 +697,15 @@ func setSelectedView(_ view: SmartView) {
     /// Used by the sidebar Volumes section to surface free vs total capacity before the user
     /// commits to scanning a volume.
     func volumeCapacityDescription(for url: URL) -> String? {
+        if let cached = cachedVolumeCapacityDescriptions[url] {
+            return cached
+        }
+        let description = resolveVolumeCapacityDescription(for: url)
+        cachedVolumeCapacityDescriptions[url] = description
+        return description
+    }
+
+    private func resolveVolumeCapacityDescription(for url: URL) -> String? {
         let keys: Set<URLResourceKey> = [.volumeAvailableCapacityKey, .volumeTotalCapacityKey]
         guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
         let free = values.volumeAvailableCapacity ?? 0
@@ -1538,18 +1585,30 @@ func setSelectedView(_ view: SmartView) {
         guard !trimmedQuery.isEmpty else {
             return scan.typeBreakdown
         }
-        return scan.typeBreakdown.filter {
+        let key = TypeBreakdownCacheKey(scanFinishedAt: scan.finishedAt, query: trimmedQuery)
+        if cachedFilteredTypeBreakdownKey == key {
+            return cachedFilteredTypeBreakdown
+        }
+        let value = scan.typeBreakdown.filter {
             $0.label.localizedCaseInsensitiveContains(trimmedQuery) ||
                 $0.category.rawValue.localizedCaseInsensitiveContains(trimmedQuery)
         }
+        cachedFilteredTypeBreakdownKey = key
+        cachedFilteredTypeBreakdown = value
+        return value
     }
 
     var filteredCategoryBreakdown: [FileCategoryStat] {
         guard let scan else {
             return []
         }
-        guard !filters.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmedQuery = filters.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
             return scan.categoryBreakdown
+        }
+        let key = TypeBreakdownCacheKey(scanFinishedAt: scan.finishedAt, query: trimmedQuery)
+        if cachedFilteredCategoryBreakdownKey == key {
+            return cachedFilteredCategoryBreakdown
         }
 
         let typeStats = filteredTypeBreakdown
@@ -1563,7 +1622,7 @@ func setSelectedView(_ view: SmartView) {
             statsByCategory[stat.category] = categoryStat
         }
 
-        return statsByCategory.map { category, stats in
+        let value = statsByCategory.map { category, stats in
             FileCategoryStat(
                 category: category,
                 fileCount: stats.fileCount,
@@ -1577,6 +1636,9 @@ func setSelectedView(_ view: SmartView) {
             }
             return lhs.totalBytes > rhs.totalBytes
         }
+        cachedFilteredCategoryBreakdownKey = key
+        cachedFilteredCategoryBreakdown = value
+        return value
     }
 
     func focusFileType(_ stat: FileTypeStat) {
@@ -1735,6 +1797,10 @@ func setSelectedView(_ view: SmartView) {
         cachedDuplicateGroups = []
         cachedVerifiedDuplicateGroupsKey = nil
         cachedVerifiedDuplicateGroups = []
+        cachedFilteredTypeBreakdownKey = nil
+        cachedFilteredTypeBreakdown = []
+        cachedFilteredCategoryBreakdownKey = nil
+        cachedFilteredCategoryBreakdown = []
         // cachedItemsKey/cachedItems intentionally NOT dropped here. `items(for:)`'s key
         // comparison is the source of truth — its key normalizes irrelevant dims per view,
         // so a filter change that doesn't affect the active view's output is a no-op

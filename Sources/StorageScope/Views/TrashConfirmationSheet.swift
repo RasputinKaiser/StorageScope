@@ -178,10 +178,11 @@ private struct TrashReviewSection: View {
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                let lastItemID = items.last?.id
+                ForEach(items) { item in
                     TrashReviewRow(item: item, filters: filters, reveal: reveal, open: open, remove: remove, isMoving: isMoving)
 
-                    if index < items.index(before: items.endIndex) {
+                    if item.id != lastItemID {
                         Divider()
                     }
                 }

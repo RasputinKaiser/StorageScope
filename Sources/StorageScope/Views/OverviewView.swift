@@ -278,7 +278,8 @@ private struct SizeDistributionView: View {
                     .cardBackground()
                 } else {
                     VStack(spacing: 0) {
-                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let lastItemID = items.last?.id
+                        ForEach(items) { item in
                             StorageMapRow(
                                 item: item,
                                 maxSize: maxSize,
@@ -288,7 +289,7 @@ private struct SizeDistributionView: View {
                                 store.selectedItemID = item.id
                             }
                             .equatable()
-                            if index < items.count - 1 {
+                            if item.id != lastItemID {
                                 Divider()
                             }
                         }
@@ -340,15 +341,10 @@ private struct StorageMapRow: View, Equatable {
                             .monospacedDigit()
                     }
 
-                    GeometryReader { geometry in
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(.quaternary)
-                            .overlay(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(.tint.opacity(0.85))
-                                    .frame(width: max(8, geometry.size.width * CGFloat(Double(item.displaySize) / Double(maxSize))))
-                            }
-                    }
+                    SizeBar(
+                        fraction: Double(item.displaySize) / Double(maxSize),
+                        fill: .tint.opacity(0.85)
+                    )
                     .frame(height: 8)
                     .accessibilityHidden(true)
                 }
