@@ -81,6 +81,9 @@ struct SidebarView: View {
             ScanStatusFooter(store: store)
         }
         .background(.bar)
+        .onAppear {
+            store.refreshMountedVolumes()
+        }
     }
 }
 
@@ -283,6 +286,7 @@ private struct ScanStatusFooter: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(2)
+                    .help(scan.rootURL.path)
             } else {
                 Label("No scan yet", systemImage: "internaldrive")
                     .font(.headline)

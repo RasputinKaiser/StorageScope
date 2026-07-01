@@ -552,6 +552,37 @@ struct FileSystemScannerTests {
         #expect(Array(scan.largestFiles.map(\.name).prefix(3)) == ["wide-0119.dat", "wide-0118.dat", "wide-0117.dat"])
     }
 
+    @Test("root keeps its direct children even when nested directories exhaust the retention budget first")
+    func rootRetainsChildrenDespiteDepthFirstBudgetExhaustion() throws {
+        // scanItem recurses depth-first/post-order: every subdirectory's own
+        // retainedChildren() call (for ITS children) runs and consumes the shared budget
+        // before the root's own retainedChildren() call runs last. With a tiny budget and
+        // several nested subdirectories, the budget is fully spent by the subdirectories
+        // alone — reproducing the real-world bug where a root with real children renders
+        // with zero retained children once a scan is large enough to need the cap.
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for branch in ["dirA", "dirB", "dirC"] {
+            let branchURL = temporaryRoot.appendingPathComponent(branch, isDirectory: true)
+            try FileManager.default.createDirectory(at: branchURL, withIntermediateDirectories: true)
+            try writeFile(named: "file.dat", bytes: 4_096, in: branchURL)
+        }
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(
+                duplicateCandidateThreshold: 10_000,
+                maxChildrenPerDirectory: 10,
+                maxRetainedItems: 4
+            )
+        )
+
+        #expect(scan.rootItem.immediateChildCount == 3)
+        #expect(!scan.rootItem.children.isEmpty)
+        #expect(Set(scan.rootItem.children.map(\.name)) == ["dirA", "dirB", "dirC"])
+    }
+
     @Test("lookup finds ranked items pruned from retained tree")
     func lookupFindsPrunedRankedItems() throws {
         let temporaryRoot = try makeTemporaryRoot()

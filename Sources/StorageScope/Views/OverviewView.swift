@@ -8,6 +8,12 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if store.scan != nil {
+                    ScanLimitsDisclosure(
+                        rankedResultsCap: store.scanRankedResultsCap,
+                        duplicateThresholdMB: store.duplicateCandidateThresholdMB,
+                        retainedItemsCap: store.scanRetainedItemsCap
+                    )
+
                     ReclaimPlanView(
                         plan: store.reclaimPlan,
                         activeFilters: store.activeCleanupFilterDescriptions
@@ -17,9 +23,10 @@ struct OverviewView: View {
                         perform(action)
                     }
 
-                    SizeDistributionView(store: store)
-
                     let allOverviewItems = store.items(for: .overview)
+
+                    SizeDistributionView(store: store, overviewItems: allOverviewItems)
+
                     let overviewItems = Array(allOverviewItems.prefix(12))
                     let isFiltered = store.hasActiveDisplayFilters
                     HStack(alignment: .top, spacing: 16) {
@@ -75,6 +82,33 @@ struct OverviewView: View {
         case .inspectInaccessibleItems:
             store.selectedView = .tree
         }
+    }
+}
+
+/// Collapsed-by-default disclosure stating the active scan bounds. Without this, a ranked
+/// list capped at 800 or a duplicate group missing because a file fell under the configured
+/// threshold reads as "broken" rather than "working as designed" — see 6.1-PLAN.md U-3.
+private struct ScanLimitsDisclosure: View {
+    let rankedResultsCap: Int
+    let duplicateThresholdMB: Int
+    let retainedItemsCap: Int
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Largest Files, Largest Folders, and similar ranked lists show the top \(rankedResultsCap.formatted()) matches.")
+                Text("Duplicate detection considers files \(duplicateThresholdMB) MB or larger.")
+                Text("Folder Tree and Storage Map retain up to \(retainedItemsCap.formatted()) of the largest items.")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
+        } label: {
+            Label("Scan limits", systemImage: "info.circle")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityLabel("Scan limits disclosure")
     }
 }
 
@@ -209,10 +243,10 @@ private struct ReclaimPlanSectionCard: View {
 
 private struct SizeDistributionView: View {
     @ObservedObject var store: ScanStore
+    let overviewItems: [StorageScopeCore.StorageItem]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            let overviewItems = store.items(for: .overview)
             let items = Array(overviewItems.prefix(10))
 
             VStack(alignment: .leading, spacing: 3) {
@@ -249,6 +283,7 @@ private struct SizeDistributionView: View {
                             ) {
                                 store.selectedItemID = item.id
                             }
+                            .equatable()
                             if index < items.count - 1 {
                                 Divider()
                             }
@@ -269,12 +304,18 @@ private struct SizeDistributionView: View {
     }
 }
 
-private struct StorageMapRow: View {
+private struct StorageMapRow: View, Equatable {
     let item: StorageScopeCore.StorageItem
     let maxSize: Int64
     let isSelected: Bool
     let onTap: () -> Void
     @State private var isHovered = false
+
+    // Excludes `onTap`: closures aren't Equatable and every row's closure is
+    // freshly allocated per render anyway, same pattern as StorageItemRow.
+    static func == (lhs: StorageMapRow, rhs: StorageMapRow) -> Bool {
+        lhs.item == rhs.item && lhs.maxSize == rhs.maxSize && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -303,6 +344,7 @@ private struct StorageMapRow: View {
                             }
                     }
                     .frame(height: 8)
+                    .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, 12)
@@ -311,8 +353,12 @@ private struct StorageMapRow: View {
             .selectionBackground(isSelected: isSelected)
             .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.name), \(StorageFormat.bytes(item.displaySize))")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityHint("Selects this storage item")
     }
 }
 

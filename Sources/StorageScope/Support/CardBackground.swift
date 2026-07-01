@@ -8,6 +8,11 @@ extension View {
     /// default radius matches the existing 8/8 split that ships today.
     func cardBackground(_ material: Material = .regular, radius: CGFloat = 12) -> some View {
         background(material, in: RoundedRectangle(cornerRadius: radius))
+            // Soft layered elevation instead of a flat fill — adapts to light/dark via
+            // NSColor.shadowColor rather than a fixed black, and stays subtle enough not
+            // to compete with WelcomeCapabilityCard's own stronger hover shadow.
+            .shadow(color: Color(nsColor: .shadowColor).opacity(0.05), radius: 1, y: 1)
+            .shadow(color: Color(nsColor: .shadowColor).opacity(0.05), radius: 4, y: 2)
     }
 
     /// Selection highlight tint. Default opacity (0.18) matches list rows and cards;

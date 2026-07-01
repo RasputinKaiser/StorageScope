@@ -103,7 +103,8 @@ public final class FileSystemScanner {
             at: rootURL,
             options: options,
             cancellation: cancellation,
-            accumulator: accumulator
+            accumulator: accumulator,
+            depth: 0
         )
         let retainedItems = rootItem.flattened()
         let duplicateSizeGroups = accumulator.duplicateSizeGroups
@@ -213,7 +214,8 @@ public final class FileSystemScanner {
         at url: URL,
         options: ScanOptions,
         cancellation: ScanCancellation?,
-        accumulator: ScanAccumulator
+        accumulator: ScanAccumulator,
+        depth: Int
     ) throws -> StorageItem {
         try cancellation?.check()
 
@@ -307,47 +309,56 @@ public final class FileSystemScanner {
             var didCancel = false
 
             DispatchQueue.concurrentPerform(iterations: childURLs.count) { index in
-                if cancellation?.isCancelled ?? false {
-                    return
-                }
+                // Each iteration bridges several Foundation objects (URLResourceValues,
+                // NSNumber signpost objects, Date/NSString instances inside scanItem). With
+                // no pool, concurrentPerform's calling thread never gets an autorelease drain
+                // point until the whole call returns, so these accumulate for the duration of
+                // a potentially huge directory enumeration. Draining per-iteration bounds peak
+                // RSS instead of letting it grow with the directory's child count.
+                autoreleasepool {
+                    if cancellation?.isCancelled ?? false {
+                        return
+                    }
 
-                let enumerateSignpostID = OSSignpostID(log: Self.log, object: index as NSNumber)
-                os_signpost(.begin, log: Self.log, name: "enumerate", signpostID: enumerateSignpostID,
-                            "child=%{public}@", childURLs[index].lastPathComponent)
-                defer {
-                    os_signpost(.end, log: Self.log, name: "enumerate", signpostID: enumerateSignpostID)
-                }
+                    let enumerateSignpostID = OSSignpostID(log: Self.log, object: index as NSNumber)
+                    os_signpost(.begin, log: Self.log, name: "enumerate", signpostID: enumerateSignpostID,
+                                "child=%{public}@", childURLs[index].lastPathComponent)
+                    defer {
+                        os_signpost(.end, log: Self.log, name: "enumerate", signpostID: enumerateSignpostID)
+                    }
 
-                do {
-                    try cancellation?.check()
-                    let child = try scanItem(
-                        at: childURLs[index],
-                        options: options,
-                        cancellation: cancellation,
-                        accumulator: accumulator
-                    )
-                    childItems[index] = child
-                } catch FileSystemScannerError.cancelled {
-                    cancellationLock.lock()
-                    didCancel = true
-                    cancellationLock.unlock()
-                } catch {
-                    // Unreachable: scanItem only throws FileSystemScannerError.cancelled;
-                    // ingestion/directory-enumeration failures are caught internally and
-                    // surface as .inaccessible StorageItems. Belt-and-braces guard.
-                    let unreachable = StorageItem(
-                        url: childURLs[index],
-                        kind: .inaccessible,
-                        byteSize: 0,
-                        allocatedSize: 0,
-                        modifiedAt: nil,
-                        immediateChildCount: 0,
-                        descendantCount: 0,
-                        isReadable: false,
-                        fileExtension: nil
-                    )
-                    childItems[index] = unreachable
-                    accumulator.recordItem(unreachable)
+                    do {
+                        try cancellation?.check()
+                        let child = try scanItem(
+                            at: childURLs[index],
+                            options: options,
+                            cancellation: cancellation,
+                            accumulator: accumulator,
+                            depth: depth + 1
+                        )
+                        childItems[index] = child
+                    } catch FileSystemScannerError.cancelled {
+                        cancellationLock.lock()
+                        didCancel = true
+                        cancellationLock.unlock()
+                    } catch {
+                        // Unreachable: scanItem only throws FileSystemScannerError.cancelled;
+                        // ingestion/directory-enumeration failures are caught internally and
+                        // surface as .inaccessible StorageItems. Belt-and-braces guard.
+                        let unreachable = StorageItem(
+                            url: childURLs[index],
+                            kind: .inaccessible,
+                            byteSize: 0,
+                            allocatedSize: 0,
+                            modifiedAt: nil,
+                            immediateChildCount: 0,
+                            descendantCount: 0,
+                            isReadable: false,
+                            fileExtension: nil
+                        )
+                        childItems[index] = unreachable
+                        accumulator.recordItem(unreachable)
+                    }
                 }
             }
 
@@ -364,7 +375,7 @@ public final class FileSystemScanner {
                 summary.record(child)
             }
 
-            let retainedChildren = accumulator.retainedChildren(from: summary.retainedCandidates)
+            let retainedChildren = accumulator.retainedChildren(from: summary.retainedCandidates, depth: depth)
 
             let item = StorageItem(
                 url: url,
@@ -580,7 +591,7 @@ public final class FileSystemScanner {
             hasher.update(data: data)
         }
 
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return hasher.finalize().hexEncodedString()
     }
 
     /// Hashes one item, consulting the persisted `hashCache` fast-path before falling back
@@ -778,12 +789,31 @@ private final class ScanAccumulator {
         }
     }
 
-    func retainedChildren(from children: [StorageItem]) -> [StorageItem] {
+    /// `scanItem`'s recursion is depth-first and post-order: every descendant directory
+    /// finishes recursing (and calls this for its own children) before its ancestor does.
+    /// So on any scan large enough to need the retention budget, the deepest directories
+    /// spend the shared `retainedItemCount` counter first, and the root's own call — the
+    /// very last one to run — can find the budget already exhausted and return `[]`. That
+    /// makes Folder Tree and Storage Map render empty exactly when they're needed most,
+    /// even though the root has real children.
+    ///
+    /// Fix: the root (`depth == 0`) always gets at least a pruned (childless) slot for each
+    /// of its direct children, regardless of how much budget deeper recursion already
+    /// spent. This is bounded by `maxChildrenPerDirectory` — a small, fixed overshoot of the
+    /// global cap — not exponential, since only depth 0 is exempted. Every depth below the
+    /// root keeps the original shared-budget gating.
+    func retainedChildren(from children: [StorageItem], depth: Int) -> [StorageItem] {
         lock.lock()
         defer { lock.unlock() }
         let perDirectoryLimit = max(0, options.maxChildrenPerDirectory)
+        guard perDirectoryLimit > 0 else {
+            return []
+        }
+
         let retainedLimit = max(1, options.maxRetainedItems)
-        guard perDirectoryLimit > 0, retainedItemCount < retainedLimit else {
+        let isGuaranteedDepth = depth == 0
+
+        guard isGuaranteedDepth || retainedItemCount < retainedLimit else {
             return []
         }
 
@@ -791,7 +821,7 @@ private final class ScanAccumulator {
         retained.reserveCapacity(min(children.count, perDirectoryLimit))
 
         for child in children.prefix(perDirectoryLimit) {
-            guard retainedItemCount < retainedLimit else {
+            guard isGuaranteedDepth || retainedItemCount < retainedLimit else {
                 break
             }
 
@@ -1188,6 +1218,24 @@ private enum FileTypeCategoryClassifier {
         default:
             return .other
         }
+    }
+}
+
+private let hexDigits: [UInt8] = Array("0123456789abcdef".utf8)
+
+/// Lookup-table hex encoder for `SHA256Digest` (a `Sequence<UInt8>`). Replaces
+/// `.map { String(format: "%02x", $0) }.joined()`, which builds 32 short-lived `NSString`s
+/// per file hashed via the `%`-format parser — real overhead once P-2 lowers the duplicate
+/// threshold and hashing runs across far more files than before.
+private extension Sequence where Element == UInt8 {
+    func hexEncodedString() -> String {
+        var chars = [UInt8]()
+        chars.reserveCapacity(underestimatedCount * 2)
+        for byte in self {
+            chars.append(hexDigits[Int(byte >> 4)])
+            chars.append(hexDigits[Int(byte & 0x0F)])
+        }
+        return String(decoding: chars, as: UTF8.self)
     }
 }
 

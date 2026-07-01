@@ -7,6 +7,11 @@ import os
 final class ScanStore: ObservableObject {
     private static let overviewItemCap = 100
 
+    /// Single source of truth for the ranked-list cap passed to `ScanOptions` below, and
+    /// surfaced read-only via `scanRankedResultsCap` so the Overview disclosure can state
+    /// the real bound instead of a second hardcoded copy of "800" drifting out of sync.
+    private static let rankedResultsCap = 800
+
     /// os_signpost surface for Instruments. Mirrors FileSystemScanner's subsystem so app-side
     /// and scanner-side spans group together when filtering by subsystem in Instruments.
     private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
@@ -27,6 +32,7 @@ final class ScanStore: ObservableObject {
     struct ScanOptionsSnapshot: Equatable {
         let includeHiddenFiles: Bool
         let oldFileAgeDays: Int
+        let duplicateCandidateThresholdMB: Int
     }
 
     private struct DerivedCacheKey: Equatable {
@@ -223,6 +229,12 @@ func setSelectedView(_ view: SmartView) {
     }
 
     var oldFileAgeDays: Int { filters.oldFileAgeDays }
+    var duplicateCandidateThresholdMB: Int { filters.duplicateCandidateThresholdMB }
+    var scanRankedResultsCap: Int { Self.rankedResultsCap }
+    /// `maxRetainedItems` isn't overridden when constructing `ScanOptions` in `scan(_:)`,
+    /// so the type's own default is the true bound — read it from a default-initialized
+    /// instance rather than hardcoding a second copy of the number.
+    var scanRetainedItemsCap: Int { ScanOptions().maxRetainedItems }
 
     var activeView: SmartView {
         selectedView ?? .overview
@@ -534,7 +546,25 @@ func setSelectedView(_ view: SmartView) {
         scan(url)
     }
 
+    private var cachedMountedVolumes: [URL]?
+
+    /// Cached so SidebarView's body — which re-evaluates on every store change,
+    /// including per-tick scan progress — doesn't redo `FileManager` volume I/O on
+    /// every render. Refreshed on `SidebarView.onAppear` (app launch) and after every
+    /// successful scan completes, so a volume mounted/unmounted mid-session is picked
+    /// up the next time the user finishes a scan rather than only on relaunch.
     var mountedVolumes: [URL] {
+        if let cachedMountedVolumes { return cachedMountedVolumes }
+        let resolved = resolveMountedVolumes()
+        cachedMountedVolumes = resolved
+        return resolved
+    }
+
+    func refreshMountedVolumes() {
+        cachedMountedVolumes = resolveMountedVolumes()
+    }
+
+    private func resolveMountedVolumes() -> [URL] {
         let keys: [URLResourceKey] = [
             .volumeNameKey,
             .volumeIsBrowsableKey,
@@ -667,8 +697,8 @@ func setSelectedView(_ view: SmartView) {
             includeHidden: filters.includeHiddenFiles,
             oldFileAgeDays: filters.oldFileAgeDays,
             largeFileThreshold: thresholds.largeFileThreshold,
-            duplicateCandidateThreshold: thresholds.duplicateCandidateThreshold,
-            maxRankedResults: 800
+            duplicateCandidateThreshold: Int64(filters.duplicateCandidateThresholdMB) * 1_000_000,
+            maxRankedResults: Self.rankedResultsCap
         )
         let optionsSnapshot = currentScanOptions
         let scanCancellation = ScanCancellation()
@@ -785,6 +815,7 @@ func setSelectedView(_ view: SmartView) {
                     currentPath: "Scan complete"
                 )
                 isScanning = false
+                refreshMountedVolumes()
                 clearActiveScan(scanID, cancellation: scanCancellation)
             } catch FileSystemScannerError.cancelled {
                 guard isCurrentScan(scanID, cancellation: scanCancellation) else {
@@ -1541,7 +1572,8 @@ func setSelectedView(_ view: SmartView) {
     private var currentScanOptions: ScanOptionsSnapshot {
         ScanOptionsSnapshot(
             includeHiddenFiles: filters.includeHiddenFiles,
-            oldFileAgeDays: filters.oldFileAgeDays
+            oldFileAgeDays: filters.oldFileAgeDays,
+            duplicateCandidateThresholdMB: filters.duplicateCandidateThresholdMB
         )
     }
 

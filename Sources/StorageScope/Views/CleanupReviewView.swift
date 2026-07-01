@@ -359,7 +359,7 @@ private struct CleanupCandidateRow: View, Equatable {
             .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(candidate.item.name), \(candidate.kind.displayName), \(StorageFormat.bytes(candidate.reclaimableBytes))")
