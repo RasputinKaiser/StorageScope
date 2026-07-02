@@ -10,19 +10,19 @@ The app scans only folders the user grants through macOS folder selection or sto
 
 The name is intentional: StorageScope is not a black-box cleaner. It scopes storage pressure, separates verified duplicates from review-only suggestions, and helps the user decide what to reclaim.
 
-**Current release:** v0.7.0, focused on scan control, live results, pause/resume, folder exclusions, and redacted presentation mode for screen sharing.
+**Current release:** v0.7.1, focused on window sizing, keyboard cleanup navigation, and visual polish across the main storage views.
 
-[Download v0.7.0](https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg) · [Changelog](docs/changelog.html) · [Privacy](PRIVACY.md) · [GitHub Pages](https://rasputinkaiser.github.io/StorageScope/)
+[Download v0.7.1](https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg) · [Changelog](docs/changelog.html) · [Privacy](PRIVACY.md) · [GitHub Pages](https://rasputinkaiser.github.io/StorageScope/)
 
-![StorageScope v0.7.0 overview with redacted file and folder names](docs/images/storagescope-overview.png)
+![StorageScope v0.7.1 overview with redacted file and folder names](docs/images/storagescope-overview.png)
 
-## What's New In v0.7.0
+## What's New In v0.7.1
 
-- Live scan results stream into the storage views while the scan is still running.
-- Pause, resume, and cancel controls keep long scans understandable and interruptible.
-- Folder exclusions let scans skip folders such as `node_modules`, `.git`, and cache directories entirely.
-- Redaction mode masks file and folder names/paths with stable placeholders for screenshots and screen sharing.
-- Cleanup Review keeps verified duplicate reclaim separate from review-only cleanup suggestions.
+- Main and Settings windows now open at roomier default sizes so dense controls and cleanup review states are not clipped.
+- Cleanup Review, Folder Tree, and item tables support keyboard-first movement, reveal, and selection flows.
+- Storage views use cleaner row spacing, stronger empty/loading states, and steadier column behavior for large scans.
+- Overview, sidebar, tree, type breakdown, and duplicate-review surfaces were visually tuned for better scanning at a glance.
+- New tests cover keyboard selection, folder-tree reveal behavior, and tree navigation state.
 
 ## Highlights
 
@@ -38,15 +38,15 @@ The name is intentional: StorageScope is not a black-box cleaner. It scopes stor
 
 ## Screenshots
 
-The screenshots below were captured from the v0.7.0 macOS build with redaction mode enabled, so placeholder names are visible while sizes, counts, and cleanup classifications remain real.
+The scanned-state screenshots below were captured from the v0.7.1 macOS build with redaction mode enabled, so placeholder names are visible while sizes, counts, and cleanup classifications remain real.
 
-| Overview | Cleanup Review |
+| Cold Launch | Scanned Overview |
 | --- | --- |
-| ![StorageScope overview showing reclaim lanes and redacted folder names](docs/images/storagescope-v070-overview-redacted.png) | ![StorageScope cleanup review showing verified duplicate reclaim and redacted file names](docs/images/storagescope-v070-cleanup-redacted.png) |
+| ![StorageScope cold launch showing the redesigned welcome state](docs/images/storagescope-v071-cold-launch.png) | ![StorageScope overview showing reclaim lanes and redacted folder names](docs/images/storagescope-v071-overview-redacted.png) |
 
-| Privacy Setting |
-| --- |
-| ![StorageScope settings showing the Redact file and folder names toggle enabled](docs/images/storagescope-v070-settings-redaction.png) |
+| Cleanup Review | Privacy Setting |
+| --- | --- |
+| ![StorageScope cleanup review showing verified duplicate reclaim and redacted file names](docs/images/storagescope-v071-cleanup-redacted.png) | ![StorageScope settings showing the Redact file and folder names toggle enabled](docs/images/storagescope-v071-settings-redaction.png) |
 
 ## Use Cases
 

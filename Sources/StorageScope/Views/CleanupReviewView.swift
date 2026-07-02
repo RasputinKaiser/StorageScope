@@ -3,8 +3,44 @@ import SwiftUI
 
 struct CleanupReviewView: View {
     @ObservedObject var store: ScanStore
+    /// Keyboard navigation focus: ↑/↓ move through candidates, Space toggles the
+    /// check on the selected row — batch review without touching the mouse
+    /// (UX round 4).
+    @FocusState private var listFocused: Bool
 
     var body: some View {
+        ScrollViewReader { proxy in
+            scrollContent
+                .focusable()
+                .focusEffectDisabled()
+                .focused($listFocused)
+                .onKeyPress(.upArrow) {
+                    scrollToSelection(store.selectAdjacentCleanupCandidate(offset: -1), proxy: proxy)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    scrollToSelection(store.selectAdjacentCleanupCandidate(offset: 1), proxy: proxy)
+                    return .handled
+                }
+                .onKeyPress(.space) {
+                    guard store.cleanupCandidates.contains(where: { $0.item.id == store.selectedItemID }) else {
+                        return .ignored
+                    }
+                    store.toggleSelectedCleanupCandidate()
+                    return .handled
+                }
+                .onKeyPress(.escape) {
+                    store.clearSearchIfActive() ? .handled : .ignored
+                }
+        }
+    }
+
+    private func scrollToSelection(_ id: String?, proxy: ScrollViewProxy) {
+        guard let id else { return }
+        proxy.scrollTo(id, anchor: nil)
+    }
+
+    private var scrollContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline) {
@@ -66,7 +102,7 @@ struct CleanupReviewView: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
+                        .padding(.vertical, 8)
                         .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 }
 
@@ -81,29 +117,38 @@ struct CleanupReviewView: View {
                     ) {
                         store.resetCleanupFilters()
                     }
-                    .frame(minHeight: 340)
+                    .frame(minHeight: 220)
                 } else {
                     LazyVStack(spacing: 10) {
                         ForEach(store.cleanupCandidates) { candidate in
                             CleanupCandidateRow(
                                 candidate: candidate,
                                 displayName: store.filters.displayName(for: candidate.item),
-                                displayPath: store.filters.displayPath(for: candidate.item),
+                                displayPath: store.displayRelativePath(for: candidate.item),
                                 isChecked: store.selectedCleanupCandidateIDs.contains(candidate.id),
                                 isSelected: store.selectedItemID == candidate.item.id,
                                 canTrash: store.canMoveItemToTrash(candidate.item),
                                 // Excluding mid-scan would silently no-op: excludeFolder()
                                 // routes through rescan(), which guards on !isScanning.
                                 canExclude: candidate.item.isContainer && candidate.item.id != store.scan?.rootItem.id && !store.isScanning,
-                                onToggle: { store.toggleCleanupCandidate(candidate) },
+                                // Clicking both toggles and selects, so a follow-up
+                                // Space/↑/↓ continues from the clicked row.
+                                onToggle: {
+                                    store.selectedItemID = candidate.item.id
+                                    store.toggleCleanupCandidate(candidate)
+                                    listFocused = true
+                                },
                                 onIgnore: { store.ignoreCleanupCandidate(candidate) },
                                 onReveal: { store.selectedItemID = candidate.item.id; store.revealSelectedItem() },
                                 onOpen: { store.selectedItemID = candidate.item.id; store.openSelectedItem() },
                                 onCopyPath: { store.selectedItemID = candidate.item.id; store.copySelectedPath() },
                                 onTrash: { store.moveCleanupCandidateToTrash(candidate) },
-                                onExclude: { store.excludeFolder(candidate.item) }
+                                onExclude: { store.excludeFolder(candidate.item) },
+                                onShowInTree: { store.revealInFolderTree(candidate.item) }
                             )
                             .equatable()
+                            // Anchor for keyboard-driven scroll-follow (UX round 4).
+                            .id(candidate.item.id)
                         }
                     }
                 }
@@ -307,6 +352,8 @@ private struct CleanupCandidateRow: View, Equatable {
     let onCopyPath: () -> Void
     let onTrash: () -> Void
     let onExclude: () -> Void
+    /// Context-menu drill-down into the Folder Tree (UX round 2).
+    let onShowInTree: () -> Void
     @State private var isHovered = false
 
     static func == (lhs: CleanupCandidateRow, rhs: CleanupCandidateRow) -> Bool {
@@ -361,7 +408,7 @@ private struct CleanupCandidateRow: View, Equatable {
 
                     Text(displayPath)
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -382,6 +429,7 @@ private struct CleanupCandidateRow: View, Equatable {
             Button(isChecked ? "Unselect" : "Select") { onToggle() }
             Button("Ignore Candidate") { onIgnore() }
             Divider()
+            Button("Show in Folder Tree") { onShowInTree() }
             Button("Reveal in Finder") { onReveal() }
             Button("Open") { onOpen() }
             Button("Copy Path") { onCopyPath() }
@@ -429,7 +477,7 @@ private struct IgnoredCleanupSection: View {
                                 Text(store.filters.displayName(for: candidate.item))
                                     .font(.caption.weight(.semibold))
                                     .lineLimit(1)
-                                Text(store.filters.displayPath(for: candidate.item))
+                                Text(store.displayRelativePath(for: candidate.item))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)

@@ -25,9 +25,9 @@
     "name": "StorageScope",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "macOS 14+",
-    "softwareVersion": "0.7.0",
+    "softwareVersion": "0.7.1",
     "datePublished": "2026-06-21",
-    "dateModified": "2026-07-01",
+    "dateModified": "2026-07-02",
     "programmingLanguage": "Swift",
     "license": "https://opensource.org/license/mit",
     "description": "Free open-source macOS disk space analyzer and Mac storage cleaner for large folders, stale files, duplicate review, and local-first cleanup planning.",
@@ -763,7 +763,7 @@
 
   <div class="site-nav" role="banner">
     <div class="nav-inner">
-      <a class="brand" href="./">StorageScope <span class="ver">v0.7.0</span></a>
+      <a class="brand" href="./">StorageScope <span class="ver">v0.7.1</span></a>
       <nav aria-label="Site navigation">
         <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
@@ -786,9 +786,9 @@
           then plans cleanup you confirm — <strong>without uploading a byte</strong>.
         </p>
         <div class="actions">
-          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg">
+          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 11.5L3.5 7H6V2h4v5h2.5L8 11.5Z" fill="white"/><rect x="2" y="13" width="12" height="1.5" rx=".75" fill="white"/></svg>
-            Download v0.7.0
+            Download v0.7.1
           </a>
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -797,7 +797,7 @@
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
         </div>
         <p class="actions-note">
-          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg.sha256">sha256 checksum</a>
+          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg.sha256">sha256 checksum</a>
           <span class="divider">·</span>
           <a href="https://github.com/RasputinKaiser/StorageScope/releases">all releases</a>
           <span class="divider">·</span>
@@ -857,36 +857,36 @@
   </div>
 
   <main>
-    <section class="whats-new" aria-label="What's new in v0.7.0">
+    <section class="whats-new" aria-label="What's new in v0.7.1">
       <div class="whats-new-head">
-        <span class="tag">v0.7.0</span>
-        <h2>Scan control, privacy, and a faster interface</h2>
+        <span class="tag">v0.7.1</span>
+        <h2>Roomier windows and keyboard-first cleanup</h2>
         <a href="changelog.html">Full changelog →</a>
       </div>
       <div class="whats-new-grid">
         <div class="new-item" style="--mark: var(--blue)">
-          <h3>Folder exclusions</h3>
-          <p>Skip <code>node_modules</code>, <code>.git</code>, and caches entirely, with an editable list and a right-click "Exclude This Folder" action.</p>
+          <h3>Better default windows</h3>
+          <p>Main and Settings windows open with more practical dimensions, keeping dense controls and review panels visible.</p>
         </div>
         <div class="new-item" style="--mark: var(--teal)">
-          <h3>Live streaming results</h3>
-          <p>Ranked views populate and re-sort while the scan runs — no more waiting for the end to see anything.</p>
+          <h3>Keyboard cleanup flow</h3>
+          <p>Cleanup Review supports keyboard movement and selection so verified reclaim can be reviewed without constant pointer travel.</p>
         </div>
         <div class="new-item" style="--mark: var(--green)">
-          <h3>Cancel keeps results</h3>
-          <p>Cancelling a scan keeps the partial results browsable instead of resetting to an empty window.</p>
+          <h3>Folder-tree reveal</h3>
+          <p>Selection and reveal behavior now keep the folder tree, sidebar, and detail pane in sync across navigation paths.</p>
         </div>
         <div class="new-item" style="--mark: var(--amber)">
-          <h3>Pause &amp; resume</h3>
-          <p>Long scans pause and resume in place, with a live items/sec rate and elapsed-time readout.</p>
+          <h3>Steadier tables</h3>
+          <p>Item rows and columns were tuned for clearer scanning, predictable keyboard focus, and less visual churn.</p>
         </div>
         <div class="new-item" style="--mark: var(--violet)">
-          <h3>Redaction mode</h3>
-          <p>Mask file and folder names with stable placeholders for screen-sharing — sizes and counts stay real.</p>
+          <h3>Polished view states</h3>
+          <p>Overview, duplicate review, type breakdown, tree, and empty/loading states read more cleanly at a glance.</p>
         </div>
         <div class="new-item" style="--mark: var(--rose)">
-          <h3>Snappier UI</h3>
-          <p>Cached type breakdowns, lighter row rendering, and no per-row layout passes — smoother scrolling on big scans.</p>
+          <h3>Regression coverage</h3>
+          <p>New app-level tests cover keyboard selection, folder-tree reveal behavior, and tree navigation state.</p>
         </div>
       </div>
     </section>
@@ -992,7 +992,7 @@
         <span class="divider">·</span>
         <a href="architecture.html">Architecture</a>
       </div>
-      <div class="mono">v0.7.0 · macOS 14+ · SwiftUI/AppKit</div>
+      <div class="mono">v0.7.1 · macOS 14+ · SwiftUI/AppKit</div>
     </footer>
   </main>
 

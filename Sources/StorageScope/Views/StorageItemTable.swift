@@ -1,3 +1,4 @@
+import QuickLook
 import StorageScopeCore
 import SwiftUI
 
@@ -8,6 +9,15 @@ struct StorageItemTable: View {
     @ObservedObject var store: ScanStore
     var compact = false
     var countLabel: String?
+    /// Focus target for keyboard navigation: clicking any row moves focus here so
+    /// ↑/↓/Space work immediately after a click (UX round 3).
+    @FocusState private var tableFocused: Bool
+    /// Space-bar Quick Look for the selected item — preview before deciding to trash.
+    @State private var quickLookURL: URL?
+    /// Type-to-select buffer (Finder-style): letters accumulate while typed within
+    /// 0.8s of each other, then the buffer resets lazily on the next key.
+    @State private var typeAheadBuffer = ""
+    @State private var typeAheadLastKeyAt = Date.distantPast
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -55,37 +65,89 @@ struct StorageItemTable: View {
                     }
                     .frame(minHeight: 220)
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(items) { item in
-                                StorageItemRow(
-                                    item: item,
-                                    isSelected: store.selectedItemID == item.id,
-                                    searchText: store.filters.searchText,
-                                    displayName: store.filters.displayName(for: item),
-                                    displayPath: store.filters.displayPath(for: item),
-                                    redactionEnabled: store.filters.redactionEnabled,
-                                    canTrash: store.canMoveItemToTrash(item),
-                                    // Excluding mid-scan would silently no-op: excludeFolder()
-                                    // routes through rescan(), which guards on !isScanning.
-                                    canExclude: item.isContainer && item.id != store.scan?.rootItem.id && !store.isScanning,
-                                    onSelect: { store.selectedItemID = item.id },
-                                    onOpen: { store.selectedItemID = item.id; store.openSelectedItem() },
-                                    onReveal: { store.selectedItemID = item.id; store.revealSelectedItem() },
-                                    onCopyPath: { store.selectedItemID = item.id; store.copySelectedPath() },
-                                    onTrash: { store.selectedItemID = item.id; store.moveSelectedItemToTrash() },
-                                    onExclude: { store.excludeFolder(item) }
-                                )
-                                .equatable()
-                                Divider()
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(items) { item in
+                                    StorageItemRow(
+                                        item: item,
+                                        isSelected: store.selectedItemID == item.id,
+                                        searchText: store.filters.searchText,
+                                        displayName: store.filters.displayName(for: item),
+                                        displayPath: store.displayRelativePath(for: item),
+                                        fullPath: store.filters.displayPath(for: item),
+                                        redactionEnabled: store.filters.redactionEnabled,
+                                        canTrash: store.canMoveItemToTrash(item),
+                                        // Excluding mid-scan would silently no-op: excludeFolder()
+                                        // routes through rescan(), which guards on !isScanning.
+                                        canExclude: item.isContainer && item.id != store.scan?.rootItem.id && !store.isScanning,
+                                        onSelect: { store.selectedItemID = item.id; tableFocused = true },
+                                        onOpen: { store.selectedItemID = item.id; store.openSelectedItem() },
+                                        onReveal: { store.selectedItemID = item.id; store.revealSelectedItem() },
+                                        onCopyPath: { store.selectedItemID = item.id; store.copySelectedPath() },
+                                        onTrash: { store.selectedItemID = item.id; store.moveSelectedItemToTrash() },
+                                        onExclude: { store.excludeFolder(item) },
+                                        onShowInTree: { store.revealInFolderTree(item) },
+                                        onQuickLook: { store.selectedItemID = item.id; quickLookURL = item.url }
+                                    )
+                                    .equatable()
+                                    .id(item.id)
+                                    Divider()
+                                }
                             }
                         }
+                        .frame(minHeight: listMinHeight)
+                        .focusable()
+                        .focusEffectDisabled()
+                        .focused($tableFocused)
+                        .onKeyPress(.upArrow) {
+                            moveSelection(-1, proxy: proxy)
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            moveSelection(1, proxy: proxy)
+                            return .handled
+                        }
+                        .onKeyPress(.space) {
+                            guard let selected = items.first(where: { $0.id == store.selectedItemID }) else { return .ignored }
+                            quickLookURL = selected.url
+                            return .handled
+                        }
+                        .onKeyPress(.escape) {
+                            store.clearSearchIfActive() ? .handled : .ignored
+                        }
+                        .onKeyPress(characters: .alphanumerics, phases: .down) { press in
+                            typeToSelect(press.characters, proxy: proxy)
+                            return .handled
+                        }
+                        .quickLookPreview($quickLookURL)
                     }
-                    .frame(minHeight: listMinHeight)
                 }
             }
             .cardBackground()
         }
+    }
+
+    /// Finder-style type-to-select: consecutive keystrokes within 0.8s form a prefix;
+    /// a longer pause starts a fresh one. No Timer — the buffer resets lazily on the
+    /// next keystroke, so idle cost is zero.
+    private func typeToSelect(_ characters: String, proxy: ScrollViewProxy) {
+        let now = Date()
+        if now.timeIntervalSince(typeAheadLastKeyAt) > 0.8 {
+            typeAheadBuffer = ""
+        }
+        typeAheadLastKeyAt = now
+        typeAheadBuffer += characters
+        guard let id = store.selectItem(matchingPrefix: typeAheadBuffer) else { return }
+        proxy.scrollTo(id, anchor: nil)
+    }
+
+    /// Arrow-key navigation: the selection math lives in `ScanStore.selectAdjacentItem`
+    /// (unit-tested); the view only scrolls the result into sight. No animation on the
+    /// scroll — keyboard repeat (holding ↓) should track instantly, not fight a spring.
+    private func moveSelection(_ offset: Int, proxy: ScrollViewProxy) {
+        guard let id = store.selectAdjacentItem(offset: offset) else { return }
+        proxy.scrollTo(id, anchor: nil)
     }
 
     /// Scales the scroll area to its content rather than reserving ~420pt for a sparse
@@ -177,9 +239,8 @@ private struct StorageItemHeader: View {
             SortableColumnHeader(label: "Size", width: 96, alignment: .trailing, isActive: sortOption == .sizeDescending, indicator: .down) {
                 onSortChange(.sizeDescending)
             }
-            SortableColumnHeader(label: "Kind", width: 94, alignment: .leading, isActive: sortOption == .kind, indicator: .up) {
-                onSortChange(.kind)
-            }
+            // No "Kind" column: it read "File" for nearly every row (UI_PLAN.md P1.3).
+            // Kind still exists as a sort option and in the row's accessibility label.
             SortableColumnHeader(label: "Modified", width: 112, alignment: .leading, isActive: isModifiedActive, indicator: sortOption == .modifiedNewest ? .down : .up) {
                 onSortChange(toggleModified)
             }
@@ -187,7 +248,7 @@ private struct StorageItemHeader: View {
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
     }
 
     private var isModifiedActive: Bool {
@@ -249,7 +310,10 @@ private struct StorageItemRow: View, Equatable {
     let isSelected: Bool
     let searchText: String
     let displayName: String
+    /// Shown under the name — relative to the scan root (UI_PLAN.md P1.2).
     let displayPath: String
+    /// Absolute (or redacted) path, surfaced via hover help only.
+    let fullPath: String
     let redactionEnabled: Bool
     let canTrash: Bool
     let canExclude: Bool
@@ -259,6 +323,10 @@ private struct StorageItemRow: View, Equatable {
     let onCopyPath: () -> Void
     let onTrash: () -> Void
     let onExclude: () -> Void
+    /// Context-menu drill-down into the Folder Tree (UX round 2).
+    let onShowInTree: () -> Void
+    /// Quick Look preview — also bound to Space at the table level (UX round 3).
+    let onQuickLook: () -> Void
     @State private var isHovered = false
 
     // Closures are excluded: they're stable references back to the store and
@@ -269,6 +337,7 @@ private struct StorageItemRow: View, Equatable {
             && lhs.searchText == rhs.searchText && lhs.canTrash == rhs.canTrash
             && lhs.canExclude == rhs.canExclude
             && lhs.displayName == rhs.displayName && lhs.displayPath == rhs.displayPath
+            && lhs.fullPath == rhs.fullPath
             && lhs.redactionEnabled == rhs.redactionEnabled
     }
 
@@ -294,7 +363,7 @@ private struct StorageItemRow: View, Equatable {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .help(displayPath)
+                            .help(fullPath)
                     }
                 }
                 .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
@@ -302,10 +371,6 @@ private struct StorageItemRow: View, Equatable {
                 Text(StorageFormat.bytes(item.displaySize))
                     .font(.system(.body, design: .rounded).monospacedDigit())
                     .frame(width: 96, alignment: .trailing)
-
-                Text(StorageFormat.label(for: item.kind))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 94, alignment: .leading)
 
                 Text(StorageFormat.relativeOrAbsoluteDate(item.modifiedAt))
                     .foregroundStyle(.secondary)
@@ -325,6 +390,9 @@ private struct StorageItemRow: View, Equatable {
         .accessibilityHint("Selects this storage item")
         .simultaneousGesture(TapGesture(count: 2).onEnded { onOpen() })
         .contextMenu {
+            Button("Quick Look") { onQuickLook() }
+            Button("Show in Folder Tree") { onShowInTree() }
+            Divider()
             Button("Reveal in Finder") { onReveal() }
             Button("Open") { onOpen() }
             Button("Copy Path") { onCopyPath() }

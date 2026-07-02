@@ -38,7 +38,7 @@
 
   <div class="site-nav" role="banner">
     <div class="nav-inner">
-      <a class="brand" href="./">StorageScope <span class="ver">v0.7.0</span></a>
+      <a class="brand" href="./">StorageScope <span class="ver">v0.7.1</span></a>
       <nav aria-label="Site navigation">
         <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
@@ -53,6 +53,31 @@
   <main>
     <h1>Changelog</h1>
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
+
+    <section class="release">
+      <h2>v0.7.1 &mdash; Window Polish and Keyboard Navigation</h2>
+      <div class="meta">Released 2026-07-02 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.7.1">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg">download .dmg</a></div>
+      <p>Visual and navigation polish release. StorageScope now opens with more practical window dimensions, keeps dense Settings and cleanup controls visible, and improves keyboard-first movement across Cleanup Review, item tables, and Folder Tree reveal flows.</p>
+
+      <h3>Window and layout polish</h3>
+      <ul>
+        <li><strong>Roomier windows</strong> &mdash; main app and Settings defaults better fit the current multi-pane interface.</li>
+        <li><strong>Cleaner storage views</strong> &mdash; Overview, sidebar, type breakdown, duplicate review, and tree surfaces were tuned for stronger hierarchy and steadier row spacing.</li>
+        <li><strong>Better empty and loading states</strong> &mdash; dense scan surfaces stay readable before, during, and after scans.</li>
+      </ul>
+
+      <h3>Keyboard navigation</h3>
+      <ul>
+        <li><strong>Cleanup Review navigation</strong> &mdash; keyboard selection and movement now support review-heavy cleanup flows.</li>
+        <li><strong>Folder Tree reveal behavior</strong> &mdash; reveal actions keep selection, expansion, and detail focus aligned.</li>
+        <li><strong>Table focus stability</strong> &mdash; item rows and keyboard-driven selection remain predictable across filtered views.</li>
+      </ul>
+
+      <h3>Tests</h3>
+      <ul>
+        <li>Added app-level coverage for keyboard selection, Folder Tree reveal behavior, and tree keyboard navigation state.</li>
+      </ul>
+    </section>
 
     <section class="release">
       <h2>v0.7.0 &mdash; Scan Control and Privacy</h2>
@@ -364,10 +389,10 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg">Download v0.7.0 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg">Download v0.7.1 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.0/StorageScope-0.7.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>
@@ -387,7 +412,7 @@
         &middot;
         <a href="architecture.html">Architecture</a>
       </div>
-      <div class="site-footer-meta">v0.7.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div class="site-footer-meta">v0.7.1 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

@@ -153,7 +153,7 @@ private struct KeeperComparisonRow: View {
                     Label(StorageFormat.date(item.modifiedAt), systemImage: "clock")
                 }
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 12)

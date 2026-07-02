@@ -51,6 +51,9 @@ hdiutil create \
   "$DMG_PATH" >/dev/null
 
 hdiutil verify "$DMG_PATH" >/dev/null
-shasum -a 256 "$DMG_PATH" >"$DMG_PATH.sha256"
+(
+  cd "$EXPORT_DIR"
+  shasum -a 256 "$(basename "$DMG_PATH")" >"$(basename "$DMG_PATH").sha256"
+)
 
 echo "$DMG_PATH"

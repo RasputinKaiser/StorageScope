@@ -1,10 +1,56 @@
+import QuickLook
 import StorageScopeCore
 import SwiftUI
 
 struct TreeExplorerView: View {
     @ObservedObject var store: ScanStore
+    /// Keyboard navigation focus — clicking any row moves focus here so
+    /// ↑/↓/←/→/Space work immediately after a click (UX round 4).
+    @FocusState private var treeFocused: Bool
+    @State private var quickLookURL: URL?
 
     var body: some View {
+        ScrollViewReader { proxy in
+            scrollContent
+                .focusable()
+                .focusEffectDisabled()
+                .focused($treeFocused)
+                .onKeyPress(.upArrow) {
+                    scrollToSelection(store.selectAdjacentTreeItem(offset: -1), proxy: proxy)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    scrollToSelection(store.selectAdjacentTreeItem(offset: 1), proxy: proxy)
+                    return .handled
+                }
+                .onKeyPress(.leftArrow) {
+                    scrollToSelection(store.collapseOrAscendTreeSelection(), proxy: proxy)
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    scrollToSelection(store.expandOrDescendTreeSelection(), proxy: proxy)
+                    return .handled
+                }
+                .onKeyPress(.space) {
+                    guard let selected = store.visibleTreeItems().first(where: { $0.id == store.selectedItemID }) else {
+                        return .ignored
+                    }
+                    quickLookURL = selected.url
+                    return .handled
+                }
+                .onKeyPress(.escape) {
+                    store.clearSearchIfActive() ? .handled : .ignored
+                }
+                .quickLookPreview($quickLookURL)
+        }
+    }
+
+    private func scrollToSelection(_ id: String?, proxy: ScrollViewProxy) {
+        guard let id else { return }
+        proxy.scrollTo(id, anchor: nil)
+    }
+
+    private var scrollContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -60,7 +106,7 @@ struct TreeExplorerView: View {
                             searchText: store.filters.searchText,
                             redactionEnabled: store.filters.redactionEnabled,
                             displayName: { store.filters.displayName(for: $0) },
-                            selectItem: { store.selectedItemID = $0 },
+                            selectItem: { store.selectedItemID = $0; treeFocused = true },
                             openItem: { store.selectedItemID = $0.id; store.openSelectedItem() },
                             revealItem: { store.selectedItemID = $0.id; store.revealSelectedItem() },
                             copyItemPath: { store.selectedItemID = $0.id; store.copySelectedPath() },
@@ -82,7 +128,7 @@ struct TreeExplorerView: View {
                         systemImage: "list.bullet.indent",
                         description: Text("Choose a folder to build a navigable storage tree.")
                     )
-                    .frame(minHeight: 360)
+                    .frame(minHeight: 220)
                 }
             }
             .padding(20)
@@ -220,6 +266,8 @@ private struct TreeNodeRow: View {
                 Button("Move to Trash", role: .destructive) { trashItem(item) }
                     .disabled(!canTrashItem(item))
             }
+            // Anchor for keyboard-driven scroll-follow (UX round 4).
+            .id(item.id)
 
             if isExpanded {
                 ForEach(visibleChildren) { child in
