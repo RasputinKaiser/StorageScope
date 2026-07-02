@@ -233,7 +233,7 @@ private struct TrashReviewRow: View {
 
                 Text(item.reason)
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
 

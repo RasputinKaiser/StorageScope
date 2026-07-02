@@ -36,7 +36,9 @@ struct DetailView: View {
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.18), value: store.activeView)
                 }
-                .padding(.leading, 28)
+                // Leading inset between the split divider and content. Was 28pt —
+                // an offset baked into every view's minimum width (UI_PLAN.md P0.4).
+                .padding(.leading, 8)
             }
         }
     }
@@ -90,6 +92,54 @@ private struct ScanHeaderView: View {
     @ObservedObject var store: ScanStore
 
     var body: some View {
+        // Full header (title + metric cards) only on Overview. Every other view
+        // repeats those numbers at the cost of ~130pt of working space, so they
+        // get a single-line strip instead (UI_PLAN.md P1.1).
+        if store.activeView == .overview {
+            fullHeader
+        } else {
+            compactHeader
+        }
+    }
+
+    private var compactHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(titleText)
+                .font(.headline)
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            Text(pathText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 12)
+
+            if store.isScanning {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Text(compactMetricsText)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .layoutPriority(1)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+    }
+
+    private var compactMetricsText: String {
+        let footprint = StorageFormat.bytes(store.scan?.totalBytes ?? store.progress.totalBytes)
+        let items = (store.scan?.scannedItemCount ?? store.progress.scannedItemCount).formatted()
+        let reviewable = StorageFormat.bytes(store.potentialReclaimableBytes)
+        return "\(footprint) · \(items) items · \(reviewable) reviewable"
+    }
+
+    private var fullHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -109,34 +159,58 @@ private struct ScanHeaderView: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                MetricCard(
-                    title: "Footprint",
-                    value: StorageFormat.bytes(store.scan?.totalBytes ?? store.progress.totalBytes),
-                    systemImage: "internaldrive.fill",
-                    tint: .blue
-                )
-                MetricCard(
-                    title: "Items",
-                    value: (store.scan?.scannedItemCount ?? store.progress.scannedItemCount).formatted(),
-                    systemImage: "square.stack.3d.up.fill",
-                    tint: .green
-                )
-                MetricCard(
-                    title: "Large Files",
-                    value: (store.scan?.largestFiles.count ?? 0).formatted(),
-                    systemImage: "doc.text.magnifyingglass",
-                    tint: .orange
-                )
-                MetricCard(
-                    title: "Reviewable",
-                    value: StorageFormat.bytes(store.potentialReclaimableBytes),
-                    systemImage: "checklist",
-                    tint: .purple
-                )
+            // Four cards in a row when they fit; a 2×2 grid on narrow windows so the
+            // header never dictates a >900pt minimum width (UI_PLAN.md P0.2).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    metricCards.0
+                    metricCards.1
+                    metricCards.2
+                    metricCards.3
+                }
+
+                Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                    GridRow {
+                        metricCards.0
+                        metricCards.1
+                    }
+                    GridRow {
+                        metricCards.2
+                        metricCards.3
+                    }
+                }
             }
         }
         .padding(20)
+    }
+
+    private var metricCards: (MetricCard, MetricCard, MetricCard, MetricCard) {
+        (
+            MetricCard(
+                title: "Footprint",
+                value: StorageFormat.bytes(store.scan?.totalBytes ?? store.progress.totalBytes),
+                systemImage: "internaldrive.fill",
+                tint: .blue
+            ),
+            MetricCard(
+                title: "Items",
+                value: (store.scan?.scannedItemCount ?? store.progress.scannedItemCount).formatted(),
+                systemImage: "square.stack.3d.up.fill",
+                tint: .green
+            ),
+            MetricCard(
+                title: "Large Files",
+                value: (store.scan?.largestFiles.count ?? 0).formatted(),
+                systemImage: "doc.text.magnifyingglass",
+                tint: .orange
+            ),
+            MetricCard(
+                title: "Reviewable",
+                value: StorageFormat.bytes(store.potentialReclaimableBytes),
+                systemImage: "checklist",
+                tint: .purple
+            )
+        )
     }
 
     private var titleText: String {
@@ -222,7 +296,7 @@ private struct ScanNoticeView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
         .cardBackground()
         .padding(.horizontal, 20)
         .padding(.bottom, 12)

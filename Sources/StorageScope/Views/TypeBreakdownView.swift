@@ -31,7 +31,7 @@ struct TypeBreakdownView: View {
                     ) {
                         store.resetDisplayFilters()
                     }
-                    .frame(minHeight: 320)
+                    .frame(minHeight: 220)
                     .cardBackground()
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
@@ -68,7 +68,7 @@ struct TypeBreakdownView: View {
                                     .frame(width: 86, alignment: .trailing)
                                 }
                                 .padding(.horizontal, 14)
-                                .padding(.vertical, 11)
+                                .padding(.vertical, 12)
                                 .accessibilityElement(children: .ignore)
                                 .accessibilityLabel("\(stat.category.rawValue) category, \(StorageFormat.bytes(stat.totalBytes))")
                                 .accessibilityValue("\(stat.extensionCountLabel), \(stat.fileCountLabel)")
@@ -145,7 +145,7 @@ private struct FileTypeRowLabel: View, Equatable {
                 .help(isFocused ? "Filtered by this type" : "")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 12)
         .contentShape(Rectangle())
         .selectionBackground(isSelected: isFocused)
     }

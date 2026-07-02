@@ -33,7 +33,7 @@ struct DuplicateCandidatesView: View {
                     ) {
                         store.resetDisplayFilters()
                     }
-                    .frame(minHeight: 320)
+                    .frame(minHeight: 220)
                 } else {
                     LazyVStack(spacing: 12) {
                         if !store.verifiedDuplicateGroups.isEmpty {
@@ -144,12 +144,13 @@ private struct VerifiedDuplicateGroupCard: View {
 
             Text("One copy is the keeper and is never moved to Trash. Use a row's menu to reassign the keeper.")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             DuplicateItemList(
                 items: group.items,
                 filters: store.filters,
+                parentPath: { store.displayRelativeParentPath(for: $0) },
                 selectedItemID: store.selectedItemID,
                 keeperItemID: store.keeperItemID(for: group),
                 onSetKeeper: { item in store.setKeeper(itemID: item.id, for: group) },
@@ -241,6 +242,7 @@ private struct DuplicateGroupCard: View {
             DuplicateItemList(
                 items: visibleItems,
                 filters: store.filters,
+                parentPath: { store.displayRelativeParentPath(for: $0) },
                 selectedItemID: store.selectedItemID,
                 keeperItemID: nil,
                 onSetKeeper: nil,
@@ -259,6 +261,10 @@ private struct DuplicateGroupCard: View {
 private struct DuplicateItemList: View {
     let items: [StorageItem]
     @ObservedObject var filters: FilterStore
+    /// Row-trailing path, relative to the scan root (UI_PLAN.md P1.2). Injected as a
+    /// closure because this list only holds `filters`, not the `ScanStore` that knows
+    /// the scan root; observing `filters` keeps redaction toggles reactive.
+    let parentPath: (StorageItem) -> String
     let selectedItemID: String?
     var keeperItemID: String? = nil
     var onSetKeeper: ((StorageItem) -> Void)? = nil
@@ -276,7 +282,7 @@ private struct DuplicateItemList: View {
                 DuplicateFileRow(
                     item: item,
                     displayName: filters.displayName(for: item),
-                    displayParentPath: filters.displayParentPath(for: item),
+                    displayParentPath: parentPath(item),
                     isKeeper: isKeeper,
                     isSelected: selectedItemID == item.id,
                     onSetKeeper: onSetKeeper != nil && !isKeeper ? { onSetKeeper?(item) } : nil
@@ -344,7 +350,7 @@ private struct DuplicateFileRow: View, Equatable {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
             .background(isHovered && !isSelected ? Color.primary.opacity(0.04) : Color.clear)
         }

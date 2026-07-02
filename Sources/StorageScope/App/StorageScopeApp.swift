@@ -50,10 +50,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             defer: false
         )
         window.title = windowTitle(for: store.scan)
-        window.minSize = NSSize(width: 1180, height: 760)
+        // Keep the floor below common built-in displays (1280×800, 1440×900). The
+        // effective minimum used to be dictated by SwiftUI content constraints
+        // (~1819pt with sidebar + inspector open) leaking through NSHostingView's
+        // default sizingOptions — see UI_PLAN.md P0.1.
+        window.minSize = NSSize(width: 1080, height: 700)
         window.center()
-        window.setFrameAutosaveName("StorageScopeMainWindow")
-        window.contentView = NSHostingView(rootView: ContentView(store: store, onOpenSettings: { [weak self] in self?.showSettings() }))
+        // v2: the pre-0.8 autosave carried split-divider state from builds whose
+        // minimum window width was ~1819pt; restoring it re-clipped the new layout.
+        window.setFrameAutosaveName("StorageScopeMainWindow.v2")
+        let hostingView = NSHostingView(rootView: ContentView(store: store, onOpenSettings: { [weak self] in self?.showSettings() }))
+        // Without this, NSHostingView installs the SwiftUI hierarchy's min-size as
+        // window constraints, overriding `window.minSize` and preventing the window
+        // from fitting small displays. Layout min-widths are handled in the views
+        // themselves (ViewThatFits fallbacks) instead.
+        hostingView.sizingOptions = []
+        window.contentView = hostingView
+        clampFrameToVisibleScreen(window)
         window.toolbar = makeToolbar()
         window.toolbarStyle = .unified
         window.makeKeyAndOrderFront(nil)
@@ -69,6 +82,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             .sink { [weak self, weak window] scan in
                 window?.title = self?.windowTitle(for: scan) ?? "StorageScope"
             }
+    }
+
+    /// A frame autosaved on a large external display must never restore off-screen
+    /// on a smaller one (UI_PLAN.md P0.5). Runs after `setFrameAutosaveName` has
+    /// restored the previous frame.
+    private func clampFrameToVisibleScreen(_ window: NSWindow) {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        guard !visible.contains(frame) else { return }
+        frame.size.width = min(frame.width, visible.width)
+        frame.size.height = min(frame.height, visible.height)
+        frame.origin.x = max(visible.minX, min(frame.origin.x, visible.maxX - frame.width))
+        frame.origin.y = max(visible.minY, min(frame.origin.y, visible.maxY - frame.height))
+        window.setFrame(frame, display: false)
     }
 
     private func windowTitle(for scan: StorageScan?) -> String {
@@ -183,9 +211,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
             return
         }
 
+        // Resizable so no section is ever cut off without recourse (UI_PLAN.md P2);
+        // the grouped Form scrolls, and min sizes come from SettingsView's frame.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 460),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -257,6 +287,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         if let value = environment["STORAGESCOPE_DEVELOPER_CLEANUP_LANE"],
            let cleanupLane = CleanupLaneFilter(developerFixtureValue: value) {
             store.filters.cleanupLaneFilter = cleanupLane
+        }
+        if environment["STORAGESCOPE_DEVELOPER_REDACTION"] == "1" {
+            store.filters.redactionEnabled = true
         }
     }
 

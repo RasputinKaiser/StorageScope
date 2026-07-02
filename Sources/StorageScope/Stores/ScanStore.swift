@@ -1938,3 +1938,233 @@ extension ScanStore {
         return .scanInternal(message: error.localizedDescription)
     }
 }
+
+// MARK: - Display-layer relative paths (UI_PLAN.md P1.2)
+
+extension ScanStore {
+    /// Row-subtitle path relative to the scan root ("Media Projects/render.mov"
+    /// instead of "/Volumes/Sample/fixture-scan/Media Projects/render.mov"). The root is
+    /// already shown in the scan header, so repeating the absolute prefix on every
+    /// row was pure noise. Falls back to the redacted full path when redaction is
+    /// on, and to the absolute path for items outside the root (shouldn't happen).
+    func displayRelativePath(for item: StorageItem) -> String {
+        guard !filters.redactionEnabled else { return filters.displayPath(for: item) }
+        guard let rootURL = scan?.rootURL else { return item.url.path }
+        return Self.relativePath(of: item.url, under: rootURL) ?? item.url.path
+    }
+
+    /// Relative-path variant of `FilterStore.displayParentPath(for:)` — the
+    /// containing folder only, relative to the scan root.
+    func displayRelativeParentPath(for item: StorageItem) -> String {
+        guard !filters.redactionEnabled else { return filters.displayParentPath(for: item) }
+        let parent = item.url.deletingLastPathComponent()
+        guard let rootURL = scan?.rootURL else { return parent.path }
+        return Self.relativePath(of: parent, under: rootURL) ?? parent.path
+    }
+
+    /// Path of `url` relative to `root`, or nil when `url` isn't inside `root`.
+    /// The root itself maps to its display name rather than an empty string.
+    static func relativePath(of url: URL, under root: URL) -> String? {
+        let rootPath = root.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(rootPath) else { return nil }
+        let suffix = path.dropFirst(rootPath.count).drop(while: { $0 == "/" })
+        guard !suffix.isEmpty else { return root.lastPathComponent }
+        return String(suffix)
+    }
+}
+
+// MARK: - Folder Tree drill-down (UI_PLAN.md UX round 2)
+
+extension ScanStore {
+    /// Verified-duplicate reclaim total, surfaced as a sidebar badge so the user can
+    /// see where reclaimable space lives before clicking through.
+    var verifiedReclaimableBytes: Int64 {
+        verifiedDuplicateGroups.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+    }
+
+    /// Jumps to the Folder Tree with `item` selected and every ancestor expanded —
+    /// the drill-down behind Storage Map rows and the "Show in Folder Tree" context
+    /// menu action. If the item wasn't retained in the tree (pruned by the retained-
+    /// items cap), the tree still opens at the root rather than failing silently.
+    func revealInFolderTree(_ item: StorageItem) {
+        if let root = scan?.rootItem {
+            var chain: [String] = []
+            if Self.ancestorChain(from: root, to: item.id, chain: &chain) {
+                treeExpandedIDs.formUnion(chain)
+                selectedItemID = item.id
+            } else {
+                treeExpandedIDs.insert(root.id)
+            }
+        }
+        selectedView = .tree
+    }
+
+    /// Depth-first path of container IDs from `node` down to (excluding) `targetID`.
+    /// Returns false when the target isn't in the retained tree.
+    private static func ancestorChain(from node: StorageItem, to targetID: String, chain: inout [String]) -> Bool {
+        if node.id == targetID { return true }
+        guard node.isContainer, !node.children.isEmpty else { return false }
+        chain.append(node.id)
+        for child in node.children {
+            if ancestorChain(from: child, to: targetID, chain: &chain) {
+                return true
+            }
+        }
+        chain.removeLast()
+        return false
+    }
+}
+
+// MARK: - Keyboard selection (UI_PLAN.md UX round 3)
+
+extension ScanStore {
+    /// Moves the selection by `offset` within the active view's ranked items —
+    /// the model behind arrow-key navigation in the item tables. Selects the first
+    /// item when nothing is selected yet. Returns the newly selected ID so the view
+    /// can scroll it into sight, or nil when there is nothing to select.
+    @discardableResult
+    func selectAdjacentItem(offset: Int) -> String? {
+        let items = items(for: activeView)
+        guard !items.isEmpty else { return nil }
+
+        let newIndex: Int
+        if let currentIndex = items.firstIndex(where: { $0.id == selectedItemID }) {
+            newIndex = min(max(currentIndex + offset, 0), items.count - 1)
+        } else {
+            newIndex = offset >= 0 ? 0 : items.count - 1
+        }
+
+        let id = items[newIndex].id
+        selectedItemID = id
+        return id
+    }
+}
+
+// MARK: - Tree, cleanup, and type-ahead keyboard navigation (UI_PLAN.md UX round 4)
+
+extension ScanStore {
+    /// The Folder Tree rows currently on screen, in visual order: a depth-first walk
+    /// of the retained tree that descends only into expanded containers and applies
+    /// the same child filters as `TreeNodeRow` (size threshold + search subtree
+    /// matches). This is the model behind ↑/↓ in the tree.
+    func visibleTreeItems() -> [StorageItem] {
+        guard let root = scan?.rootItem else { return [] }
+        var result: [StorageItem] = []
+        var stack: [StorageItem] = [root]
+        let threshold = filters.sizeFilter.threshold
+        while let node = stack.popLast() {
+            result.append(node)
+            guard node.isContainer, treeExpandedIDs.contains(node.id) else { continue }
+            // Reverse so the stack pops children in display order.
+            for child in node.children.reversed()
+            where child.displaySize >= threshold && (searchSubtreeMatchIDs?.contains(child.id) ?? true) {
+                stack.append(child)
+            }
+        }
+        return result
+    }
+
+    /// ↑/↓ in the Folder Tree: moves the selection through the visible rows,
+    /// clamping at both ends. Selects the root when nothing is selected yet.
+    @discardableResult
+    func selectAdjacentTreeItem(offset: Int) -> String? {
+        selectAdjacent(in: visibleTreeItems().map(\.id), offset: offset)
+    }
+
+    /// ← in the Folder Tree: collapses the selected container if it's expanded,
+    /// otherwise walks up to the parent — mirrors NSOutlineView/Finder list view.
+    @discardableResult
+    func collapseOrAscendTreeSelection() -> String? {
+        let visible = visibleTreeItems()
+        guard let selected = visible.first(where: { $0.id == selectedItemID }) else {
+            return selectAdjacentTreeItem(offset: 1)
+        }
+        if selected.isContainer, treeExpandedIDs.contains(selected.id) {
+            treeExpandedIDs.remove(selected.id)
+            return selected.id
+        }
+        guard let root = scan?.rootItem, let parent = Self.parent(of: selected.id, under: root) else {
+            return selected.id
+        }
+        selectedItemID = parent.id
+        return parent.id
+    }
+
+    /// → in the Folder Tree: expands the selected container, or steps into its
+    /// first visible child when it's already expanded.
+    @discardableResult
+    func expandOrDescendTreeSelection() -> String? {
+        let visible = visibleTreeItems()
+        guard let selected = visible.first(where: { $0.id == selectedItemID }) else {
+            return selectAdjacentTreeItem(offset: 1)
+        }
+        guard selected.isContainer, !selected.children.isEmpty else { return selected.id }
+        if !treeExpandedIDs.contains(selected.id) {
+            treeExpandedIDs.insert(selected.id)
+            return selected.id
+        }
+        let after = visibleTreeItems()
+        if let index = after.firstIndex(where: { $0.id == selected.id }), index + 1 < after.count {
+            selectedItemID = after[index + 1].id
+            return after[index + 1].id
+        }
+        return selected.id
+    }
+
+    /// ↑/↓ in Cleanup Review: moves the row selection through the visible
+    /// candidates. Space then toggles via `toggleSelectedCleanupCandidate()`.
+    @discardableResult
+    func selectAdjacentCleanupCandidate(offset: Int) -> String? {
+        selectAdjacent(in: cleanupCandidates.map(\.item.id), offset: offset)
+    }
+
+    /// Space in Cleanup Review: toggles the check on the selected candidate.
+    func toggleSelectedCleanupCandidate() {
+        guard let candidate = cleanupCandidates.first(where: { $0.item.id == selectedItemID }) else { return }
+        toggleCleanupCandidate(candidate)
+    }
+
+    /// Type-to-select in the ranked tables: jumps to the first item whose display
+    /// name starts with `prefix` (case-insensitive), like Finder.
+    @discardableResult
+    func selectItem(matchingPrefix prefix: String) -> String? {
+        let normalized = prefix.lowercased()
+        guard !normalized.isEmpty else { return nil }
+        let ranked = items(for: activeView)
+        guard let match = ranked.first(where: { filters.displayName(for: $0).lowercased().hasPrefix(normalized) }) else {
+            return nil
+        }
+        selectedItemID = match.id
+        return match.id
+    }
+
+    /// Escape: clears an active search. Returns false when there was nothing to
+    /// clear so the caller can pass the key press on.
+    @discardableResult
+    func clearSearchIfActive() -> Bool {
+        guard !filters.searchText.isEmpty else { return false }
+        filters.searchText = ""
+        return true
+    }
+
+    private func selectAdjacent(in ids: [String], offset: Int) -> String? {
+        guard !ids.isEmpty else { return nil }
+        let newIndex: Int
+        if let currentIndex = ids.firstIndex(where: { $0 == selectedItemID }) {
+            newIndex = min(max(currentIndex + offset, 0), ids.count - 1)
+        } else {
+            newIndex = offset >= 0 ? 0 : ids.count - 1
+        }
+        selectedItemID = ids[newIndex]
+        return ids[newIndex]
+    }
+
+    private static func parent(of targetID: String, under node: StorageItem) -> StorageItem? {
+        for child in node.children {
+            if child.id == targetID { return node }
+            if let found = parent(of: targetID, under: child) { return found }
+        }
+        return nil
+    }
+}

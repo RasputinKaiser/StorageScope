@@ -29,47 +29,65 @@ struct OverviewView: View {
 
                     let overviewItems = Array(allOverviewItems.prefix(12))
                     let isFiltered = store.hasActiveDisplayFilters
-                    HStack(alignment: .top, spacing: 16) {
-                        StorageItemTable(
-                            title: isFiltered ? "Matching Children" : "Largest Children",
-                            subtitle: isFiltered ? "Immediate children matching the active filters" : "Immediate storage pressure under the scanned root",
-                            items: overviewItems,
-                            store: store,
-                            compact: true,
-                            countLabel: previewCountLabel(visible: overviewItems.count, total: allOverviewItems.count)
-                        )
+                    let childrenTable = StorageItemTable(
+                        title: isFiltered ? "Matching Children" : "Largest Children",
+                        subtitle: isFiltered ? "Immediate children matching the active filters" : "Immediate storage pressure under the scanned root",
+                        items: overviewItems,
+                        store: store,
+                        compact: true,
+                        countLabel: previewCountLabel(visible: overviewItems.count, total: allOverviewItems.count)
+                    )
 
-                        VStack(spacing: 16) {
-                            InsightCard(
-                                title: isFiltered ? "Largest Matching File" : "Largest File",
-                                item: store.items(for: .largestFiles).first,
-                                systemImage: "doc.fill",
-                                filters: store.filters
-                            ) { item in
-                                store.selectedItemID = item.id
-                            }
-                            InsightCard(
-                                title: isFiltered ? "Largest Matching Folder" : "Largest Folder",
-                                item: store.items(for: .largestFolders).first,
-                                systemImage: "folder.fill",
-                                filters: store.filters
-                            ) { item in
-                                store.selectedItemID = item.id
-                            }
-                            InsightCard(
-                                title: isFiltered ? "Oldest Matching Large File" : "Oldest Large File",
-                                item: store.oldLargeFiles.first,
-                                systemImage: "clock.fill",
-                                filters: store.filters
-                            ) { item in
-                                store.selectedItemID = item.id
-                            }
+                    // Side-by-side when the detail column is wide enough; otherwise the
+                    // insight cards drop below the table instead of squeezing it
+                    // (UI_PLAN.md P1.4 pulled forward to keep 1280×800 clip-free).
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 16) {
+                            childrenTable
+                                .frame(minWidth: 560)
+
+                            insightCards(isFiltered: isFiltered)
+                                .frame(width: 280)
                         }
-                        .frame(width: 280)
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            childrenTable
+
+                            insightCards(isFiltered: isFiltered)
+                        }
                     }
                 }
             }
             .padding(20)
+        }
+    }
+
+    private func insightCards(isFiltered: Bool) -> some View {
+        VStack(spacing: 16) {
+            InsightCard(
+                title: isFiltered ? "Largest Matching File" : "Largest File",
+                item: store.items(for: .largestFiles).first,
+                systemImage: "doc.fill",
+                filters: store.filters
+            ) { item in
+                store.selectedItemID = item.id
+            }
+            InsightCard(
+                title: isFiltered ? "Largest Matching Folder" : "Largest Folder",
+                item: store.items(for: .largestFolders).first,
+                systemImage: "folder.fill",
+                filters: store.filters
+            ) { item in
+                store.selectedItemID = item.id
+            }
+            InsightCard(
+                title: isFiltered ? "Oldest Matching Large File" : "Oldest Large File",
+                item: store.oldLargeFiles.first,
+                systemImage: "clock.fill",
+                filters: store.filters
+            ) { item in
+                store.selectedItemID = item.id
+            }
         }
     }
 
@@ -284,10 +302,14 @@ private struct SizeDistributionView: View {
                                 item: item,
                                 maxSize: maxSize,
                                 isSelected: store.selectedItemID == item.id,
-                                displayName: store.filters.displayName(for: item)
-                            ) {
-                                store.selectedItemID = item.id
-                            }
+                                displayName: store.filters.displayName(for: item),
+                                onTap: {
+                                    store.selectedItemID = item.id
+                                },
+                                onShowInTree: {
+                                    store.revealInFolderTree(item)
+                                }
+                            )
                             .equatable()
                             if item.id != lastItemID {
                                 Divider()
@@ -315,6 +337,8 @@ private struct StorageMapRow: View, Equatable {
     let isSelected: Bool
     let displayName: String
     let onTap: () -> Void
+    /// Drill-down: opens this folder in the Folder Tree with ancestors expanded.
+    let onShowInTree: () -> Void
     @State private var isHovered = false
 
     // Excludes `onTap`: closures aren't Equatable and every row's closure is
@@ -336,6 +360,16 @@ private struct StorageMapRow: View, Equatable {
                         Text(displayName)
                             .lineLimit(1)
                         Spacer()
+                        if isHovered {
+                            Button(action: onShowInTree) {
+                                Image(systemName: "arrow.right.circle")
+                                    .foregroundStyle(.tint)
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                            .help("Show in Folder Tree")
+                            .accessibilityLabel("Show \(displayName) in Folder Tree")
+                        }
                         Text(StorageFormat.bytes(item.displaySize))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
@@ -361,6 +395,10 @@ private struct StorageMapRow: View, Equatable {
         .accessibilityLabel("\(displayName), \(StorageFormat.bytes(item.displaySize))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint("Selects this storage item")
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onShowInTree() })
+        .contextMenu {
+            Button("Show in Folder Tree") { onShowInTree() }
+        }
     }
 }
 

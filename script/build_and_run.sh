@@ -9,6 +9,7 @@ FIXTURE_MARK_STALE="0"
 FIXTURE_WITH_DUPLICATES="0"
 FIXTURE_SELECTED_VIEW=""
 FIXTURE_SELECT_VERIFIED_CLEANUP="0"
+FIXTURE_REDACT="0"
 FIXTURE_SEARCH_QUERY=""
 FIXTURE_SIZE_FILTER=""
 FIXTURE_SORT_OPTION=""
@@ -59,6 +60,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --select-verified-cleanup)
       FIXTURE_SELECT_VERIFIED_CLEANUP="1"
+      shift
+      ;;
+    --redact)
+      FIXTURE_REDACT="1"
       shift
       ;;
     --query)
@@ -304,6 +309,9 @@ case "$MODE" in
     if [[ "$FIXTURE_SELECT_VERIFIED_CLEANUP" == "1" ]]; then
       open_args+=(--env "STORAGESCOPE_DEVELOPER_SELECT_VERIFIED_CLEANUP=1")
     fi
+    if [[ "$FIXTURE_REDACT" == "1" ]]; then
+      open_args+=(--env "STORAGESCOPE_DEVELOPER_REDACTION=1")
+    fi
     if [[ -n "$FIXTURE_SEARCH_QUERY" ]]; then
       open_args+=(--env "STORAGESCOPE_DEVELOPER_QUERY=$FIXTURE_SEARCH_QUERY")
     fi
@@ -335,7 +343,7 @@ case "$MODE" in
     echo "$APP_BUNDLE"
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale] [--duplicates] [--view smartView] [--select-verified-cleanup] [--query text] [--size-filter all|100mb|1gb|10gb] [--sort size|name|newest|oldest|kind] [--cleanup-lane all|verified|suggestions]|--verify|--build-only]" >&2
+    echo "usage: $0 [run|--debug|--logs|--telemetry|--fixture-scan [--mark-stale] [--duplicates] [--view smartView] [--select-verified-cleanup] [--redact] [--query text] [--size-filter all|100mb|1gb|10gb] [--sort size|name|newest|oldest|kind] [--cleanup-lane all|verified|suggestions]|--verify|--build-only]" >&2
     exit 2
     ;;
 esac

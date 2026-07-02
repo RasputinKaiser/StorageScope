@@ -13,7 +13,8 @@ struct SidebarView: View {
                         ForEach(SmartView.allCases) { view in
                             SidebarSmartButton(
                                 view: view,
-                                isSelected: store.selectedView == view
+                                isSelected: store.selectedView == view,
+                                badge: badge(for: view)
                             ) {
                                 store.selectedView = view
                             }
@@ -91,6 +92,21 @@ struct SidebarView: View {
             store.refreshMountedVolumes()
         }
     }
+
+    /// Reclaim-size badges on the two views where space can actually be recovered —
+    /// the user sees where the money is before clicking through (UX round 2).
+    private func badge(for view: SmartView) -> String? {
+        switch view {
+        case .cleanupReview:
+            let bytes = store.potentialReclaimableBytes
+            return bytes > 0 ? StorageFormat.bytes(bytes) : nil
+        case .duplicateCandidates:
+            let bytes = store.verifiedReclaimableBytes
+            return bytes > 0 ? StorageFormat.bytes(bytes) : nil
+        default:
+            return nil
+        }
+    }
 }
 
 private struct SidebarSectionTitle: View {
@@ -112,6 +128,7 @@ private struct SidebarSectionTitle: View {
 private struct SidebarSmartButton: View {
     let view: SmartView
     let isSelected: Bool
+    var badge: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -125,16 +142,33 @@ private struct SidebarSmartButton: View {
                     Text(view.title)
                         .lineLimit(1)
 
-                    Text(view.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(isSelected ? Color.primary.opacity(0.75) : Color.secondary)
-                        .lineLimit(1)
+                    // Badge shares the subtitle line: the title never truncates for
+                    // it, and the subtitle is the least important text in the row.
+                    HStack(spacing: 6) {
+                        Text(view.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(isSelected ? Color.primary.opacity(0.75) : Color.secondary)
+                            .lineLimit(1)
+
+                        if let badge {
+                            Spacer(minLength: 0)
+
+                            Text(badge)
+                                .font(.caption2.weight(.medium).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(.quaternary.opacity(0.6), in: Capsule())
+                                .layoutPriority(1)
+                                .accessibilityLabel("\(badge) reclaimable")
+                        }
+                    }
                 }
 
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
             .selectionBackground(isSelected: isSelected, tint: 0.24, radius: 6)
         }
@@ -212,7 +246,7 @@ private struct SidebarPathButton: View {
                     if let subtitle {
                         Text(subtitle)
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -283,24 +317,24 @@ private struct ScanStatusFooter: View {
                 if store.isScanPaused {
                     Text("Scan paused — resume to continue")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 } else if let scanStartedAt = store.scanStartedAt {
                     TimelineView(.periodic(from: scanStartedAt, by: 1)) { context in
                         HStack(spacing: 6) {
                             if store.progress.itemsPerSecond > 0 {
                                 Text("~\(Int(store.progress.itemsPerSecond.rounded())) items/sec")
                                     .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.secondary)
                             }
                             Text(elapsedText(from: scanStartedAt, to: context.date))
                                 .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
                 Text(currentPathDisplay)
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .accessibilityLabel("Current scan path")
             } else if let scan = store.scan {
@@ -311,7 +345,7 @@ private struct ScanStatusFooter: View {
                     .foregroundStyle(.secondary)
                 Text(rootPathDisplay(for: scan.rootURL))
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .help(store.filters.redactionEnabled ? "" : scan.rootURL.path)
             } else {
