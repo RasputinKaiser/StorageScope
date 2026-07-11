@@ -6,6 +6,7 @@ struct BenchmarkArguments {
     var useSyntheticFixture = false
     var keepFixture = false
     var showFullPath = false
+    var streamingCallbacks = false
     /// User-requested file count for the synthetic fixture. 0 means "use the v0.5.0 curated
     /// 7-file default". >0 builds the scaled generator (`depth` directory levels deep,
     /// `duplicateRatio` of items emitted as content-identical duplicates).
@@ -21,12 +22,13 @@ func usage() -> String {
     Usage:
       StorageScopeBenchmark [--show-full-path] <folder>
       StorageScopeBenchmark --synthetic [--keep-fixture] [--show-full-path]
-      StorageScopeBenchmark --synthetic --items <n> [--depth <d>] [--duplicates <0..1>] [--keep-fixture]
+      StorageScopeBenchmark --synthetic --items <n> [--depth <d>] [--duplicates <0..1>] [--streaming] [--keep-fixture]
 
     Scaled fixtures (--items, --depth, --duplicates) build a synthetic tree of N files
     distributed across up to depth directory levels, with an optional fraction of
     duplicates (pairs sharing identical content). Useful for capturing v0.5.x perf
     baselines at 10k / 100k / 500k items.
+    Pass --streaming to install app-like progress and partial-snapshot callbacks.
 
     Examples:
       swift run StorageScopeBenchmark --synthetic --items 100000 --depth 8 --duplicates 0.2
@@ -55,6 +57,8 @@ func parseArguments(_ rawArguments: [String]) throws -> BenchmarkArguments {
             arguments.keepFixture = true
         case "--show-full-path":
             arguments.showFullPath = true
+        case "--streaming":
+            arguments.streamingCallbacks = true
         case "--items":
             let raw = try consumeNextValue(flag: value)
             guard let parsed = Int(raw), parsed >= 0 else {
@@ -142,7 +146,8 @@ do {
 
     let report = try ScanBenchmarkRunner().run(
         rootURL: rootURL,
-        showFullPath: arguments.showFullPath
+        showFullPath: arguments.showFullPath,
+        streamingCallbacks: arguments.streamingCallbacks
     )
     print(report.text)
 } catch {

@@ -25,8 +25,11 @@ public struct StorageScan: Sendable {
     public let duplicateCandidateItemLimit: Int
     public let duplicateCandidateItemsRetained: Int
     public let duplicateCandidateItemsConsidered: Int
+    public let duplicateCandidateEvictionCount: Int
     public let duplicateCandidateLimitReached: Bool
+    public let snapshotBuildCount: Int
     public let duplicateVerificationDuration: TimeInterval
+    public let duplicateVerificationBytesRead: Int64
     public let enumerateDuration: TimeInterval
     public let cleanupCandidates: [CleanupCandidate]
     public let isPartial: Bool
@@ -51,8 +54,11 @@ public struct StorageScan: Sendable {
         duplicateCandidateItemLimit: Int = 0,
         duplicateCandidateItemsRetained: Int = 0,
         duplicateCandidateItemsConsidered: Int = 0,
+        duplicateCandidateEvictionCount: Int = 0,
         duplicateCandidateLimitReached: Bool = false,
+        snapshotBuildCount: Int = 0,
         duplicateVerificationDuration: TimeInterval = 0,
+        duplicateVerificationBytesRead: Int64 = 0,
         enumerateDuration: TimeInterval = 0,
         cleanupCandidates: [CleanupCandidate],
         isPartial: Bool = false
@@ -75,8 +81,11 @@ public struct StorageScan: Sendable {
         self.duplicateCandidateItemLimit = duplicateCandidateItemLimit
         self.duplicateCandidateItemsRetained = duplicateCandidateItemsRetained
         self.duplicateCandidateItemsConsidered = duplicateCandidateItemsConsidered
+        self.duplicateCandidateEvictionCount = duplicateCandidateEvictionCount
         self.duplicateCandidateLimitReached = duplicateCandidateLimitReached
+        self.snapshotBuildCount = snapshotBuildCount
         self.duplicateVerificationDuration = duplicateVerificationDuration
+        self.duplicateVerificationBytesRead = duplicateVerificationBytesRead
         self.enumerateDuration = enumerateDuration
         self.cleanupCandidates = cleanupCandidates
         self.isPartial = isPartial
