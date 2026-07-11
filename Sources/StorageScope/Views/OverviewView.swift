@@ -391,10 +391,11 @@ private struct StorageMapRow: View, Equatable {
         }
         .buttonStyle(.pressableRow)
         .onHover { isHovered = $0 }
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(displayName), \(StorageFormat.bytes(item.displaySize))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint("Selects this storage item")
+        .accessibilityAction(named: "Show in Folder Tree") { onShowInTree() }
         .simultaneousGesture(TapGesture(count: 2).onEnded { onShowInTree() })
         .contextMenu {
             Button("Show in Folder Tree") { onShowInTree() }

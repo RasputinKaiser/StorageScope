@@ -1,13 +1,13 @@
-import AppKit
 import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var store: ScanStore
     var onOpenSettings: () -> Void = {}
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    // The inspector is secondary UI and must never be the reason the window
-    // doesn't fit the display — start it closed on narrow screens (UI_PLAN.md P0.3).
-    @State private var inspectorVisible = (NSScreen.main?.visibleFrame.width ?? 1440) >= 1350
+    // The inspector is secondary, selection-driven UI. Start it closed so a cold
+    // launch gives the scan setup and results the full window; users can reveal it
+    // from the toolbar once they have something to inspect.
+    @State private var inspectorVisible = false
     @FocusState private var searchFieldFocused: Bool
 
     /// Search-field prompt that reflects what the active view actually filters —
@@ -31,6 +31,30 @@ struct ContentView: View {
         case .overview:
             return "Search files and paths"
         }
+    }
+
+    private var recentRecoveryIsPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .needsAction = store.recents.recoveryState {
+                    return true
+                }
+                return false
+            },
+            set: { isPresented in
+                if !isPresented {
+                    store.cancelRecentScanRecovery()
+                }
+            }
+        )
+    }
+
+    private var recentRecoveryMessage: String {
+        guard let path = store.recents.recoveryState.path else {
+            return "StorageScope could not reopen this recent scan."
+        }
+        let name = URL(fileURLWithPath: path).lastPathComponent.nonEmpty ?? "folder"
+        return "StorageScope lost access to \(name). Choose the folder again, forget this recent scan, or cancel."
     }
 
     var body: some View {
@@ -154,6 +178,23 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(store.errorMessage ?? "")
+        }
+        .confirmationDialog(
+            "Recent Scan Needs Attention",
+            isPresented: recentRecoveryIsPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Choose Folder") {
+                store.chooseFolderForRecentRecovery()
+            }
+            Button("Forget Scan", role: .destructive) {
+                store.forgetRecentScanRecovery()
+            }
+            Button("Cancel", role: .cancel) {
+                store.cancelRecentScanRecovery()
+            }
+        } message: {
+            Text(recentRecoveryMessage)
         }
         .sheet(item: $store.pendingTrashReviewPlan) { plan in
             TrashConfirmationSheet(

@@ -15,6 +15,40 @@ struct RecentScanEntry: Codable, Identifiable, Hashable {
     var id: String { path }
 }
 
+/// The UI state for recovering a recent scan whose security-scoped bookmark no
+/// longer resolves. This state deliberately contains no AppKit behavior: the
+/// owner of the store can present the recovery controls and perform folder
+/// selection asynchronously without an alert opening an `NSOpenPanel` inline.
+enum RecentScanRecoveryState: Equatable, Identifiable {
+    case idle
+    case needsAction(path: String)
+    case choosingFolder(path: String)
+
+    var id: String {
+        switch self {
+        case .idle:
+            return "idle"
+        case .needsAction(let path), .choosingFolder(let path):
+            return path
+        }
+    }
+
+    var path: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .needsAction(let path), .choosingFolder(let path):
+            return path
+        }
+    }
+}
+
+enum RecentScanRecoveryAction: Equatable {
+    case chooseFolder
+    case forgetScan
+    case cancel
+}
+
 /// Serializes JSON encode + UserDefaults writes for `RecentsStore` and
 /// `SearchRecentsStore`. A monotonic generation counter drops writes whose
 /// generation is older than the latest committed one — this is the fix for the
@@ -52,6 +86,7 @@ final class RecentsStore: ObservableObject {
     private static let writer = RecentStoreWriter<[RecentScanEntry]>(key: recentScanEntriesKey)
 
     @Published private(set) var entries: [RecentScanEntry] = []
+    @Published private(set) var recoveryState: RecentScanRecoveryState = .idle
     private var writeGeneration: UInt64 = 0
 
     init() {
@@ -69,7 +104,62 @@ final class RecentsStore: ObservableObject {
 
     func forget(path: String) {
         entries.removeAll { $0.path == path }
+        if recoveryState.path == path {
+            recoveryState = .idle
+        }
         persist()
+    }
+
+    /// Starts the explicit recovery flow for a recent scan whose bookmark could
+    /// not be resolved. Calling this only changes state; it never presents a
+    /// panel or an alert synchronously.
+    func requestRecovery(for path: String) {
+        guard !path.isEmpty else { return }
+        recoveryState = .needsAction(path: path)
+    }
+
+    /// Applies one of the recovery controls while the flow is awaiting a user
+    /// decision. `chooseFolder` moves to a separate state so its owner can start
+    /// an asynchronous folder picker and later call `completeRecovery()`.
+    @discardableResult
+    func applyRecoveryAction(_ action: RecentScanRecoveryAction) -> String? {
+        guard case .needsAction(let path) = recoveryState else { return nil }
+
+        switch action {
+        case .chooseFolder:
+            recoveryState = .choosingFolder(path: path)
+            return path
+        case .forgetScan:
+            forget(path: path)
+            return nil
+        case .cancel:
+            recoveryState = .idle
+            return nil
+        }
+    }
+
+    /// Returns the stale path to the caller that owns folder selection and
+    /// advances the state to `.choosingFolder`.
+    @discardableResult
+    func chooseFolderForRecovery() -> String? {
+        applyRecoveryAction(.chooseFolder)
+    }
+
+    /// Removes the stale recent entry and dismisses the recovery flow.
+    func forgetScanFromRecovery() {
+        _ = applyRecoveryAction(.forgetScan)
+    }
+
+    /// Dismisses the recovery flow without changing the recent entry.
+    func cancelRecovery() {
+        guard recoveryState != .idle else { return }
+        recoveryState = .idle
+    }
+
+    /// Called after the asynchronous folder picker or replacement scan finishes
+    /// (including when the picker is dismissed) to return to the idle state.
+    func completeRecovery() {
+        recoveryState = .idle
     }
 
     /// Rendered @Published mutations already updated `entries` synchronously on the main
