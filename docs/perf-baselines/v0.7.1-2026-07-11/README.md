@@ -52,6 +52,8 @@ Streaming is already within the plan's 15% app-versus-benchmark target. Moving s
 - Replacing `NSLock` with `os_unfair_lock` left the 10k median unchanged at 0.57s and was reverted.
 - Moving per-item classification outside the lock improved only about 5%, below the 10% acceptance gate, and was reverted.
 - Verification-time hard-link probing passed correctness tests but regressed the 10k median and raised peak RSS to roughly 34 MB. It was reverted; hard-link identity belongs in a future metadata-prefetch design.
+- An eight-way sharded accumulator passed 68 focused scanner tests, but improved the 10k median only from 0.49s to 0.46s and the 100k run only from 7.42s to 7.35s. Its per-shard duplicate retention also raised the first 100k peak-memory result to 51.3 MB, so it was rejected.
+- Lazy cleanup-candidate name/path normalization measured 0.55s against a same-session 0.57s control median, about 3.5%. Static `Set` lookups for the small extension tables were also noisy or slower. Both variants missed the 10% gate and were rejected.
 
 ## CI regression guard
 
