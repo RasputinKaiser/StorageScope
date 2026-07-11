@@ -612,8 +612,9 @@ func setSelectedView(_ view: SmartView) {
 
         do {
             guard let resolvedURL = try bookmarkStore.resolve(path: path) else {
-                errorMessage = "StorageScope needs you to choose this folder again before rescanning it in the sandbox."
-                chooseFolderAndScan(startingAt: URL(fileURLWithPath: path, isDirectory: true))
+                session.lastErrorCategory = .staleBookmark(path: path)
+                errorMessage = nil
+                recents.requestRecovery(for: path)
                 return
             }
 
@@ -623,10 +624,39 @@ func setSelectedView(_ view: SmartView) {
             session.lastErrorCategory = category
             os_log("Reopen-bookmark failed for %{private}@: %{public}@",
                    log: Self.log, type: .error, path, String(describing: error))
-            errorMessage = category?.userMessage
-                ?? "StorageScope could not reopen this folder bookmark. Choose it again to refresh access. \(error.localizedDescription)"
-            chooseFolderAndScan(startingAt: URL(fileURLWithPath: path, isDirectory: true))
+            errorMessage = nil
+            recents.requestRecovery(for: path)
         }
+    }
+
+    /// Begins the explicit recent-scan recovery flow. The confirmation dialog is
+    /// dismissed before opening the folder panel so stale bookmark failures never
+    /// chain an alert directly into a synchronous panel presentation.
+    func chooseFolderForRecentRecovery() {
+        guard let path = recents.chooseFolderForRecovery() else { return }
+
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            defer { recents.completeRecovery() }
+
+            let startingURL = URL(fileURLWithPath: path, isDirectory: true)
+            guard let url = FileActionService.chooseFolder(
+                startingAt: startingURL,
+                message: "Choose the folder again to refresh StorageScope's access."
+            ) else {
+                return
+            }
+            scanUserGrantedURL(url)
+        }
+    }
+
+    func forgetRecentScanRecovery() {
+        recents.forgetScanFromRecovery()
+    }
+
+    func cancelRecentScanRecovery() {
+        recents.cancelRecovery()
     }
 
     func scanVolume(_ url: URL) {
@@ -732,16 +762,15 @@ func setSelectedView(_ view: SmartView) {
             if let resolvedURL = try bookmarkStore.resolve(path: lastScannedURL.standardizedFileURL.path) {
                 scanUserGrantedURL(resolvedURL.url, access: resolvedURL.access)
             } else {
-                chooseFolderAndScan(startingAt: lastScannedURL)
+                recents.requestRecovery(for: lastScannedURL.standardizedFileURL.path)
             }
         } catch {
             let category = Self.categorize(error, fallbackPath: lastScannedURL.path)
             session.lastErrorCategory = category
             os_log("Rescan access failed for %{private}@: %{public}@",
                    log: Self.log, type: .error, lastScannedURL.path, String(describing: error))
-            errorMessage = category?.userMessage
-                ?? "StorageScope needs refreshed access before rescanning. \(error.localizedDescription)"
-            chooseFolderAndScan(startingAt: lastScannedURL)
+            errorMessage = nil
+            recents.requestRecovery(for: lastScannedURL.standardizedFileURL.path)
         }
     }
 
