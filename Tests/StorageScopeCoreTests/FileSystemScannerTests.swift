@@ -4,6 +4,27 @@ import Testing
 
 @Suite("FileSystemScanner")
 struct FileSystemScannerTests {
+    @Test("ranked retention keeps late larger items without exceeding its bound")
+    func rankedRetentionKeepsLateLargerItems() {
+        var retention = RankedItemRetention(limit: 3)
+        for (name, size) in [("a", 10), ("b", 20), ("c", 30), ("d", 40), ("e", 5)] {
+            retention.record(rankedItem(name: name, size: Int64(size)))
+        }
+
+        #expect(retention.count == 3)
+        #expect(retention.sortedItems.map(\.name) == ["d", "c", "b"])
+    }
+
+    @Test("ranked retention uses path order as a deterministic size tie-break")
+    func rankedRetentionUsesDeterministicPathTieBreak() {
+        var retention = RankedItemRetention(limit: 2)
+        for name in ["z", "b", "a", "m"] {
+            retention.record(rankedItem(name: name, size: 100))
+        }
+
+        #expect(retention.sortedItems.map(\.name) == ["a", "b"])
+    }
+
     @Test("ranks largest files and folders")
     func scanRanksLargestFilesAndFolders() throws {
         let temporaryRoot = try makeTemporaryRoot()
@@ -26,6 +47,19 @@ struct FileSystemScannerTests {
         #expect(scan.typeBreakdown.first?.label == ".mov")
         #expect(scan.typeBreakdown.first?.category == .video)
         #expect(scan.totalBytes >= 16_000)
+    }
+
+    private func rankedItem(name: String, size: Int64) -> StorageItem {
+        StorageItem(
+            url: URL(fileURLWithPath: "/tmp/ranked-retention/\(name)"),
+            kind: .file,
+            byteSize: size,
+            allocatedSize: size,
+            modifiedAt: nil,
+            immediateChildCount: 0,
+            descendantCount: 0,
+            isReadable: true
+        )
     }
 
     @Test("categorizes file type breakdown for scan review")
@@ -122,6 +156,46 @@ struct FileSystemScannerTests {
             sizeGroups: scan.duplicateSizeGroups,
             verifiedGroups: scan.verifiedDuplicateGroups
         ).isEmpty)
+    }
+
+    @Test("duplicate verification records bytes read")
+    func duplicateVerificationRecordsBytesRead() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        try Data("same-content".utf8).write(to: temporaryRoot.appendingPathComponent("copy-a.txt"))
+        try Data("same-content".utf8).write(to: temporaryRoot.appendingPathComponent("copy-b.txt"))
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(duplicateCandidateThreshold: 1)
+        )
+
+        #expect(scan.verifiedDuplicateGroups.count == 1)
+        #expect(scan.duplicateVerificationBytesRead == 24)
+    }
+
+    @Test("duplicate verification avoids full reads for prefix-mismatched same-size files")
+    func duplicateVerificationSkipsFullHashForPrefixMismatches() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        let fileSize = 1_048_576
+        for index in 0..<4 {
+            var data = Data(repeating: UInt8(index), count: fileSize)
+            data[0] = UInt8(index + 1)
+            try data.write(to: temporaryRoot.appendingPathComponent("unique-\(index).bin"))
+        }
+
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(duplicateCandidateThreshold: 1)
+        )
+
+        #expect(scan.duplicateSizeGroups.count == 1)
+        #expect(scan.verifiedDuplicateGroups.isEmpty)
+        #expect(scan.duplicateVerificationBytesRead == Int64(4 * 64 * 1_024))
+        #expect(scan.duplicateVerificationBytesRead <= scan.duplicateSizeGroups[0].totalBytes / 10)
     }
 
     @Test("caps automatic duplicate content verification")
@@ -663,6 +737,7 @@ struct FileSystemScannerTests {
         #expect(scan.duplicateCandidateItemLimit == 12)
         #expect(scan.duplicateCandidateItemsRetained == 12)
         #expect(scan.duplicateCandidateItemsConsidered == 14)
+        #expect(scan.duplicateCandidateEvictionCount == 2)
         #expect(scan.duplicateCandidateLimitReached)
     }
 
@@ -695,6 +770,25 @@ struct FileSystemScannerTests {
         #expect(scan.duplicateCandidateItemsRetained == 12)
         #expect(scan.duplicateCandidateItemsConsidered == 14)
         #expect(scan.duplicateCandidateLimitReached)
+    }
+
+    @Test("duplicate candidate cap rejects smaller candidates without eviction churn")
+    func duplicateCandidateCapRejectsSmallerCandidatesBeforeEviction() throws {
+        var candidates = DuplicateCandidateRetention(limit: 12)
+        for index in 0..<12 {
+            candidates.record(fileItem(named: String(format: "large-%03d.bin", index), bytes: 8_192))
+        }
+
+        for index in 0..<100 {
+            candidates.record(fileItem(named: String(format: "small-%03d.bin", index), bytes: 2_048))
+        }
+
+        #expect(candidates.consideredCount == 112)
+        #expect(candidates.retainedCount == 12)
+        #expect(candidates.evictionCount == 0)
+        #expect(candidates.limitReached)
+        #expect(candidates.sizeGroups.map(\.byteSize) == [8_192])
+        #expect(candidates.sizeGroups.first?.items.count == 12)
     }
 
     @Test("duplicate candidates include files pruned from retained tree")
@@ -975,13 +1069,32 @@ struct FileSystemScannerTests {
 
         #expect(text.contains("StorageScope benchmark"))
         #expect(text.contains("Scope: \(temporaryRoot.lastPathComponent)"))
+        #expect(text.contains("Build configuration:"))
         #expect(text.contains("Items scanned:"))
         #expect(text.contains("Duplicate candidates:"))
+        #expect(text.contains("Duplicate evictions:"))
         #expect(text.contains("Duplicate verification:"))
+        #expect(text.contains("Snapshots built:"))
         #expect(text.contains("Results are local only."))
         #expect(!text.contains(temporaryRoot.deletingLastPathComponent().path))
         #expect(!text.localizedCaseInsensitiveContains("http://"))
         #expect(!text.localizedCaseInsensitiveContains("https://"))
+    }
+
+    @Test("streaming benchmark mode exercises app-like snapshot callbacks")
+    func streamingBenchmarkModeBuildsSnapshots() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+        try writeFile(named: "streaming.dat", bytes: 4_096, in: temporaryRoot)
+
+        let report = try ScanBenchmarkRunner().run(
+            rootURL: temporaryRoot,
+            streamingCallbacks: true
+        )
+
+        #expect(report.streamingCallbacksEnabled)
+        #expect(report.snapshotBuildCount > 0)
+        #expect(report.text.contains("Streaming callbacks: enabled"))
     }
 
     @Test("synthetic benchmark fixture creates expected candidate classes")
@@ -1030,6 +1143,43 @@ struct FileSystemScannerTests {
         #expect(process.terminationStatus == 0)
     }
 
+    @Test("benchmark script runs release builds by default")
+    func benchmarkScriptRunsReleaseBuildsByDefault() throws {
+        let repoRoot = try repositoryRoot()
+        let script = try String(contentsOf: repoRoot.appendingPathComponent("script/benchmark_scan.sh"), encoding: .utf8)
+
+        #expect(script.contains("CONFIGURATION=\"release\""))
+        #expect(script.contains("swift run -c \"$CONFIGURATION\" StorageScopeBenchmark"))
+        #expect(script.contains("--debug"))
+    }
+
+    @Test("scanner records item bytes in a single accumulator call")
+    func scannerRecordsItemBytesInSingleAccumulatorCall() throws {
+        let repoRoot = try repositoryRoot()
+        let source = try String(
+            contentsOf: repoRoot.appendingPathComponent("Sources/StorageScopeCore/Services/FileSystemScanner.swift"),
+            encoding: .utf8
+        )
+
+        #expect(!source.contains("func recordBytes"))
+        #expect(!source.contains("accumulator.recordBytes("))
+    }
+
+    @Test("duplicate candidate eviction avoids path comparisons")
+    func duplicateCandidateEvictionAvoidsPathComparisons() throws {
+        let repoRoot = try repositoryRoot()
+        let source = try String(
+            contentsOf: repoRoot.appendingPathComponent("Sources/StorageScopeCore/Services/FileSystemScanner.swift"),
+            encoding: .utf8
+        )
+        let evictionSource = try #require(source.range(of: "private mutating func evictSmallestRetained()"))
+        let evictionEnd = try #require(source[evictionSource.upperBound...].range(of: "    }\n}\n")?.lowerBound)
+        let duplicateEvictionSource = String(source[evictionSource.lowerBound..<evictionEnd])
+
+        #expect(!duplicateEvictionSource.contains("url.path <"))
+        #expect(!duplicateEvictionSource.contains("indices.max"))
+    }
+
     @Test("benchmark report exposes per-phase durations")
     func benchmarkReportExposesPerPhaseDurations() throws {
         let root = try SyntheticBenchmarkFixture.create()
@@ -1040,6 +1190,7 @@ struct FileSystemScannerTests {
         #expect(report.enumerateDuration >= 0)
         #expect(report.verifyDuration >= 0)
         #expect(report.verifyDuration == report.duplicateVerificationDuration)
+        #expect(report.duplicateVerificationBytesRead >= 0)
         // No cache wired up: persistDuration is a no-op plus two Date() readouts, which
         // can register sub-microsecond timing noise instead of an exact 0.
         #expect(abs(report.persistDuration) < 0.001)
@@ -1050,6 +1201,7 @@ struct FileSystemScannerTests {
         let text = report.text
         #expect(text.contains("Enumerate duration:"))
         #expect(text.contains("Verify duration:"))
+        #expect(text.contains("Duplicate verification bytes read:"))
         #expect(text.contains("Persist duration:"))
         #expect(text.contains("Phase total (enum+verify+persist):"))
     }
@@ -1533,6 +1685,26 @@ struct FileSystemScannerTests {
         #expect(nonEmptySnapshot?.isPartial == true)
     }
 
+    @Test("snapshot cadence is time throttled, not every 25 items")
+    func snapshotCadenceIsTimeThrottled() throws {
+        let temporaryRoot = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        for index in 0..<100 {
+            try writeFile(named: "file-\(index).bin", bytes: 1_000 + index, in: temporaryRoot)
+        }
+
+        var snapshotCount = 0
+        let scan = try FileSystemScanner().scan(
+            root: temporaryRoot,
+            options: ScanOptions(largeFileThreshold: 1, duplicateCandidateThreshold: 10_000),
+            onSnapshot: { _ in snapshotCount += 1 }
+        )
+
+        #expect(snapshotCount <= 2)
+        #expect(scan.snapshotBuildCount == snapshotCount)
+    }
+
     @Test("pause blocks scan progress and resume continues to completion")
     func pauseBlocksProgressAndResumeCompletes() throws {
         let temporaryRoot = try makeTemporaryRoot()
@@ -1720,6 +1892,21 @@ struct FileSystemScannerTests {
             children: children,
             isReadable: true,
             fileExtension: url.pathExtension.isEmpty ? nil : url.pathExtension
+        )
+    }
+
+    private func fileItem(named name: String, bytes: Int64) -> StorageItem {
+        StorageItem(
+            url: URL(fileURLWithPath: "/tmp/\(name)"),
+            name: name,
+            kind: .file,
+            byteSize: bytes,
+            allocatedSize: bytes,
+            modifiedAt: nil,
+            immediateChildCount: 0,
+            descendantCount: 0,
+            isReadable: true,
+            fileExtension: URL(fileURLWithPath: name).pathExtension
         )
     }
 

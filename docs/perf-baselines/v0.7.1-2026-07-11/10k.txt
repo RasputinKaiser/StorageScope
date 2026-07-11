@@ -1,0 +1,19 @@
+StorageScope synthetic release benchmark, 10,353 scanned items
+
+Merged main (690227d):
+run 1: 4.67s, 29.9 MB peak RSS
+run 2: 4.70s, 29.6 MB peak RSS
+run 3: 4.75s, 29.9 MB peak RSS
+median: 4.70s
+
+Measured hot-path tranche before ranked heaps:
+run 1: 0.57s, 29.4 MB peak RSS
+run 2: 0.56s, 29.0 MB peak RSS
+run 3: 0.57s, 29.7 MB peak RSS
+median: 0.57s
+
+Final bounded-heap result:
+run 1: 0.50s, 28.5 MB peak RSS
+run 2: 0.49s, 28.7 MB peak RSS
+run 3: 0.49s, 28.6 MB peak RSS
+median: 0.49s

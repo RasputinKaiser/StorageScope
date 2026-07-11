@@ -100,6 +100,8 @@ public final class FileSystemScanner {
         let cores = ProcessInfo.processInfo.processorCount
         return min(6, max(2, cores / 2))
     }()
+    private static let duplicatePrefixByteCount = 64 * 1_024
+
 
     /// os_signpost surface for Instruments. Subsystem mirrors the bundle identifier prefix;
     /// category ties Scanner-only work together so it can be filtered from app-side spans.
@@ -161,6 +163,7 @@ public final class FileSystemScanner {
             cancellation: cancellation
         )
         let duplicateVerificationDuration = Date().timeIntervalSince(duplicateVerificationStartedAt)
+        let duplicateVerificationBytesRead = accumulator.duplicateVerificationBytesRead
         let finishedAt = Date()
 
         os_signpost(.end, log: Self.log, name: "scan", signpostID: Self.signpostID,
@@ -185,8 +188,11 @@ public final class FileSystemScanner {
             duplicateCandidateItemLimit: accumulator.duplicateCandidateItemLimit,
             duplicateCandidateItemsRetained: accumulator.duplicateCandidateItemsRetained,
             duplicateCandidateItemsConsidered: accumulator.duplicateCandidateItemsConsidered,
+            duplicateCandidateEvictionCount: accumulator.duplicateCandidateEvictionCount,
             duplicateCandidateLimitReached: accumulator.duplicateCandidateLimitReached,
+            snapshotBuildCount: accumulator.snapshotBuildCount,
             duplicateVerificationDuration: duplicateVerificationDuration,
+            duplicateVerificationBytesRead: duplicateVerificationBytesRead,
             enumerateDuration: enumerateDuration,
             cleanupCandidates: accumulator.cleanupCandidates(
                 rootID: rootItem.id,
@@ -223,36 +229,13 @@ public final class FileSystemScanner {
         let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
         let cacheLock = NSLock()
 
-        var hashedItems: [HashedStorageItem] = []
-        hashedItems.reserveCapacity(group.items.count)
-
-        for item in group.items {
-            // Cooperative cancellation: re-check before opening I/O for the next file so a
-            // cancelled scan doesn't keep burning file descriptors or queuing reads behind
-            // the ioSemaphore. Cancellation aborts the whole on-demand verify because the
-            // caller asked us to stop.
-            try cancellation?.check()
-
-            if let hashed = try hashedFormItem(
-                item,
-                ioSemaphore: ioSemaphore,
-                cacheLock: cacheLock,
-                cancellation: cancellation
-            ) {
-                hashedItems.append(hashed)
-            }
-        }
-
-        let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
-        return groupedByHash.compactMap { checksum, hashedItems in
-            let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
-            return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: group.byteSize, items: items) : nil
-        }.sorted { lhs, rhs in
-            if lhs.reclaimableBytes == rhs.reclaimableBytes {
-                return lhs.byteSize > rhs.byteSize
-            }
-            return lhs.reclaimableBytes > rhs.reclaimableBytes
-        }
+        return try verifiedDuplicateGroups(
+            in: group,
+            ioSemaphore: ioSemaphore,
+            cacheLock: cacheLock,
+            recordBytesRead: nil,
+            cancellation: cancellation
+        )
     }
 
     private func scanItem(
@@ -293,11 +276,8 @@ public final class FileSystemScanner {
             )
         }
 
-        accumulator.recordVisit(path: url.path)
-
         if values?.isSymbolicLink == true {
             let size = Int64(values?.fileSize ?? 0)
-            accumulator.recordBytes(size)
             let item = StorageItem(
                 url: url,
                 kind: .alias,
@@ -309,7 +289,7 @@ public final class FileSystemScanner {
                 isReadable: values?.isReadable ?? true,
                 fileExtension: url.pathExtension.nonEmptyLowercased
             )
-            accumulator.recordItem(item)
+            accumulator.recordScannedItem(item, countedBytes: size, path: url.path)
             return item
         }
 
@@ -319,7 +299,6 @@ public final class FileSystemScanner {
         guard isDirectory else {
             let logicalSize = Int64(values?.fileSize ?? 0)
             let allocatedSize = Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? values?.fileSize ?? 0)
-            accumulator.recordBytes(max(logicalSize, allocatedSize))
 
             let item = StorageItem(
                 url: url,
@@ -332,9 +311,11 @@ public final class FileSystemScanner {
                 isReadable: values?.isReadable ?? true,
                 fileExtension: url.pathExtension.nonEmptyLowercased
             )
-            accumulator.recordItem(item)
+            accumulator.recordScannedItem(item, countedBytes: max(logicalSize, allocatedSize), path: url.path)
             return item
         }
+
+        accumulator.recordVisit(path: url.path)
 
         do {
             let directoryOptions: FileManager.DirectoryEnumerationOptions = options.includeHidden ? [] : [.skipsHiddenFiles]
@@ -355,12 +336,6 @@ public final class FileSystemScanner {
             var didCancel = false
 
             DispatchQueue.concurrentPerform(iterations: childURLs.count) { index in
-                // Each iteration bridges several Foundation objects (URLResourceValues,
-                // NSNumber signpost objects, Date/NSString instances inside scanItem). With
-                // no pool, concurrentPerform's calling thread never gets an autorelease drain
-                // point until the whole call returns, so these accumulate for the duration of
-                // a potentially huge directory enumeration. Draining per-iteration bounds peak
-                // RSS instead of letting it grow with the directory's child count.
                 autoreleasepool {
                     if cancellation?.isCancelled ?? false {
                         return
@@ -378,10 +353,6 @@ public final class FileSystemScanner {
                         try cancellation?.check()
 
                         if options.excludeEnabled, Self.isExcluded(childURLs[index], options: options) {
-                            // Skip entirely: don't stat, count, or recurse. Leave the slot nil
-                            // so the `for case let child?` filter below treats it as absent,
-                            // matching the established "skip this child" pattern used for
-                            // per-child errors elsewhere in this loop.
                             return
                         }
 
@@ -398,9 +369,6 @@ public final class FileSystemScanner {
                         didCancel = true
                         cancellationLock.unlock()
                     } catch {
-                        // Unreachable: scanItem only throws FileSystemScannerError.cancelled;
-                        // ingestion/directory-enumeration failures are caught internally and
-                        // surface as .inaccessible StorageItems. Belt-and-braces guard.
                         let unreachable = StorageItem(
                             url: childURLs[index],
                             kind: .inaccessible,
@@ -450,7 +418,6 @@ public final class FileSystemScanner {
         } catch FileSystemScannerError.cancelled {
             throw FileSystemScannerError.cancelled
         } catch {
-            accumulator.recordInaccessible(path: url.path)
             let item = StorageItem(
                 url: url,
                 kind: .inaccessible,
@@ -462,6 +429,7 @@ public final class FileSystemScanner {
                 isReadable: false,
                 fileExtension: nil
             )
+            accumulator.recordInaccessible(path: url.path)
             accumulator.recordItem(item)
             return item
         }
@@ -545,32 +513,13 @@ public final class FileSystemScanner {
                 try cancellation?.check()
                 let sizeGroup = verificationGroups[groupIndex]
 
-                var hashedItems: [HashedStorageItem] = []
-                hashedItems.reserveCapacity(sizeGroup.items.count)
-
-                for item in sizeGroup.items {
-                    // Per-item cancellation probe keeps an outlier slow hash from orphaning
-                    // the rest of a group's work after the user cancels.
-                    if cancellation?.isCancelled ?? false {
-                        markCancelled()
-                        return
-                    }
-
-                    if let hashed = try hashedFormItem(
-                        item,
-                        ioSemaphore: ioSemaphore,
-                        cacheLock: cacheLock,
-                        cancellation: cancellation
-                    ) {
-                        hashedItems.append(hashed)
-                    }
-                }
-
-                let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
-                let verifiedForSize = groupedByHash.compactMap { checksum, hashedItems -> VerifiedDuplicateGroup? in
-                    let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
-                    return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: sizeGroup.byteSize, items: items) : nil
-                }
+                let verifiedForSize = try verifiedDuplicateGroups(
+                    in: sizeGroup,
+                    ioSemaphore: ioSemaphore,
+                    cacheLock: cacheLock,
+                    recordBytesRead: accumulator.recordDuplicateVerificationBytes,
+                    cancellation: cancellation
+                )
 
                 guard !verifiedForSize.isEmpty else {
                     return
@@ -593,6 +542,103 @@ public final class FileSystemScanner {
         }
 
         return verifiedGroups.sorted { lhs, rhs in
+            if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                return lhs.byteSize > rhs.byteSize
+            }
+            return lhs.reclaimableBytes > rhs.reclaimableBytes
+        }
+    }
+
+    private func verifiedDuplicateGroups(
+        in sizeGroup: DuplicateSizeGroup,
+        ioSemaphore: DispatchSemaphore,
+        cacheLock: NSLock,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> [VerifiedDuplicateGroup] {
+        var cachedFullHashesByPath: [String: String] = [:]
+        cachedFullHashesByPath.reserveCapacity(sizeGroup.items.count)
+
+        for item in sizeGroup.items {
+            try cancellation?.check()
+            let cacheKey = DuplicateHashCache.LookupKey(item: item)
+            if let cached = hashCache?.checksum(for: cacheKey) {
+                cachedFullHashesByPath[cacheKey.path] = cached
+            }
+        }
+
+        if cachedFullHashesByPath.count == sizeGroup.items.count {
+            let hashedItems = sizeGroup.items.compactMap { item -> HashedStorageItem? in
+                let path = DuplicateHashCache.LookupKey(item: item).path
+                guard let checksum = cachedFullHashesByPath[path] else { return nil }
+                return HashedStorageItem(checksum: checksum, item: item)
+            }
+            return verifiedDuplicateGroups(from: hashedItems, byteSize: sizeGroup.byteSize)
+        }
+
+        var prefixHashedItems: [PrefixHashedStorageItem] = []
+        prefixHashedItems.reserveCapacity(sizeGroup.items.count)
+
+        for item in sizeGroup.items {
+            if cancellation?.isCancelled ?? false {
+                throw FileSystemScannerError.cancelled
+            }
+
+            if let prefixed = try prefixHashedFormItem(
+                item,
+                ioSemaphore: ioSemaphore,
+                recordBytesRead: recordBytesRead,
+                cancellation: cancellation
+            ) {
+                prefixHashedItems.append(prefixed)
+            }
+        }
+
+        let groupedByPrefix = Dictionary(grouping: prefixHashedItems, by: \.prefixChecksum)
+        var fullyHashedItems: [HashedStorageItem] = []
+
+        for prefixGroup in groupedByPrefix.values where prefixGroup.count > 1 {
+            for prefixed in prefixGroup {
+                let cacheKey = DuplicateHashCache.LookupKey(item: prefixed.item)
+                if let cached = cachedFullHashesByPath[cacheKey.path] {
+                    fullyHashedItems.append(HashedStorageItem(checksum: cached, item: prefixed.item))
+                    continue
+                }
+
+                if prefixed.isCompleteFile {
+                    if let hashCache {
+                        cacheLock.lock()
+                        hashCache.record(cacheKey, checksum: prefixed.prefixChecksum)
+                        cacheLock.unlock()
+                    }
+                    fullyHashedItems.append(HashedStorageItem(checksum: prefixed.prefixChecksum, item: prefixed.item))
+                    continue
+                }
+
+                if let hashed = try hashedFormItem(
+                    prefixed.item,
+                    ioSemaphore: ioSemaphore,
+                    cacheLock: cacheLock,
+                    recordBytesRead: recordBytesRead,
+                    cancellation: cancellation
+                ) {
+                    fullyHashedItems.append(hashed)
+                }
+            }
+        }
+
+        return verifiedDuplicateGroups(from: fullyHashedItems, byteSize: sizeGroup.byteSize)
+    }
+
+    private func verifiedDuplicateGroups(
+        from hashedItems: [HashedStorageItem],
+        byteSize: Int64
+    ) -> [VerifiedDuplicateGroup] {
+        let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
+        return groupedByHash.compactMap { checksum, hashedItems -> VerifiedDuplicateGroup? in
+            let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
+            return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: byteSize, items: items) : nil
+        }.sorted { lhs, rhs in
             if lhs.reclaimableBytes == rhs.reclaimableBytes {
                 return lhs.byteSize > rhs.byteSize
             }
@@ -639,7 +685,11 @@ public final class FileSystemScanner {
         return plannedGroups
     }
 
-    private func sha256Checksum(for url: URL, cancellation: ScanCancellation?) throws -> String {
+    private func sha256Checksum(
+        for url: URL,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> String {
         // Probe cancellation before opening so a cancelled batch doesn't keep paying the
         // cost of `FileHandle(forReadingFrom:)` for files that no one will ever read.
         try cancellation?.check()
@@ -666,10 +716,78 @@ public final class FileSystemScanner {
             if data.isEmpty {
                 break
             }
+            recordBytesRead?(data.count)
             hasher.update(data: data)
         }
 
         return hasher.finalize().hexEncodedString()
+    }
+
+    private func prefixChecksum(
+        for url: URL,
+        maxBytes: Int,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> (checksum: String, bytesRead: Int) {
+        try cancellation?.check()
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer {
+            do {
+                try handle.close()
+            } catch {
+                os_signpost(.event, log: Self.log, name: "handle_close_failed",
+                            "path=%{public}@ reason=%{public}@", url.path, "\(error)")
+            }
+        }
+
+        var remaining = max(0, maxBytes)
+        var bytesRead = 0
+        var hasher = SHA256()
+        while remaining > 0 {
+            try cancellation?.check()
+            let readSize = min(remaining, 1_048_576)
+            let data = try handle.read(upToCount: readSize) ?? Data()
+            if data.isEmpty {
+                break
+            }
+            bytesRead += data.count
+            remaining -= data.count
+            recordBytesRead?(data.count)
+            hasher.update(data: data)
+        }
+
+        return (hasher.finalize().hexEncodedString(), bytesRead)
+    }
+
+    private func prefixHashedFormItem(
+        _ item: StorageItem,
+        ioSemaphore: DispatchSemaphore,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> PrefixHashedStorageItem? {
+        ioSemaphore.wait()
+        defer { ioSemaphore.signal() }
+
+        do {
+            let result = try prefixChecksum(
+                for: item.url,
+                maxBytes: Self.duplicatePrefixByteCount,
+                recordBytesRead: recordBytesRead,
+                cancellation: cancellation
+            )
+            return PrefixHashedStorageItem(
+                prefixChecksum: result.checksum,
+                bytesRead: result.bytesRead,
+                item: item
+            )
+        } catch FileSystemScannerError.cancelled {
+            throw FileSystemScannerError.cancelled
+        } catch {
+            os_signpost(.event, log: Self.log, name: "hash_prefix_skip",
+                        "path=%{public}@ reason=%{public}@", item.url.path, "\(error)")
+            return nil
+        }
     }
 
     /// Hashes one item, consulting the persisted `hashCache` fast-path before falling back
@@ -681,6 +799,7 @@ public final class FileSystemScanner {
         _ item: StorageItem,
         ioSemaphore: DispatchSemaphore,
         cacheLock: NSLock,
+        recordBytesRead: ((Int) -> Void)?,
         cancellation: ScanCancellation?
     ) throws -> HashedStorageItem? {
         let cacheKey = DuplicateHashCache.LookupKey(item: item)
@@ -693,7 +812,11 @@ public final class FileSystemScanner {
         defer { ioSemaphore.signal() }
 
         do {
-            let checksum = try sha256Checksum(for: item.url, cancellation: cancellation)
+            let checksum = try sha256Checksum(
+                for: item.url,
+                recordBytesRead: recordBytesRead,
+                cancellation: cancellation
+            )
             if let hashCache {
                 cacheLock.lock()
                 defer { cacheLock.unlock() }
@@ -713,6 +836,16 @@ public final class FileSystemScanner {
 private struct HashedStorageItem {
     let checksum: String
     let item: StorageItem
+}
+
+private struct PrefixHashedStorageItem {
+    let prefixChecksum: String
+    let bytesRead: Int
+    let item: StorageItem
+
+    var isCompleteFile: Bool {
+        Int64(bytesRead) >= item.byteSize
+    }
 }
 
 private struct DirectoryScanSummary {
@@ -752,7 +885,7 @@ private struct DirectoryScanSummary {
         Array(
             items.sorted { lhs, rhs in
                 if lhs.displaySize == rhs.displaySize {
-                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                    return lhs.name < rhs.name
                 }
                 return lhs.displaySize > rhs.displaySize
             }
@@ -770,6 +903,82 @@ private extension CleanupCandidate.Confidence {
             return 1
         case .review:
             return 2
+        }
+    }
+}
+
+struct DuplicateCandidateRetention {
+    private let limit: Int
+    private var candidatesBySize: [Int64: [StorageItem]] = [:]
+    private var smallestRetainedSize: Int64?
+
+    private(set) var retainedCount = 0
+    private(set) var consideredCount = 0
+    private(set) var evictionCount = 0
+    private(set) var limitReached = false
+
+    init(limit: Int) {
+        self.limit = max(0, limit)
+    }
+
+    var sizeGroups: [DuplicateSizeGroup] {
+        candidatesBySize
+            .compactMap { byteSize, items in
+                items.count > 1 ? DuplicateSizeGroup(byteSize: byteSize, items: items.sorted { $0.url.path < $1.url.path }) : nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.totalBytes == rhs.totalBytes {
+                    return lhs.byteSize > rhs.byteSize
+                }
+                return lhs.totalBytes > rhs.totalBytes
+            }
+    }
+
+    mutating func record(_ item: StorageItem) {
+        consideredCount += 1
+        guard limit > 0 else {
+            limitReached = true
+            return
+        }
+
+        if retainedCount >= limit,
+           let smallestRetainedSize,
+           item.byteSize < smallestRetainedSize {
+            limitReached = true
+            return
+        }
+
+        candidatesBySize[item.byteSize, default: []].append(item)
+        retainedCount += 1
+        if smallestRetainedSize.map({ item.byteSize < $0 }) ?? true {
+            smallestRetainedSize = item.byteSize
+        }
+
+        guard retainedCount > limit else {
+            return
+        }
+
+        limitReached = true
+        evictSmallestRetained()
+    }
+
+    private mutating func evictSmallestRetained() {
+        guard let smallestByteSize = smallestRetainedSize ?? candidatesBySize.keys.min(),
+              var items = candidatesBySize[smallestByteSize],
+              !items.isEmpty else {
+            smallestRetainedSize = candidatesBySize.keys.min()
+            return
+        }
+
+        items.removeLast()
+        retainedCount -= 1
+        evictionCount += 1
+
+        if items.isEmpty {
+            candidatesBySize.removeValue(forKey: smallestByteSize)
+            smallestRetainedSize = candidatesBySize.keys.min()
+        } else {
+            candidatesBySize[smallestByteSize] = items
         }
     }
 }
@@ -794,20 +1003,18 @@ private final class ScanAccumulator {
     private var lastProgressDate = Date.distantPast
     private let oldFileCutoff: Date
     private var retainedItemCount: Int
-    private var largestFileItems: [StorageItem] = []
-    private var largestFolderItems: [StorageItem] = []
-    private var oldLargeFileItems: [StorageItem] = []
+    private var largestFileItems: RankedItemRetention
+    private var largestFolderItems: RankedItemRetention
+    private var oldLargeFileItems: RankedItemRetention
     private var fileTypeStats: [String: FileTypeAccumulator] = [:]
-    private var duplicateCandidatesBySize: [Int64: [StorageItem]] = [:]
-    private var duplicateCandidateItemCount = 0
-    private var duplicateCandidateConsideredCount = 0
-    private var smallestDuplicateCandidateByteSize: Int64?
-    private(set) var duplicateCandidateLimitReached = false
+    private var duplicateCandidateRetention: DuplicateCandidateRetention
     private var cleanupCandidatesByID: [String: CleanupCandidate] = [:]
 
     var scannedItemCount = 0
     var inaccessibleItemCount = 0
     var totalBytes: Int64 = 0
+    private(set) var duplicateVerificationBytesRead: Int64 = 0
+    private(set) var snapshotBuildCount = 0
 
     /// Guards every mutable field above. Held briefly during directory enumeration's
     /// record*() calls; the user `progress` and `onSnapshot` closures are both invoked
@@ -832,6 +1039,10 @@ private final class ScanAccumulator {
         self.rootURL = rootURL
         self.startedAt = startedAt
         self.retainedItemCount = 1
+        self.largestFileItems = RankedItemRetention(limit: options.maxRankedResults)
+        self.largestFolderItems = RankedItemRetention(limit: options.maxRankedResults)
+        self.oldLargeFileItems = RankedItemRetention(limit: options.maxRankedResults)
+        self.duplicateCandidateRetention = DuplicateCandidateRetention(limit: options.maxDuplicateCandidateItems)
         self.oldFileCutoff = Calendar.current.date(
             byAdding: .day,
             value: -options.oldFileAgeDays,
@@ -846,17 +1057,18 @@ private final class ScanAccumulator {
         emitProgressLocked(path: path)
     }
 
-    func recordBytes(_ bytes: Int64) {
-        lock.lock()
-        defer { lock.unlock() }
-        totalBytes += bytes
-    }
-
     func recordInaccessible(path: String) {
         lock.lock()
         defer { lock.unlock() }
         inaccessibleItemCount += 1
         emitProgressLocked(path: path)
+    }
+
+    func recordDuplicateVerificationBytes(_ bytes: Int) {
+        guard bytes > 0 else { return }
+        lock.lock()
+        duplicateVerificationBytesRead += Int64(bytes)
+        lock.unlock()
     }
 
     func recordPhase(path: String, phase: ScanPhase = .enumerating) {
@@ -865,15 +1077,27 @@ private final class ScanAccumulator {
         emitProgressLocked(path: path, force: true, phase: phase)
     }
 
+    func recordScannedItem(_ item: StorageItem, countedBytes: Int64, path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        scannedItemCount += 1
+        totalBytes += countedBytes
+        recordItemLocked(item)
+        emitProgressLocked(path: path)
+    }
+
     func recordItem(_ item: StorageItem) {
         lock.lock()
         defer { lock.unlock() }
+        recordItemLocked(item)
+    }
+
+    private func recordItemLocked(_ item: StorageItem) {
         switch item.kind {
         case .file:
             recordFileLocked(item)
         case .folder, .package:
-            largestFolderItems.append(item)
-            trimRankedItems(&largestFolderItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+            largestFolderItems.record(item)
         case .alias, .inaccessible, .other:
             break
         }
@@ -933,17 +1157,15 @@ private final class ScanAccumulator {
     }
 
     var largestFiles: [StorageItem] {
-        sortedRankedItems(largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+        largestFileItems.sortedItems
     }
 
     func largestFolders(excluding rootID: String) -> [StorageItem] {
-        sortedRankedItems(largestFolderItems.filter { $0.id != rootID }, limit: options.maxRankedResults) {
-            $0.displaySize > $1.displaySize
-        }
+        largestFolderItems.sortedItems.filter { $0.id != rootID }
     }
 
     var oldLargeFiles: [StorageItem] {
-        sortedRankedItems(oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+        oldLargeFileItems.sortedItems
     }
 
     var typeBreakdown: [FileTypeStat] {
@@ -986,16 +1208,7 @@ private final class ScanAccumulator {
     }
 
     var duplicateSizeGroups: [DuplicateSizeGroup] {
-        duplicateCandidatesBySize
-            .compactMap { byteSize, items in
-                items.count > 1 ? DuplicateSizeGroup(byteSize: byteSize, items: items.sorted { $0.url.path < $1.url.path }) : nil
-            }
-            .sorted { lhs, rhs in
-                if lhs.totalBytes == rhs.totalBytes {
-                    return lhs.byteSize > rhs.byteSize
-                }
-                return lhs.totalBytes > rhs.totalBytes
-            }
+        duplicateCandidateRetention.sizeGroups
     }
 
     var duplicateCandidateItemLimit: Int {
@@ -1003,11 +1216,19 @@ private final class ScanAccumulator {
     }
 
     var duplicateCandidateItemsRetained: Int {
-        duplicateCandidateItemCount
+        duplicateCandidateRetention.retainedCount
     }
 
     var duplicateCandidateItemsConsidered: Int {
-        duplicateCandidateConsideredCount
+        duplicateCandidateRetention.consideredCount
+    }
+
+    var duplicateCandidateEvictionCount: Int {
+        duplicateCandidateRetention.evictionCount
+    }
+
+    var duplicateCandidateLimitReached: Bool {
+        duplicateCandidateRetention.limitReached
     }
 
     func cleanupCandidates(
@@ -1058,7 +1279,7 @@ private final class ScanAccumulator {
 
     private func emitProgressLocked(path: String, force: Bool = false, phase: ScanPhase = .enumerating) {
         let now = Date()
-        guard force || scannedItemCount == 1 || scannedItemCount.isMultiple(of: 25) || now.timeIntervalSince(lastProgressDate) > 0.35 else {
+        guard force || scannedItemCount == 1 || now.timeIntervalSince(lastProgressDate) > 0.35 else {
             return
         }
 
@@ -1069,6 +1290,7 @@ private final class ScanAccumulator {
         // snapshot — a one-tick lag that leaves cancel-preserved partial results stale by
         // a full throttle interval.
         if let onSnapshot {
+            snapshotBuildCount += 1
             onSnapshot(snapshotLocked())
         }
         progress?(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path, phase: phase))
@@ -1100,17 +1322,19 @@ private final class ScanAccumulator {
             scannedItemCount: scannedItemCount,
             inaccessibleItemCount: inaccessibleItemCount,
             totalBytes: totalBytes,
-            largestFiles: sortedRankedItems(largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
-            largestFolders: sortedRankedItems(largestFolderItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
-            oldLargeFiles: sortedRankedItems(oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
+            largestFiles: largestFileItems.sortedItems,
+            largestFolders: largestFolderItems.sortedItems,
+            oldLargeFiles: oldLargeFileItems.sortedItems,
             typeBreakdown: typeBreakdown,
             categoryBreakdown: categoryBreakdown,
             duplicateSizeGroups: [],
             verifiedDuplicateGroups: [],
             duplicateCandidateItemLimit: duplicateCandidateItemLimit,
-            duplicateCandidateItemsRetained: duplicateCandidateItemCount,
-            duplicateCandidateItemsConsidered: duplicateCandidateConsideredCount,
+            duplicateCandidateItemsRetained: duplicateCandidateRetention.retainedCount,
+            duplicateCandidateItemsConsidered: duplicateCandidateRetention.consideredCount,
+            duplicateCandidateEvictionCount: duplicateCandidateRetention.evictionCount,
             duplicateCandidateLimitReached: duplicateCandidateLimitReached,
+            snapshotBuildCount: snapshotBuildCount,
             duplicateVerificationDuration: 0,
             enumerateDuration: Date().timeIntervalSince(startedAt),
             cleanupCandidates: [],
@@ -1127,14 +1351,12 @@ private final class ScanAccumulator {
     }
 
     private func recordFileLocked(_ item: StorageItem) {
-        largestFileItems.append(item)
-        trimRankedItems(&largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+        largestFileItems.record(item)
 
         if let modifiedAt = item.modifiedAt,
            item.displaySize >= options.largeFileThreshold,
            modifiedAt <= oldFileCutoff {
-            oldLargeFileItems.append(item)
-            trimRankedItems(&oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+            oldLargeFileItems.record(item)
         }
 
         let typeLabel: String
@@ -1151,58 +1373,7 @@ private final class ScanAccumulator {
         fileTypeStats[typeLabel] = typeStat
 
         if item.byteSize >= options.duplicateCandidateThreshold {
-            recordDuplicateCandidateLocked(item)
-        }
-    }
-
-    private func recordDuplicateCandidateLocked(_ item: StorageItem) {
-        duplicateCandidateConsideredCount += 1
-        let candidateLimit = max(0, options.maxDuplicateCandidateItems)
-        guard candidateLimit > 0 else {
-            duplicateCandidateLimitReached = true
-            return
-        }
-
-        if duplicateCandidateItemCount >= candidateLimit,
-           let smallestDuplicateCandidateByteSize,
-           item.byteSize < smallestDuplicateCandidateByteSize {
-            duplicateCandidateLimitReached = true
-            return
-        }
-
-        duplicateCandidatesBySize[item.byteSize, default: []].append(item)
-        duplicateCandidateItemCount += 1
-        if smallestDuplicateCandidateByteSize.map({ item.byteSize < $0 }) ?? true {
-            smallestDuplicateCandidateByteSize = item.byteSize
-        }
-
-        guard duplicateCandidateItemCount > candidateLimit else {
-            return
-        }
-
-        duplicateCandidateLimitReached = true
-        removeSmallestDuplicateCandidateLocked()
-    }
-
-    private func removeSmallestDuplicateCandidateLocked() {
-        guard let smallestByteSize = smallestDuplicateCandidateByteSize ?? duplicateCandidatesBySize.keys.min(),
-              var items = duplicateCandidatesBySize[smallestByteSize],
-              !items.isEmpty else {
-            smallestDuplicateCandidateByteSize = duplicateCandidatesBySize.keys.min()
-            return
-        }
-
-        let removalIndex = items.indices.max { lhs, rhs in
-            items[lhs].url.path.localizedStandardCompare(items[rhs].url.path) == .orderedAscending
-        } ?? items.startIndex
-        items.remove(at: removalIndex)
-        duplicateCandidateItemCount -= 1
-
-        if items.isEmpty {
-            duplicateCandidatesBySize.removeValue(forKey: smallestByteSize)
-            smallestDuplicateCandidateByteSize = duplicateCandidatesBySize.keys.min()
-        } else {
-            duplicateCandidatesBySize[smallestByteSize] = items
+            duplicateCandidateRetention.record(item)
         }
     }
 
@@ -1301,40 +1472,79 @@ private final class ScanAccumulator {
         }
     }
 
-    private func trimRankedItems(
-        _ items: inout [StorageItem],
-        limit: Int,
-        by areInIncreasingPriorityOrder: (StorageItem, StorageItem) -> Bool
-    ) {
-        let boundedLimit = max(0, limit)
-        guard boundedLimit > 0 else {
-            items.removeAll(keepingCapacity: false)
-            return
-        }
+}
 
-        guard items.count > boundedLimit * 4 else {
-            return
-        }
+/// Keeps only the highest-priority storage items without repeatedly sorting the
+/// entire append buffer under `ScanAccumulator`'s shared lock. The heap root is
+/// always the least desirable retained item, so a late larger item replaces it
+/// in O(log limit). Final display ordering remains deterministic: size descending,
+/// then path ascending for equal-size peers.
+struct RankedItemRetention {
+    private let limit: Int
+    private var heap: [StorageItem] = []
 
-        items = sortedRankedItems(items, limit: boundedLimit, by: areInIncreasingPriorityOrder)
+    init(limit: Int) {
+        self.limit = max(0, limit)
+        heap.reserveCapacity(self.limit)
     }
 
-    private func sortedRankedItems(
-        _ items: [StorageItem],
-        limit: Int,
-        by areInIncreasingPriorityOrder: (StorageItem, StorageItem) -> Bool
-    ) -> [StorageItem] {
-        Array(items.sorted { lhs, rhs in
-            if areInIncreasingPriorityOrder(lhs, rhs) { return true }
-            if areInIncreasingPriorityOrder(rhs, lhs) { return false }
-            // Tie on the priority Comparator (equal displaySize). Fall back to URL path so
-            // two equally-sized items land in a deterministic order regardless of the order
-            // `DispatchQueue.concurrentPerform` appended them to largestFileItems. Without
-            // this, `sorted(by:)` isn't guaranteed stable and two scans of the same fixture
-            // produce different largestFiles orderings — caught by
-            // `parallelEnumerationIsDeterministicAcrossRuns`.
-            return lhs.url.path < rhs.url.path
-        }.prefix(max(0, limit)))
+    var count: Int { heap.count }
+
+    var sortedItems: [StorageItem] {
+        heap.sorted { Self.isBetter($0, than: $1) }
+    }
+
+    mutating func record(_ item: StorageItem) {
+        guard limit > 0 else { return }
+
+        if heap.count < limit {
+            heap.append(item)
+            siftUp(from: heap.count - 1)
+            return
+        }
+
+        guard let worst = heap.first, Self.isBetter(item, than: worst) else {
+            return
+        }
+        heap[0] = item
+        siftDown(from: 0)
+    }
+
+    private static func isBetter(_ lhs: StorageItem, than rhs: StorageItem) -> Bool {
+        if lhs.displaySize != rhs.displaySize {
+            return lhs.displaySize > rhs.displaySize
+        }
+        return lhs.url.path < rhs.url.path
+    }
+
+    private static func isWorse(_ lhs: StorageItem, than rhs: StorageItem) -> Bool {
+        isBetter(rhs, than: lhs)
+    }
+
+    private mutating func siftUp(from startIndex: Int) {
+        var child = startIndex
+        while child > 0 {
+            let parent = (child - 1) / 2
+            guard Self.isWorse(heap[child], than: heap[parent]) else { return }
+            heap.swapAt(child, parent)
+            child = parent
+        }
+    }
+
+    private mutating func siftDown(from startIndex: Int) {
+        var parent = startIndex
+        while true {
+            let left = parent * 2 + 1
+            guard left < heap.count else { return }
+            let right = left + 1
+            var worseChild = left
+            if right < heap.count, Self.isWorse(heap[right], than: heap[left]) {
+                worseChild = right
+            }
+            guard Self.isWorse(heap[worseChild], than: heap[parent]) else { return }
+            heap.swapAt(parent, worseChild)
+            parent = worseChild
+        }
     }
 }
 

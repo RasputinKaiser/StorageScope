@@ -1,0 +1,13 @@
+StorageScope synthetic release benchmark, 102,775 scanned items
+
+Measured hot-path tranche before ranked heaps:
+run 1: 8.67s, 32.7 MB peak RSS
+run 2: 8.50s, 32.2 MB peak RSS
+run 3: 8.53s, 32.4 MB peak RSS
+median: 8.53s
+
+Final bounded-heap result:
+run 1: 7.42s, 30.5 MB peak RSS
+run 2: 7.42s, 30.4 MB peak RSS
+run 3: 7.80s, 30.5 MB peak RSS
+median: 7.42s
