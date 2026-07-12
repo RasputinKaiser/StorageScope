@@ -89,6 +89,11 @@ public final class ScanCancellation: @unchecked Sendable {
     }
 }
 
+enum FileSystemScannerWalkerMode: Sendable {
+    case legacy
+    case fixedWorker
+}
+
 public final class FileSystemScanner {
     public typealias ProgressHandler = (ScanProgress) -> Void
 
@@ -100,6 +105,7 @@ public final class FileSystemScanner {
         let cores = ProcessInfo.processInfo.processorCount
         return min(6, max(2, cores / 2))
     }()
+    private static let duplicatePrefixByteCount = 64 * 1_024
 
     /// os_signpost surface for Instruments. Subsystem mirrors the bundle identifier prefix;
     /// category ties Scanner-only work together so it can be filtered from app-side spans.
@@ -108,6 +114,7 @@ public final class FileSystemScanner {
 
     private let fileManager: FileManager
     private let hashCache: DuplicateHashCache?
+    private let walkerMode: FileSystemScannerWalkerMode
     private let resourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey,
         .isRegularFileKey,
@@ -121,9 +128,35 @@ public final class FileSystemScanner {
         .contentModificationDateKey
     ]
 
-    public init(fileManager: FileManager = .default, hashCache: DuplicateHashCache? = nil) {
+    public convenience init(fileManager: FileManager = .default, hashCache: DuplicateHashCache? = nil) {
+        self.init(
+            fileManager: fileManager,
+            hashCache: hashCache,
+            walkerMode: Self.configuredWalkerMode()
+        )
+    }
+
+    init(
+        fileManager: FileManager = .default,
+        hashCache: DuplicateHashCache? = nil,
+        walkerMode: FileSystemScannerWalkerMode
+    ) {
         self.fileManager = fileManager
         self.hashCache = hashCache
+        self.walkerMode = walkerMode
+    }
+
+    private static func configuredWalkerMode() -> FileSystemScannerWalkerMode {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["STORAGESCOPE_LEGACY_WALKER"] == "1" {
+            return .legacy
+        }
+        if environment["STORAGESCOPE_EXPERIMENTAL_WORKER_WALKER"] == "1" {
+            return .fixedWorker
+        }
+        // Keep the existing implementation as the default until the experimental
+        // path clears the differential, stability, and release-performance gates.
+        return .legacy
     }
 
     public func scan(
@@ -143,13 +176,24 @@ public final class FileSystemScanner {
 
         let startedAt = Date()
         let accumulator = ScanAccumulator(options: options, progress: progress, onSnapshot: onSnapshot, rootURL: rootURL, startedAt: startedAt)
-        let rootItem = try scanItem(
-            at: rootURL,
-            options: options,
-            cancellation: cancellation,
-            accumulator: accumulator,
-            depth: 0
-        )
+        let rootItem: StorageItem
+        switch walkerMode {
+        case .legacy:
+            rootItem = try scanItem(
+                at: rootURL,
+                options: options,
+                cancellation: cancellation,
+                accumulator: accumulator,
+                depth: 0
+            )
+        case .fixedWorker:
+            rootItem = try scanWithFixedWorker(
+                at: rootURL,
+                options: options,
+                cancellation: cancellation,
+                accumulator: accumulator
+            )
+        }
         let retainedItems = rootItem.flattened()
         let duplicateSizeGroups = accumulator.duplicateSizeGroups
         let enumerateDuration = Date().timeIntervalSince(startedAt)
@@ -161,6 +205,7 @@ public final class FileSystemScanner {
             cancellation: cancellation
         )
         let duplicateVerificationDuration = Date().timeIntervalSince(duplicateVerificationStartedAt)
+        let duplicateVerificationBytesRead = accumulator.duplicateVerificationBytesRead
         let finishedAt = Date()
 
         os_signpost(.end, log: Self.log, name: "scan", signpostID: Self.signpostID,
@@ -185,8 +230,11 @@ public final class FileSystemScanner {
             duplicateCandidateItemLimit: accumulator.duplicateCandidateItemLimit,
             duplicateCandidateItemsRetained: accumulator.duplicateCandidateItemsRetained,
             duplicateCandidateItemsConsidered: accumulator.duplicateCandidateItemsConsidered,
+            duplicateCandidateEvictionCount: accumulator.duplicateCandidateEvictionCount,
             duplicateCandidateLimitReached: accumulator.duplicateCandidateLimitReached,
+            snapshotBuildCount: accumulator.snapshotBuildCount,
             duplicateVerificationDuration: duplicateVerificationDuration,
+            duplicateVerificationBytesRead: duplicateVerificationBytesRead,
             enumerateDuration: enumerateDuration,
             cleanupCandidates: accumulator.cleanupCandidates(
                 rootID: rootItem.id,
@@ -223,36 +271,13 @@ public final class FileSystemScanner {
         let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
         let cacheLock = NSLock()
 
-        var hashedItems: [HashedStorageItem] = []
-        hashedItems.reserveCapacity(group.items.count)
-
-        for item in group.items {
-            // Cooperative cancellation: re-check before opening I/O for the next file so a
-            // cancelled scan doesn't keep burning file descriptors or queuing reads behind
-            // the ioSemaphore. Cancellation aborts the whole on-demand verify because the
-            // caller asked us to stop.
-            try cancellation?.check()
-
-            if let hashed = try hashedFormItem(
-                item,
-                ioSemaphore: ioSemaphore,
-                cacheLock: cacheLock,
-                cancellation: cancellation
-            ) {
-                hashedItems.append(hashed)
-            }
-        }
-
-        let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
-        return groupedByHash.compactMap { checksum, hashedItems in
-            let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
-            return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: group.byteSize, items: items) : nil
-        }.sorted { lhs, rhs in
-            if lhs.reclaimableBytes == rhs.reclaimableBytes {
-                return lhs.byteSize > rhs.byteSize
-            }
-            return lhs.reclaimableBytes > rhs.reclaimableBytes
-        }
+        return try verifiedDuplicateGroups(
+            in: group,
+            ioSemaphore: ioSemaphore,
+            cacheLock: cacheLock,
+            recordBytesRead: nil,
+            cancellation: cancellation
+        )
     }
 
     private func scanItem(
@@ -293,11 +318,8 @@ public final class FileSystemScanner {
             )
         }
 
-        accumulator.recordVisit(path: url.path)
-
         if values?.isSymbolicLink == true {
             let size = Int64(values?.fileSize ?? 0)
-            accumulator.recordBytes(size)
             let item = StorageItem(
                 url: url,
                 kind: .alias,
@@ -309,7 +331,7 @@ public final class FileSystemScanner {
                 isReadable: values?.isReadable ?? true,
                 fileExtension: url.pathExtension.nonEmptyLowercased
             )
-            accumulator.recordItem(item)
+            accumulator.recordScannedItem(item, countedBytes: size, path: url.path)
             return item
         }
 
@@ -319,7 +341,6 @@ public final class FileSystemScanner {
         guard isDirectory else {
             let logicalSize = Int64(values?.fileSize ?? 0)
             let allocatedSize = Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? values?.fileSize ?? 0)
-            accumulator.recordBytes(max(logicalSize, allocatedSize))
 
             let item = StorageItem(
                 url: url,
@@ -332,9 +353,11 @@ public final class FileSystemScanner {
                 isReadable: values?.isReadable ?? true,
                 fileExtension: url.pathExtension.nonEmptyLowercased
             )
-            accumulator.recordItem(item)
+            accumulator.recordScannedItem(item, countedBytes: max(logicalSize, allocatedSize), path: url.path)
             return item
         }
+
+        accumulator.recordVisit(path: url.path)
 
         do {
             let directoryOptions: FileManager.DirectoryEnumerationOptions = options.includeHidden ? [] : [.skipsHiddenFiles]
@@ -467,6 +490,225 @@ public final class FileSystemScanner {
         }
     }
 
+    private func scanWithFixedWorker(
+        at rootURL: URL,
+        options: ScanOptions,
+        cancellation: ScanCancellation?,
+        accumulator: ScanAccumulator
+    ) throws -> StorageItem {
+        let prepared: (rootSummary: FixedWorkerItemSummary?, summaryStore: FixedWorkerSummaryStore?)
+        do {
+            prepared = try prepareFixedWorkerSummary(
+                at: rootURL,
+                options: options,
+                cancellation: cancellation,
+                accumulator: accumulator
+            )
+        } catch FileSystemScannerError.cancelled {
+            throw FileSystemScannerError.cancelled
+        } catch {
+            // The experimental path owns no user-visible state until its complete
+            // record set is available. If a worker-only failure escapes the
+            // filesystem error handling below, retry the root through the legacy
+            // implementation rather than returning a partial tree.
+            return try scanItem(
+                at: rootURL,
+                options: options,
+                cancellation: cancellation,
+                accumulator: accumulator,
+                depth: 0
+            )
+        }
+
+        guard let rootSummary = prepared.rootSummary,
+              let summaryStore = prepared.summaryStore else {
+            return StorageItem(
+                url: rootURL,
+                kind: .other,
+                byteSize: 0,
+                allocatedSize: 0,
+                modifiedAt: nil,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                isReadable: false,
+                fileExtension: nil
+            )
+        }
+
+        return summaryStore.makeItem(summary: rootSummary, urlOverride: rootURL)
+    }
+
+    private func prepareFixedWorkerSummary(
+        at rootURL: URL,
+        options: ScanOptions,
+        cancellation: ScanCancellation?,
+        accumulator: ScanAccumulator
+    ) throws -> (
+        rootSummary: FixedWorkerItemSummary?,
+        summaryStore: FixedWorkerSummaryStore?
+    ) {
+        let walker = FixedWorkerDirectoryWalker(
+            fileManager: fileManager,
+            resourceKeys: resourceKeys,
+            options: options,
+            cancellation: cancellation,
+            shouldExclude: { url in
+                options.excludeEnabled && Self.isExcluded(url, options: options)
+            }
+        )
+        let result = try walker.walk(root: rootURL)
+        guard let rootMetadata = result.rootMetadata else {
+            return (nil, nil)
+        }
+
+        let (rootSummary, summaryStore) = try buildFixedWorkerSummaryStore(
+            rootMetadata: rootMetadata,
+            directoryRecords: result.directoryRecords,
+            options: options,
+            cancellation: cancellation,
+            accumulator: accumulator,
+            rootURL: rootURL
+        )
+        return (rootSummary, summaryStore)
+    }
+
+    private func buildFixedWorkerSummaryStore(
+        rootMetadata: FixedWorkerWalkRecord,
+        directoryRecords: [FixedWorkerDirectoryRecord],
+        options: ScanOptions,
+        cancellation: ScanCancellation?,
+        accumulator: ScanAccumulator,
+        rootURL: URL
+    ) throws -> (FixedWorkerItemSummary, FixedWorkerSummaryStore) {
+        var recordsByID: [Int: FixedWorkerDirectoryRecord] = [:]
+        recordsByID.reserveCapacity(directoryRecords.count)
+        for record in directoryRecords {
+            recordsByID[record.metadata.id] = record
+        }
+
+        let summaryStore = FixedWorkerSummaryStore(rootURL: rootURL)
+        accumulator.configureFixedWorkerStore(summaryStore)
+        let rootSummary = try buildFixedWorkerSummary(
+            rootMetadata,
+            url: rootURL,
+            recordsByID: recordsByID,
+            options: options,
+            cancellation: cancellation,
+            accumulator: accumulator,
+            depth: 0
+        )
+        return (rootSummary, summaryStore)
+    }
+
+    private func buildFixedWorkerSummary(
+        _ metadata: FixedWorkerWalkRecord,
+        url: URL,
+        recordsByID: [Int: FixedWorkerDirectoryRecord],
+        options: ScanOptions,
+        cancellation: ScanCancellation?,
+        accumulator: ScanAccumulator,
+        depth: Int
+    ) throws -> FixedWorkerItemSummary {
+        try cancellation?.check()
+
+        guard metadata.isDirectory else {
+            let summary = FixedWorkerItemSummary(
+                metadata: metadata,
+                isInaccessible: false,
+                logicalSize: metadata.byteSize,
+                allocatedSize: metadata.allocatedSize,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                retainedChildren: [],
+                retainedTreeCount: 1
+            )
+            accumulator.recordFixedWorkerScannedItem(summary, url: url)
+            return summary
+        }
+
+        accumulator.recordVisit(path: url.path)
+        guard let record = recordsByID[metadata.id] else {
+            accumulator.recordInaccessible(path: url.path)
+            let summary = FixedWorkerItemSummary(
+                metadata: metadata,
+                isInaccessible: true,
+                logicalSize: 0,
+                allocatedSize: 0,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                retainedChildren: [],
+                retainedTreeCount: 1
+            )
+            accumulator.recordFixedWorkerItem(summary, url: url)
+            return summary
+        }
+
+        if record.isInaccessible {
+            accumulator.recordInaccessible(path: url.path)
+            let summary = FixedWorkerItemSummary(
+                metadata: metadata,
+                isInaccessible: true,
+                logicalSize: 0,
+                allocatedSize: 0,
+                immediateChildCount: 0,
+                descendantCount: 0,
+                retainedChildren: [],
+                retainedTreeCount: 1
+            )
+            accumulator.recordFixedWorkerItem(summary, url: url)
+            return summary
+        }
+
+        var directorySummary = FixedWorkerDirectorySummaryBuilder(
+            retainedCandidateLimit: options.maxChildrenPerDirectory
+        )
+        for childMetadata in record.children {
+            try cancellation?.check()
+            let childURL = url.appendingPathComponent(childMetadata.name, isDirectory: childMetadata.isDirectory)
+            let childSummary = try buildFixedWorkerSummary(
+                childMetadata,
+                url: childURL,
+                recordsByID: recordsByID,
+                options: options,
+                cancellation: cancellation,
+                accumulator: accumulator,
+                depth: depth + 1
+            )
+            directorySummary.record(childSummary)
+        }
+
+        let retainedSelections = accumulator.retainedFixedWorkerChildren(
+            from: directorySummary.retainedCandidates,
+            depth: depth
+        )
+        let retainedChildren: [FixedWorkerRetainedChild] = retainedSelections.compactMap { selection in
+            guard let childSummary = directorySummary.summary(for: selection.id) else {
+                return nil
+            }
+            return FixedWorkerRetainedChild(
+                id: selection.id,
+                includesDescendants: selection.includesDescendants,
+                retainedTreeCount: selection.retainedTreeCount,
+                summary: childSummary
+            )
+        }
+        let retainedTreeCount = 1 + retainedChildren.reduce(0) { partialResult, child in
+            partialResult + child.retainedTreeCount
+        }
+        let summary = FixedWorkerItemSummary(
+            metadata: metadata,
+            isInaccessible: false,
+            logicalSize: directorySummary.logicalSize,
+            allocatedSize: directorySummary.allocatedSize,
+            immediateChildCount: directorySummary.immediateChildCount,
+            descendantCount: directorySummary.descendantCount,
+            retainedChildren: retainedChildren,
+            retainedTreeCount: retainedTreeCount
+        )
+        accumulator.recordFixedWorkerItem(summary, url: url)
+        return summary
+    }
+
     /// True when `url` matches an exclusion rule: its last path component names an
     /// excluded folder name (e.g. `node_modules`, `.git`), or its standardized path starts
     /// with an excluded absolute prefix (tilde-expanded, e.g. `~/Library/Caches`).
@@ -545,32 +787,13 @@ public final class FileSystemScanner {
                 try cancellation?.check()
                 let sizeGroup = verificationGroups[groupIndex]
 
-                var hashedItems: [HashedStorageItem] = []
-                hashedItems.reserveCapacity(sizeGroup.items.count)
-
-                for item in sizeGroup.items {
-                    // Per-item cancellation probe keeps an outlier slow hash from orphaning
-                    // the rest of a group's work after the user cancels.
-                    if cancellation?.isCancelled ?? false {
-                        markCancelled()
-                        return
-                    }
-
-                    if let hashed = try hashedFormItem(
-                        item,
-                        ioSemaphore: ioSemaphore,
-                        cacheLock: cacheLock,
-                        cancellation: cancellation
-                    ) {
-                        hashedItems.append(hashed)
-                    }
-                }
-
-                let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
-                let verifiedForSize = groupedByHash.compactMap { checksum, hashedItems -> VerifiedDuplicateGroup? in
-                    let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
-                    return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: sizeGroup.byteSize, items: items) : nil
-                }
+                let verifiedForSize = try verifiedDuplicateGroups(
+                    in: sizeGroup,
+                    ioSemaphore: ioSemaphore,
+                    cacheLock: cacheLock,
+                    recordBytesRead: accumulator.recordDuplicateVerificationBytes,
+                    cancellation: cancellation
+                )
 
                 guard !verifiedForSize.isEmpty else {
                     return
@@ -593,6 +816,103 @@ public final class FileSystemScanner {
         }
 
         return verifiedGroups.sorted { lhs, rhs in
+            if lhs.reclaimableBytes == rhs.reclaimableBytes {
+                return lhs.byteSize > rhs.byteSize
+            }
+            return lhs.reclaimableBytes > rhs.reclaimableBytes
+        }
+    }
+
+    private func verifiedDuplicateGroups(
+        in sizeGroup: DuplicateSizeGroup,
+        ioSemaphore: DispatchSemaphore,
+        cacheLock: NSLock,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> [VerifiedDuplicateGroup] {
+        var cachedFullHashesByPath: [String: String] = [:]
+        cachedFullHashesByPath.reserveCapacity(sizeGroup.items.count)
+
+        for item in sizeGroup.items {
+            try cancellation?.check()
+            let cacheKey = DuplicateHashCache.LookupKey(item: item)
+            if let cached = hashCache?.checksum(for: cacheKey) {
+                cachedFullHashesByPath[cacheKey.path] = cached
+            }
+        }
+
+        if cachedFullHashesByPath.count == sizeGroup.items.count {
+            let hashedItems = sizeGroup.items.compactMap { item -> HashedStorageItem? in
+                let path = DuplicateHashCache.LookupKey(item: item).path
+                guard let checksum = cachedFullHashesByPath[path] else { return nil }
+                return HashedStorageItem(checksum: checksum, item: item)
+            }
+            return verifiedDuplicateGroups(from: hashedItems, byteSize: sizeGroup.byteSize)
+        }
+
+        var prefixHashedItems: [PrefixHashedStorageItem] = []
+        prefixHashedItems.reserveCapacity(sizeGroup.items.count)
+
+        for item in sizeGroup.items {
+            if cancellation?.isCancelled ?? false {
+                throw FileSystemScannerError.cancelled
+            }
+
+            if let prefixed = try prefixHashedFormItem(
+                item,
+                ioSemaphore: ioSemaphore,
+                recordBytesRead: recordBytesRead,
+                cancellation: cancellation
+            ) {
+                prefixHashedItems.append(prefixed)
+            }
+        }
+
+        let groupedByPrefix = Dictionary(grouping: prefixHashedItems, by: \.prefixChecksum)
+        var fullyHashedItems: [HashedStorageItem] = []
+
+        for prefixGroup in groupedByPrefix.values where prefixGroup.count > 1 {
+            for prefixed in prefixGroup {
+                let cacheKey = DuplicateHashCache.LookupKey(item: prefixed.item)
+                if let cached = cachedFullHashesByPath[cacheKey.path] {
+                    fullyHashedItems.append(HashedStorageItem(checksum: cached, item: prefixed.item))
+                    continue
+                }
+
+                if prefixed.isCompleteFile {
+                    if let hashCache {
+                        cacheLock.lock()
+                        hashCache.record(cacheKey, checksum: prefixed.prefixChecksum)
+                        cacheLock.unlock()
+                    }
+                    fullyHashedItems.append(HashedStorageItem(checksum: prefixed.prefixChecksum, item: prefixed.item))
+                    continue
+                }
+
+                if let hashed = try hashedFormItem(
+                    prefixed.item,
+                    ioSemaphore: ioSemaphore,
+                    cacheLock: cacheLock,
+                    recordBytesRead: recordBytesRead,
+                    cancellation: cancellation
+                ) {
+                    fullyHashedItems.append(hashed)
+                }
+            }
+        }
+
+        return verifiedDuplicateGroups(from: fullyHashedItems, byteSize: sizeGroup.byteSize)
+    }
+
+    private func verifiedDuplicateGroups(
+        from hashedItems: [HashedStorageItem],
+        byteSize: Int64
+    ) -> [VerifiedDuplicateGroup] {
+        let groupedByHash = Dictionary(grouping: hashedItems, by: \.checksum)
+        return groupedByHash.compactMap { checksum, hashedItems -> VerifiedDuplicateGroup? in
+            let items = hashedItems.map(\.item).sorted { $0.url.path < $1.url.path }
+            return items.count > 1 ? VerifiedDuplicateGroup(checksum: checksum, byteSize: byteSize, items: items) : nil
+        }.sorted { lhs, rhs in
             if lhs.reclaimableBytes == rhs.reclaimableBytes {
                 return lhs.byteSize > rhs.byteSize
             }
@@ -639,7 +959,11 @@ public final class FileSystemScanner {
         return plannedGroups
     }
 
-    private func sha256Checksum(for url: URL, cancellation: ScanCancellation?) throws -> String {
+    private func sha256Checksum(
+        for url: URL,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> String {
         // Probe cancellation before opening so a cancelled batch doesn't keep paying the
         // cost of `FileHandle(forReadingFrom:)` for files that no one will ever read.
         try cancellation?.check()
@@ -666,10 +990,78 @@ public final class FileSystemScanner {
             if data.isEmpty {
                 break
             }
+            recordBytesRead?(data.count)
             hasher.update(data: data)
         }
 
         return hasher.finalize().hexEncodedString()
+    }
+
+    private func prefixChecksum(
+        for url: URL,
+        maxBytes: Int,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> (checksum: String, bytesRead: Int) {
+        try cancellation?.check()
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer {
+            do {
+                try handle.close()
+            } catch {
+                os_signpost(.event, log: Self.log, name: "handle_close_failed",
+                            "path=%{public}@ reason=%{public}@", url.path, "\(error)")
+            }
+        }
+
+        var remaining = max(0, maxBytes)
+        var bytesRead = 0
+        var hasher = SHA256()
+        while remaining > 0 {
+            try cancellation?.check()
+            let readSize = min(remaining, 1_048_576)
+            let data = try handle.read(upToCount: readSize) ?? Data()
+            if data.isEmpty {
+                break
+            }
+            bytesRead += data.count
+            remaining -= data.count
+            recordBytesRead?(data.count)
+            hasher.update(data: data)
+        }
+
+        return (hasher.finalize().hexEncodedString(), bytesRead)
+    }
+
+    private func prefixHashedFormItem(
+        _ item: StorageItem,
+        ioSemaphore: DispatchSemaphore,
+        recordBytesRead: ((Int) -> Void)?,
+        cancellation: ScanCancellation?
+    ) throws -> PrefixHashedStorageItem? {
+        ioSemaphore.wait()
+        defer { ioSemaphore.signal() }
+
+        do {
+            let result = try prefixChecksum(
+                for: item.url,
+                maxBytes: Self.duplicatePrefixByteCount,
+                recordBytesRead: recordBytesRead,
+                cancellation: cancellation
+            )
+            return PrefixHashedStorageItem(
+                prefixChecksum: result.checksum,
+                bytesRead: result.bytesRead,
+                item: item
+            )
+        } catch FileSystemScannerError.cancelled {
+            throw FileSystemScannerError.cancelled
+        } catch {
+            os_signpost(.event, log: Self.log, name: "hash_prefix_skip",
+                        "path=%{public}@ reason=%{public}@", item.url.path, "\(error)")
+            return nil
+        }
     }
 
     /// Hashes one item, consulting the persisted `hashCache` fast-path before falling back
@@ -681,6 +1073,7 @@ public final class FileSystemScanner {
         _ item: StorageItem,
         ioSemaphore: DispatchSemaphore,
         cacheLock: NSLock,
+        recordBytesRead: ((Int) -> Void)?,
         cancellation: ScanCancellation?
     ) throws -> HashedStorageItem? {
         let cacheKey = DuplicateHashCache.LookupKey(item: item)
@@ -693,7 +1086,11 @@ public final class FileSystemScanner {
         defer { ioSemaphore.signal() }
 
         do {
-            let checksum = try sha256Checksum(for: item.url, cancellation: cancellation)
+            let checksum = try sha256Checksum(
+                for: item.url,
+                recordBytesRead: recordBytesRead,
+                cancellation: cancellation
+            )
             if let hashCache {
                 cacheLock.lock()
                 defer { cacheLock.unlock() }
@@ -710,9 +1107,719 @@ public final class FileSystemScanner {
     }
 }
 
+private extension StorageItem.Kind {
+    var isDirectoryKind: Bool {
+        self == .folder || self == .package
+    }
+}
+
+private struct FixedWorkerResourceIdentifier: Hashable, Sendable {
+    let low: UInt64
+    let high: UInt64
+
+    static let zero = FixedWorkerResourceIdentifier(low: 0, high: 0)
+}
+
+private struct FixedWorkerMetadataSeed: Sendable {
+    let name: String
+    let kind: StorageItem.Kind
+    let byteSize: Int64
+    let allocatedSize: Int64
+    let modifiedAt: Date?
+    let isReadable: Bool
+    let volumeIdentifier: FixedWorkerResourceIdentifier
+    let fileResourceIdentifier: FixedWorkerResourceIdentifier
+    let hardLinkCount: UInt16
+}
+
+private struct FixedWorkerWalkRecord: Sendable {
+    let id: Int
+    let parentID: Int
+    let name: String
+    let kind: StorageItem.Kind
+    let byteSize: Int64
+    let allocatedSize: Int64
+    let modifiedAt: Date?
+    let isReadable: Bool
+    let volumeIdentifier: FixedWorkerResourceIdentifier
+    let fileResourceIdentifier: FixedWorkerResourceIdentifier
+    /// Reserved for the hard-link reclaimability policy; zero means not enriched yet.
+    let hardLinkCount: UInt16
+
+    var isDirectory: Bool {
+        kind.isDirectoryKind
+    }
+}
+
+private struct FixedWorkerDirectoryJob: Sendable {
+    let metadata: FixedWorkerWalkRecord
+    let url: URL
+}
+
+private struct FixedWorkerDirectoryRecord: Sendable {
+    let metadata: FixedWorkerWalkRecord
+    let children: [FixedWorkerWalkRecord]
+    let isInaccessible: Bool
+}
+
+private struct FixedWorkerWalkResult: Sendable {
+    let rootMetadata: FixedWorkerWalkRecord?
+    let directoryRecords: [FixedWorkerDirectoryRecord]
+}
+
+private struct FixedWorkerCompactChild: Sendable {
+    let id: Int
+    let displaySize: Int64
+    let name: String
+    let retainedTreeCount: Int
+}
+
+private struct FixedWorkerRetainedSelection: Sendable {
+    let id: Int
+    let includesDescendants: Bool
+    let retainedTreeCount: Int
+}
+
+private struct FixedWorkerRetainedChild: Sendable {
+    let id: Int
+    let includesDescendants: Bool
+    let retainedTreeCount: Int
+    let summary: FixedWorkerItemSummary
+}
+
+private struct FixedWorkerItemSummary: Sendable {
+    let metadata: FixedWorkerWalkRecord
+    let isInaccessible: Bool
+    let logicalSize: Int64
+    let allocatedSize: Int64
+    let immediateChildCount: Int
+    let descendantCount: Int
+    let retainedChildren: [FixedWorkerRetainedChild]
+    let retainedTreeCount: Int
+
+    var kind: StorageItem.Kind {
+        isInaccessible ? .inaccessible : metadata.kind
+    }
+
+    var displaySize: Int64 {
+        max(logicalSize, allocatedSize)
+    }
+
+    var fileExtension: String? {
+        switch kind {
+        case .folder, .inaccessible:
+            return nil
+        case .package, .file, .alias, .other:
+            return (metadata.name as NSString).pathExtension.nonEmptyLowercased
+        }
+    }
+}
+
+private struct FixedWorkerRankedReference: Sendable {
+    let summary: FixedWorkerItemSummary
+    let displaySize: Int64
+    let url: URL
+    let path: String
+}
+
+private struct FixedWorkerCleanupCandidateReference: Sendable {
+    let summary: FixedWorkerItemSummary
+    let url: URL
+    let kind: CleanupCandidate.Kind
+    let reason: String
+    let reclaimableBytes: Int64
+    let confidence: CleanupCandidate.Confidence
+}
+
+private final class FixedWorkerSummaryStore {
+    let rootURL: URL
+
+    init(rootURL: URL) {
+        self.rootURL = rootURL
+    }
+
+    func makeItem(summary: FixedWorkerItemSummary, urlOverride: URL? = nil) -> StorageItem {
+        makeItem(summary: summary, urlOverride: urlOverride, includeDescendants: true)
+    }
+
+    private func makeItem(
+        summary: FixedWorkerItemSummary,
+        urlOverride: URL?,
+        includeDescendants: Bool
+    ) -> StorageItem {
+        let url = urlOverride ?? rootURL
+        let children: [StorageItem]
+        if includeDescendants {
+            children = summary.retainedChildren.map { child in
+                makeItem(
+                    summary: child.summary,
+                    urlOverride: url.appendingPathComponent(
+                        child.summary.metadata.name,
+                        isDirectory: child.summary.metadata.isDirectory
+                    ),
+                    includeDescendants: child.includesDescendants
+                )
+            }
+        } else {
+            children = []
+        }
+        return StorageItem(
+            url: url,
+            name: summary.metadata.name,
+            kind: summary.kind,
+            byteSize: summary.logicalSize,
+            allocatedSize: summary.allocatedSize,
+            modifiedAt: summary.metadata.modifiedAt,
+            immediateChildCount: summary.immediateChildCount,
+            descendantCount: summary.descendantCount,
+            children: children,
+            isReadable: summary.isInaccessible ? false : summary.metadata.isReadable,
+            fileExtension: summary.fileExtension
+        )
+    }
+}
+
+private struct FixedWorkerDirectorySummaryBuilder {
+    private let retainedCandidateLimit: Int
+    private var retainedCandidateItems: [FixedWorkerItemSummary] = []
+
+    var logicalSize: Int64 = 0
+    var allocatedSize: Int64 = 0
+    var immediateChildCount = 0
+    var descendantCount = 0
+
+    init(retainedCandidateLimit: Int) {
+        self.retainedCandidateLimit = max(0, retainedCandidateLimit)
+    }
+
+    mutating func record(_ child: FixedWorkerItemSummary) {
+        guard child.kind != .other || child.displaySize > 0 else {
+            return
+        }
+
+        logicalSize += child.logicalSize
+        allocatedSize += child.allocatedSize
+        immediateChildCount += 1
+        descendantCount += 1 + child.descendantCount
+
+        guard retainedCandidateLimit > 0 else {
+            return
+        }
+
+        retainedCandidateItems.append(child)
+        if retainedCandidateItems.count > retainedCandidateLimit * 4 {
+            retainedCandidateItems = sortedRetainedCandidates(from: retainedCandidateItems)
+        }
+    }
+
+    var retainedCandidates: [FixedWorkerCompactChild] {
+        sortedRetainedCandidates(from: retainedCandidateItems).map {
+            FixedWorkerCompactChild(
+                id: $0.metadata.id,
+                displaySize: $0.displaySize,
+                name: $0.metadata.name,
+                retainedTreeCount: $0.retainedTreeCount
+            )
+        }
+    }
+
+    func summary(for id: Int) -> FixedWorkerItemSummary? {
+        retainedCandidateItems.first { $0.metadata.id == id }
+    }
+
+    private func sortedRetainedCandidates(from items: [FixedWorkerItemSummary]) -> [FixedWorkerItemSummary] {
+        Array(
+            items.sorted { lhs, rhs in
+                if lhs.displaySize == rhs.displaySize {
+                    return lhs.metadata.name < rhs.metadata.name
+                }
+                return lhs.displaySize > rhs.displaySize
+            }
+            .prefix(retainedCandidateLimit)
+        )
+    }
+}
+
+private enum FixedWorkerWalkerError: Error {
+    case workerFailed
+}
+
+private final class FixedWorkerFailure: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded = false
+
+    func record() {
+        lock.lock()
+        recorded = true
+        lock.unlock()
+    }
+
+    var hasFailure: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+}
+
+private final class FixedWorkerRecordIDSource: @unchecked Sendable {
+    private let lock = NSLock()
+    private var nextID = 1
+
+    func allocate(count: Int) -> [Int] {
+        guard count > 0 else { return [] }
+        lock.lock()
+        defer { lock.unlock() }
+        let ids = Array(nextID..<(nextID + count))
+        nextID += count
+        return ids
+    }
+}
+
+private final class FixedWorkerDirectoryFrontier: @unchecked Sendable {
+    private let condition = NSCondition()
+    private let capacity: Int
+    private var pending: [FixedWorkerDirectoryJob]
+    private var activeWorkerSlots = 0
+    private var finished = false
+    private var cancelled = false
+
+    init(root: FixedWorkerDirectoryJob, capacity: Int) {
+        self.capacity = max(1, capacity)
+        self.pending = [root]
+    }
+
+    func pop(cancellation: ScanCancellation?) -> FixedWorkerDirectoryJob? {
+        condition.lock()
+        while pending.isEmpty && !finished && !cancelled {
+            if cancellation?.isCancelled ?? false {
+                cancelled = true
+                condition.broadcast()
+                break
+            }
+            condition.wait()
+        }
+
+        guard !cancelled, !finished, !pending.isEmpty else {
+            condition.unlock()
+            return nil
+        }
+
+        activeWorkerSlots += 1
+        let job = pending.removeLast()
+        condition.unlock()
+        return job
+    }
+
+    func tryEnqueue(_ job: FixedWorkerDirectoryJob) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        guard !cancelled, !finished, pending.count < capacity else {
+            return false
+        }
+        pending.append(job)
+        condition.broadcast()
+        return true
+    }
+
+    func complete(preserveWorkerSlot: Bool) {
+        condition.lock()
+        if !preserveWorkerSlot {
+            activeWorkerSlots = max(0, activeWorkerSlots - 1)
+        }
+        if activeWorkerSlots == 0 && pending.isEmpty {
+            finished = true
+        }
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    func cancel() {
+        condition.lock()
+        cancelled = true
+        condition.broadcast()
+        condition.unlock()
+    }
+}
+
+private final class FixedWorkerRecordChannel: @unchecked Sendable {
+    private let condition = NSCondition()
+    private let capacity: Int
+    private var buffer: [FixedWorkerDirectoryRecord] = []
+    private var producersFinished = false
+    private var cancelled = false
+
+    init(capacity: Int) {
+        self.capacity = max(1, capacity)
+        buffer.reserveCapacity(self.capacity)
+    }
+
+    func send(_ record: FixedWorkerDirectoryRecord, cancellation: ScanCancellation?) -> Bool {
+        condition.lock()
+        while buffer.count >= capacity && !producersFinished && !cancelled {
+            if cancellation?.isCancelled ?? false {
+                cancelled = true
+                condition.broadcast()
+                break
+            }
+            condition.wait()
+        }
+
+        guard !cancelled, !producersFinished, !(cancellation?.isCancelled ?? false) else {
+            condition.unlock()
+            return false
+        }
+
+        buffer.append(record)
+        condition.signal()
+        condition.unlock()
+        return true
+    }
+
+    func receive(cancellation: ScanCancellation?) -> FixedWorkerDirectoryRecord? {
+        condition.lock()
+        while buffer.isEmpty && !producersFinished && !cancelled {
+            if cancellation?.isCancelled ?? false {
+                cancelled = true
+                condition.broadcast()
+                break
+            }
+            condition.wait()
+        }
+
+        guard !cancelled, !buffer.isEmpty else {
+            condition.unlock()
+            return nil
+        }
+
+        let record = buffer.removeLast()
+        condition.signal()
+        condition.unlock()
+        return record
+    }
+
+    func finishProducers() {
+        condition.lock()
+        producersFinished = true
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    func cancel() {
+        condition.lock()
+        cancelled = true
+        condition.broadcast()
+        condition.unlock()
+    }
+}
+
+private final class FixedWorkerRecordCollector: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.rasputinkaiser.StorageScope.fixed-worker-records")
+    private var records: [FixedWorkerDirectoryRecord] = []
+
+    func append(_ record: FixedWorkerDirectoryRecord) {
+        queue.sync {
+            records.append(record)
+        }
+    }
+
+    func allRecords() -> [FixedWorkerDirectoryRecord] {
+        queue.sync {
+            records
+        }
+    }
+}
+
+private final class FixedWorkerDirectoryWalker: @unchecked Sendable {
+    private let fileManager: FileManager
+    private let resourceKeys: Set<URLResourceKey>
+    private let options: ScanOptions
+    private let cancellation: ScanCancellation?
+    private let shouldExclude: (URL) -> Bool
+
+    init(
+        fileManager: FileManager,
+        resourceKeys: Set<URLResourceKey>,
+        options: ScanOptions,
+        cancellation: ScanCancellation?,
+        shouldExclude: @escaping (URL) -> Bool
+    ) {
+        self.fileManager = fileManager
+        self.resourceKeys = resourceKeys.union([
+            .fileResourceIdentifierKey,
+            .volumeIdentifierKey
+        ])
+        self.options = options
+        self.cancellation = cancellation
+        self.shouldExclude = shouldExclude
+    }
+
+    func walk(root: URL) throws -> FixedWorkerWalkResult {
+        guard let rootSeed = metadataSeed(for: root) else {
+            return FixedWorkerWalkResult(rootMetadata: nil, directoryRecords: [])
+        }
+
+        let rootMetadata = makeRecord(rootSeed, id: 0, parentID: 0)
+        guard rootMetadata.isDirectory else {
+            return FixedWorkerWalkResult(rootMetadata: rootMetadata, directoryRecords: [])
+        }
+
+        let workerCount = configuredWorkerCount()
+        let recordIDSource = FixedWorkerRecordIDSource()
+        let frontier = FixedWorkerDirectoryFrontier(
+            root: FixedWorkerDirectoryJob(metadata: rootMetadata, url: root),
+            capacity: workerCount * 8
+        )
+        let channel = FixedWorkerRecordChannel(capacity: workerCount * 2)
+        let collector = FixedWorkerRecordCollector()
+        let failure = FixedWorkerFailure()
+        let consumerGroup = DispatchGroup()
+
+        consumerGroup.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            while let record = channel.receive(cancellation: self.cancellation) {
+                collector.append(record)
+            }
+            consumerGroup.leave()
+        }
+
+        DispatchQueue.concurrentPerform(iterations: workerCount) { _ in
+            var localJobs: [FixedWorkerDirectoryJob] = []
+
+            while true {
+                self.cancellation?.waitIfPaused()
+                if self.cancellation?.isCancelled ?? false {
+                    frontier.cancel()
+                    channel.cancel()
+                    return
+                }
+
+                let job: FixedWorkerDirectoryJob
+                if let localJob = localJobs.popLast() {
+                    job = localJob
+                } else {
+                    guard let nextJob = frontier.pop(cancellation: self.cancellation) else {
+                        return
+                    }
+                    job = nextJob
+                }
+
+                do {
+                    let record = try autoreleasepool {
+                        try self.enumerate(job, recordIDSource: recordIDSource)
+                    }
+                    guard channel.send(record, cancellation: self.cancellation) else {
+                        frontier.cancel()
+                        channel.cancel()
+                        frontier.complete(preserveWorkerSlot: false)
+                        return
+                    }
+
+                    for child in record.children where child.isDirectory {
+                        let childJob = FixedWorkerDirectoryJob(
+                            metadata: child,
+                            url: job.url.appendingPathComponent(child.name, isDirectory: true)
+                        )
+                        if !frontier.tryEnqueue(childJob) {
+                            localJobs.append(childJob)
+                        }
+                    }
+                    frontier.complete(preserveWorkerSlot: !localJobs.isEmpty)
+                } catch FileSystemScannerError.cancelled {
+                    frontier.cancel()
+                    channel.cancel()
+                    frontier.complete(preserveWorkerSlot: false)
+                    return
+                } catch {
+                    // Filesystem failures are converted into inaccessible records.
+                    // Keep this guard for future worker-only failures.
+                    failure.record()
+                    frontier.cancel()
+                    channel.cancel()
+                    frontier.complete(preserveWorkerSlot: false)
+                    return
+                }
+            }
+        }
+
+        channel.finishProducers()
+        consumerGroup.wait()
+        try cancellation?.check()
+        if failure.hasFailure {
+            throw FixedWorkerWalkerError.workerFailed
+        }
+
+        return FixedWorkerWalkResult(
+            rootMetadata: rootMetadata,
+            directoryRecords: collector.allRecords()
+        )
+    }
+
+    private func enumerate(
+        _ job: FixedWorkerDirectoryJob,
+        recordIDSource: FixedWorkerRecordIDSource
+    ) throws -> FixedWorkerDirectoryRecord {
+        try cancellation?.check()
+
+        let childURLs: [URL]
+        do {
+            let directoryOptions: FileManager.DirectoryEnumerationOptions = options.includeHidden ? [] : [.skipsHiddenFiles]
+            childURLs = try fileManager.contentsOfDirectory(
+                at: job.url,
+                includingPropertiesForKeys: Array(resourceKeys),
+                options: directoryOptions
+            )
+        } catch FileSystemScannerError.cancelled {
+            throw FileSystemScannerError.cancelled
+        } catch {
+            return FixedWorkerDirectoryRecord(
+                metadata: job.metadata,
+                children: [],
+                isInaccessible: true
+            )
+        }
+
+        var childSeeds: [FixedWorkerMetadataSeed] = []
+        childSeeds.reserveCapacity(childURLs.count)
+        for childURL in childURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            try cancellation?.check()
+            if shouldExclude(childURL) {
+                continue
+            }
+            guard let seed = metadataSeed(for: childURL) else {
+                continue
+            }
+            childSeeds.append(seed)
+        }
+
+        let childIDs = recordIDSource.allocate(count: childSeeds.count)
+        let children = zip(childIDs, childSeeds).map { id, seed in
+            makeRecord(seed, id: id, parentID: job.metadata.id)
+        }
+
+        return FixedWorkerDirectoryRecord(
+            metadata: job.metadata,
+            children: children,
+            isInaccessible: false
+        )
+    }
+
+    private func metadataSeed(for url: URL) -> FixedWorkerMetadataSeed? {
+        do {
+            let values = try url.resourceValues(forKeys: resourceKeys)
+            if values.isHidden == true && !options.includeHidden {
+                return nil
+            }
+
+            let isSymbolicLink = values.isSymbolicLink == true
+            let isDirectory = !isSymbolicLink && values.isDirectory == true
+            let kind: StorageItem.Kind
+            if isSymbolicLink {
+                kind = .alias
+            } else if isDirectory {
+                kind = values.isPackage == true ? .package : .folder
+            } else {
+                kind = values.isRegularFile == true ? .file : .other
+            }
+
+            let logicalSize = Int64(values.fileSize ?? 0)
+            let allocatedSize = Int64(
+                values.totalFileAllocatedSize ??
+                    values.fileAllocatedSize ??
+                    values.fileSize ??
+                    0
+            )
+            return FixedWorkerMetadataSeed(
+                name: url.lastPathComponent,
+                kind: kind,
+                byteSize: logicalSize,
+                allocatedSize: allocatedSize,
+                modifiedAt: values.contentModificationDate,
+                isReadable: values.isReadable ?? true,
+                volumeIdentifier: resourceIdentifierValue(values.volumeIdentifier),
+                fileResourceIdentifier: resourceIdentifierValue(values.fileResourceIdentifier),
+                hardLinkCount: 0
+            )
+        } catch {
+            return FixedWorkerMetadataSeed(
+                name: url.lastPathComponent,
+                kind: .other,
+                byteSize: 0,
+                allocatedSize: 0,
+                modifiedAt: nil,
+                isReadable: true,
+                volumeIdentifier: .zero,
+                fileResourceIdentifier: .zero,
+                hardLinkCount: 0
+            )
+        }
+    }
+
+    private func makeRecord(
+        _ seed: FixedWorkerMetadataSeed,
+        id: Int,
+        parentID: Int
+    ) -> FixedWorkerWalkRecord {
+        FixedWorkerWalkRecord(
+            id: id,
+            parentID: parentID,
+            name: seed.name,
+            kind: seed.kind,
+            byteSize: seed.byteSize,
+            allocatedSize: seed.allocatedSize,
+            modifiedAt: seed.modifiedAt,
+            isReadable: seed.isReadable,
+            volumeIdentifier: seed.volumeIdentifier,
+            fileResourceIdentifier: seed.fileResourceIdentifier,
+            hardLinkCount: seed.hardLinkCount
+        )
+    }
+
+    private func resourceIdentifierValue(_ value: Any?) -> FixedWorkerResourceIdentifier {
+        if let number = value as? NSNumber {
+            return FixedWorkerResourceIdentifier(low: number.uint64Value, high: 0)
+        }
+        guard let data = value as? NSData,
+              data.length >= MemoryLayout<UInt64>.size else {
+            return .zero
+        }
+
+        var low = UInt64.zero
+        data.getBytes(&low, length: MemoryLayout<UInt64>.size)
+        guard data.length >= MemoryLayout<UInt64>.size * 2 else {
+            return FixedWorkerResourceIdentifier(low: low, high: 0)
+        }
+
+        var high = UInt64.zero
+        data.getBytes(&high, range: NSRange(
+            location: MemoryLayout<UInt64>.size,
+            length: MemoryLayout<UInt64>.size
+        ))
+        return FixedWorkerResourceIdentifier(low: low, high: high)
+    }
+
+    private func configuredWorkerCount() -> Int {
+        if let raw = ProcessInfo.processInfo.environment["STORAGESCOPE_WORKER_COUNT"],
+           let value = Int(raw),
+           (1...16).contains(value) {
+            return value
+        }
+        return min(8, max(4, ProcessInfo.processInfo.activeProcessorCount))
+    }
+}
+
 private struct HashedStorageItem {
     let checksum: String
     let item: StorageItem
+}
+
+private struct PrefixHashedStorageItem {
+    let prefixChecksum: String
+    let bytesRead: Int
+    let item: StorageItem
+
+    var isCompleteFile: Bool {
+        Int64(bytesRead) >= item.byteSize
+    }
 }
 
 private struct DirectoryScanSummary {
@@ -752,12 +1859,104 @@ private struct DirectoryScanSummary {
         Array(
             items.sorted { lhs, rhs in
                 if lhs.displaySize == rhs.displaySize {
-                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                    return lhs.name < rhs.name
                 }
                 return lhs.displaySize > rhs.displaySize
             }
             .prefix(retainedCandidateLimit)
         )
+    }
+}
+
+private struct FixedWorkerDuplicateCandidateReference: Sendable {
+    let summary: FixedWorkerItemSummary
+    let byteSize: Int64
+    let url: URL
+}
+
+private struct FixedWorkerDuplicateCandidateRetention {
+    private let limit: Int
+    private var candidatesBySize: [Int64: [FixedWorkerDuplicateCandidateReference]] = [:]
+    private var smallestRetainedSize: Int64?
+
+    private(set) var retainedCount = 0
+    private(set) var consideredCount = 0
+    private(set) var evictionCount = 0
+    private(set) var limitReached = false
+
+    init(limit: Int) {
+        self.limit = max(0, limit)
+    }
+
+    mutating func record(_ summary: FixedWorkerItemSummary, url: URL) {
+        consideredCount += 1
+        guard limit > 0 else {
+            limitReached = true
+            return
+        }
+
+        if retainedCount >= limit,
+           let smallestRetainedSize,
+           summary.metadata.byteSize < smallestRetainedSize {
+            limitReached = true
+            return
+        }
+
+        candidatesBySize[summary.metadata.byteSize, default: []].append(
+            FixedWorkerDuplicateCandidateReference(
+                summary: summary,
+                byteSize: summary.metadata.byteSize,
+                url: url
+            )
+        )
+        retainedCount += 1
+        if smallestRetainedSize.map({ summary.metadata.byteSize < $0 }) ?? true {
+            smallestRetainedSize = summary.metadata.byteSize
+        }
+
+        guard retainedCount > limit else {
+            return
+        }
+
+        limitReached = true
+        evictSmallestRetained()
+    }
+
+    func sizeGroups(using summaryStore: FixedWorkerSummaryStore) -> [DuplicateSizeGroup] {
+        candidatesBySize
+            .compactMap { byteSize, references in
+                guard references.count > 1 else { return nil }
+                let items = references
+                    .map { summaryStore.makeItem(summary: $0.summary, urlOverride: $0.url) }
+                    .sorted { $0.url.path < $1.url.path }
+                return DuplicateSizeGroup(byteSize: byteSize, items: items)
+            }
+            .sorted { lhs, rhs in
+                if lhs.totalBytes == rhs.totalBytes {
+                    return lhs.byteSize > rhs.byteSize
+                }
+                return lhs.totalBytes > rhs.totalBytes
+            }
+    }
+
+    private mutating func evictSmallestRetained() {
+        guard let smallestByteSize = smallestRetainedSize ?? candidatesBySize.keys.min(),
+              var items = candidatesBySize[smallestByteSize],
+              !items.isEmpty else {
+            smallestRetainedSize = candidatesBySize.keys.min()
+            return
+        }
+
+        items.removeLast()
+        retainedCount -= 1
+        evictionCount += 1
+
+        if items.isEmpty {
+            candidatesBySize.removeValue(forKey: smallestByteSize)
+            smallestRetainedSize = candidatesBySize.keys.min()
+        } else {
+            candidatesBySize[smallestByteSize] = items
+        }
     }
 }
 
@@ -770,6 +1969,82 @@ private extension CleanupCandidate.Confidence {
             return 1
         case .review:
             return 2
+        }
+    }
+}
+
+struct DuplicateCandidateRetention {
+    private let limit: Int
+    private var candidatesBySize: [Int64: [StorageItem]] = [:]
+    private var smallestRetainedSize: Int64?
+
+    private(set) var retainedCount = 0
+    private(set) var consideredCount = 0
+    private(set) var evictionCount = 0
+    private(set) var limitReached = false
+
+    init(limit: Int) {
+        self.limit = max(0, limit)
+    }
+
+    var sizeGroups: [DuplicateSizeGroup] {
+        candidatesBySize
+            .compactMap { byteSize, items in
+                items.count > 1 ? DuplicateSizeGroup(byteSize: byteSize, items: items.sorted { $0.url.path < $1.url.path }) : nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.totalBytes == rhs.totalBytes {
+                    return lhs.byteSize > rhs.byteSize
+                }
+                return lhs.totalBytes > rhs.totalBytes
+            }
+    }
+
+    mutating func record(_ item: StorageItem) {
+        consideredCount += 1
+        guard limit > 0 else {
+            limitReached = true
+            return
+        }
+
+        if retainedCount >= limit,
+           let smallestRetainedSize,
+           item.byteSize < smallestRetainedSize {
+            limitReached = true
+            return
+        }
+
+        candidatesBySize[item.byteSize, default: []].append(item)
+        retainedCount += 1
+        if smallestRetainedSize.map({ item.byteSize < $0 }) ?? true {
+            smallestRetainedSize = item.byteSize
+        }
+
+        guard retainedCount > limit else {
+            return
+        }
+
+        limitReached = true
+        evictSmallestRetained()
+    }
+
+    private mutating func evictSmallestRetained() {
+        guard let smallestByteSize = smallestRetainedSize ?? candidatesBySize.keys.min(),
+              var items = candidatesBySize[smallestByteSize],
+              !items.isEmpty else {
+            smallestRetainedSize = candidatesBySize.keys.min()
+            return
+        }
+
+        items.removeLast()
+        retainedCount -= 1
+        evictionCount += 1
+
+        if items.isEmpty {
+            candidatesBySize.removeValue(forKey: smallestByteSize)
+            smallestRetainedSize = candidatesBySize.keys.min()
+        } else {
+            candidatesBySize[smallestByteSize] = items
         }
     }
 }
@@ -792,22 +2067,27 @@ private final class ScanAccumulator {
     private let rootURL: URL
     private let startedAt: Date
     private var lastProgressDate = Date.distantPast
+    private var lastSnapshotDate = Date.distantPast
     private let oldFileCutoff: Date
     private var retainedItemCount: Int
     private var largestFileItems: [StorageItem] = []
     private var largestFolderItems: [StorageItem] = []
     private var oldLargeFileItems: [StorageItem] = []
     private var fileTypeStats: [String: FileTypeAccumulator] = [:]
-    private var duplicateCandidatesBySize: [Int64: [StorageItem]] = [:]
-    private var duplicateCandidateItemCount = 0
-    private var duplicateCandidateConsideredCount = 0
-    private var smallestDuplicateCandidateByteSize: Int64?
-    private(set) var duplicateCandidateLimitReached = false
+    private var duplicateCandidateRetention: DuplicateCandidateRetention
     private var cleanupCandidatesByID: [String: CleanupCandidate] = [:]
+    private var fixedWorkerSummaryStore: FixedWorkerSummaryStore?
+    private var fixedWorkerLargestFileItems: [FixedWorkerRankedReference] = []
+    private var fixedWorkerLargestFolderItems: [FixedWorkerRankedReference] = []
+    private var fixedWorkerOldLargeFileItems: [FixedWorkerRankedReference] = []
+    private var fixedWorkerCleanupCandidatesByID: [Int: FixedWorkerCleanupCandidateReference] = [:]
+    private var fixedWorkerDuplicateCandidateRetention: FixedWorkerDuplicateCandidateRetention?
 
     var scannedItemCount = 0
     var inaccessibleItemCount = 0
     var totalBytes: Int64 = 0
+    private(set) var duplicateVerificationBytesRead: Int64 = 0
+    private(set) var snapshotBuildCount = 0
 
     /// Guards every mutable field above. Held briefly during directory enumeration's
     /// record*() calls; the user `progress` and `onSnapshot` closures are both invoked
@@ -832,11 +2112,219 @@ private final class ScanAccumulator {
         self.rootURL = rootURL
         self.startedAt = startedAt
         self.retainedItemCount = 1
+        self.duplicateCandidateRetention = DuplicateCandidateRetention(limit: options.maxDuplicateCandidateItems)
         self.oldFileCutoff = Calendar.current.date(
             byAdding: .day,
             value: -options.oldFileAgeDays,
             to: Date()
         ) ?? Date()
+    }
+
+    func configureFixedWorkerStore(_ summaryStore: FixedWorkerSummaryStore) {
+        fixedWorkerSummaryStore = summaryStore
+        fixedWorkerDuplicateCandidateRetention = FixedWorkerDuplicateCandidateRetention(
+            limit: options.maxDuplicateCandidateItems
+        )
+    }
+
+    func recordFixedWorkerScannedItem(
+        _ summary: FixedWorkerItemSummary,
+        url: URL
+    ) {
+        // Fixed-worker reconstruction runs after the worker walk has completed, so this
+        // accumulator is owned by the reconstruction thread until scan() publishes its
+        // final StorageScan. Avoid taking the legacy per-item lock in that serial phase.
+        scannedItemCount += 1
+        totalBytes += max(summary.logicalSize, summary.allocatedSize)
+        recordFixedWorkerItemLocked(summary, url: url)
+        emitProgressLocked(path: url.path)
+    }
+
+    func recordFixedWorkerItem(
+        _ summary: FixedWorkerItemSummary,
+        url: URL
+    ) {
+        recordFixedWorkerItemLocked(summary, url: url)
+    }
+
+    private func recordFixedWorkerItemLocked(
+        _ summary: FixedWorkerItemSummary,
+        url: URL
+    ) {
+        switch summary.kind {
+        case .file:
+            insertFixedWorkerRankedReference(
+                for: summary,
+                url: url,
+                into: &fixedWorkerLargestFileItems
+            )
+
+            if let modifiedAt = summary.metadata.modifiedAt,
+               summary.displaySize >= options.largeFileThreshold,
+               modifiedAt <= oldFileCutoff {
+                insertFixedWorkerRankedReference(
+                    for: summary,
+                    url: url,
+                    into: &fixedWorkerOldLargeFileItems
+                )
+            }
+
+            let typeLabel: String
+            if let fileExtension = summary.fileExtension, !fileExtension.isEmpty {
+                typeLabel = ".\(fileExtension)"
+            } else {
+                typeLabel = "No Extension"
+            }
+
+            var typeStat = fileTypeStats[typeLabel] ?? FileTypeAccumulator()
+            typeStat.category = FileTypeCategoryClassifier.category(forExtension: summary.fileExtension)
+            typeStat.fileCount += 1
+            typeStat.totalBytes += summary.displaySize
+            fileTypeStats[typeLabel] = typeStat
+
+            if summary.metadata.byteSize >= options.duplicateCandidateThreshold {
+                fixedWorkerDuplicateCandidateRetention?.record(summary, url: url)
+            }
+        case .folder, .package:
+            insertFixedWorkerRankedReference(
+                for: summary,
+                url: url,
+                into: &fixedWorkerLargestFolderItems
+            )
+        case .alias, .inaccessible, .other:
+            break
+        }
+
+        if let candidate = fixedWorkerCleanupCandidate(for: summary, url: url) {
+            insertFixedWorkerCleanupCandidateLocked(candidate)
+        }
+    }
+
+    private func insertFixedWorkerRankedReference(
+        for summary: FixedWorkerItemSummary,
+        url: URL,
+        into references: inout [FixedWorkerRankedReference]
+    ) {
+        let limit = max(0, options.maxRankedResults)
+        guard limit > 0 else {
+            references.removeAll(keepingCapacity: false)
+            return
+        }
+
+        if references.count < limit {
+            references.append(
+                FixedWorkerRankedReference(
+                    summary: summary,
+                    displaySize: summary.displaySize,
+                    url: url,
+                    path: url.path
+                )
+            )
+            siftUpFixedWorkerRankedReferences(&references)
+            return
+        }
+
+        let worst = references[0]
+        if summary.displaySize < worst.displaySize {
+            return
+        }
+
+        let path: String
+        if summary.displaySize == worst.displaySize {
+            path = url.path
+            guard path < worst.path else {
+                return
+            }
+        } else {
+            path = url.path
+        }
+
+        let reference = FixedWorkerRankedReference(
+            summary: summary,
+            displaySize: summary.displaySize,
+            url: url,
+            path: path
+        )
+        references[0] = reference
+        siftDownFixedWorkerRankedReferences(&references)
+    }
+
+    private func fixedWorkerReferenceIsBetter(
+        _ lhs: FixedWorkerRankedReference,
+        _ rhs: FixedWorkerRankedReference
+    ) -> Bool {
+        if lhs.displaySize == rhs.displaySize {
+            return lhs.path < rhs.path
+        }
+        return lhs.displaySize > rhs.displaySize
+    }
+
+    private func fixedWorkerReferenceIsWorse(
+        _ lhs: FixedWorkerRankedReference,
+        _ rhs: FixedWorkerRankedReference
+    ) -> Bool {
+        if lhs.displaySize == rhs.displaySize {
+            return lhs.path > rhs.path
+        }
+        return lhs.displaySize < rhs.displaySize
+    }
+
+    private func siftUpFixedWorkerRankedReferences(
+        _ references: inout [FixedWorkerRankedReference]
+    ) {
+        var childIndex = references.index(before: references.endIndex)
+        while childIndex > references.startIndex {
+            let parentIndex = (childIndex - references.startIndex - 1) / 2 + references.startIndex
+            guard fixedWorkerReferenceIsWorse(references[childIndex], references[parentIndex]) else {
+                break
+            }
+            references.swapAt(childIndex, parentIndex)
+            childIndex = parentIndex
+        }
+    }
+
+    private func siftDownFixedWorkerRankedReferences(
+        _ references: inout [FixedWorkerRankedReference]
+    ) {
+        var parentIndex = references.startIndex
+        while true {
+            let relativeParentIndex = parentIndex - references.startIndex
+            let leftIndex = relativeParentIndex * 2 + 1 + references.startIndex
+            guard leftIndex < references.endIndex else {
+                return
+            }
+
+            var worstIndex = parentIndex
+            if fixedWorkerReferenceIsWorse(references[leftIndex], references[worstIndex]) {
+                worstIndex = leftIndex
+            }
+
+            let rightIndex = leftIndex + 1
+            if rightIndex < references.endIndex,
+               fixedWorkerReferenceIsWorse(references[rightIndex], references[worstIndex]) {
+                worstIndex = rightIndex
+            }
+
+            guard worstIndex != parentIndex else {
+                return
+            }
+            references.swapAt(parentIndex, worstIndex)
+            parentIndex = worstIndex
+        }
+    }
+
+    private func insertFixedWorkerCleanupCandidateLocked(
+        _ candidate: FixedWorkerCleanupCandidateReference
+    ) {
+        let id = candidate.summary.metadata.id
+        if let existing = fixedWorkerCleanupCandidatesByID[id] {
+            if candidate.confidence.sortRank < existing.confidence.sortRank ||
+                candidate.reclaimableBytes > existing.reclaimableBytes {
+                fixedWorkerCleanupCandidatesByID[id] = candidate
+            }
+        } else {
+            fixedWorkerCleanupCandidatesByID[id] = candidate
+        }
     }
 
     func recordVisit(path: String) {
@@ -846,17 +2334,18 @@ private final class ScanAccumulator {
         emitProgressLocked(path: path)
     }
 
-    func recordBytes(_ bytes: Int64) {
-        lock.lock()
-        defer { lock.unlock() }
-        totalBytes += bytes
-    }
-
     func recordInaccessible(path: String) {
         lock.lock()
         defer { lock.unlock() }
         inaccessibleItemCount += 1
         emitProgressLocked(path: path)
+    }
+
+    func recordDuplicateVerificationBytes(_ bytes: Int) {
+        guard bytes > 0 else { return }
+        lock.lock()
+        duplicateVerificationBytesRead += Int64(bytes)
+        lock.unlock()
     }
 
     func recordPhase(path: String, phase: ScanPhase = .enumerating) {
@@ -865,9 +2354,22 @@ private final class ScanAccumulator {
         emitProgressLocked(path: path, force: true, phase: phase)
     }
 
+    func recordScannedItem(_ item: StorageItem, countedBytes: Int64, path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        scannedItemCount += 1
+        totalBytes += countedBytes
+        recordItemLocked(item)
+        emitProgressLocked(path: path)
+    }
+
     func recordItem(_ item: StorageItem) {
         lock.lock()
         defer { lock.unlock() }
+        recordItemLocked(item)
+    }
+
+    private func recordItemLocked(_ item: StorageItem) {
         switch item.kind {
         case .file:
             recordFileLocked(item)
@@ -932,18 +2434,77 @@ private final class ScanAccumulator {
         return retained
     }
 
+    func retainedFixedWorkerChildren(
+        from children: [FixedWorkerCompactChild],
+        depth: Int
+    ) -> [FixedWorkerRetainedSelection] {
+        let perDirectoryLimit = max(0, options.maxChildrenPerDirectory)
+        guard perDirectoryLimit > 0 else {
+            return []
+        }
+
+        let retainedLimit = max(1, options.maxRetainedItems)
+        let isGuaranteedDepth = depth == 0
+
+        guard isGuaranteedDepth || retainedItemCount < retainedLimit else {
+            return []
+        }
+
+        var retained: [FixedWorkerRetainedSelection] = []
+        retained.reserveCapacity(min(children.count, perDirectoryLimit))
+
+        for child in children.prefix(perDirectoryLimit) {
+            guard isGuaranteedDepth || retainedItemCount < retainedLimit else {
+                break
+            }
+
+            let fullCount = child.retainedTreeCount
+            if retainedItemCount + fullCount <= retainedLimit {
+                retained.append(
+                    FixedWorkerRetainedSelection(
+                        id: child.id,
+                        includesDescendants: true,
+                        retainedTreeCount: fullCount
+                    )
+                )
+                retainedItemCount += fullCount
+            } else {
+                retained.append(
+                    FixedWorkerRetainedSelection(
+                        id: child.id,
+                        includesDescendants: false,
+                        retainedTreeCount: 1
+                    )
+                )
+                retainedItemCount += 1
+            }
+        }
+
+        return retained
+    }
+
     var largestFiles: [StorageItem] {
-        sortedRankedItems(largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+        if let summaryStore = fixedWorkerSummaryStore {
+            return materializedFixedWorkerRankedItems(fixedWorkerLargestFileItems, summaryStore: summaryStore)
+        }
+        return sortedRankedItems(largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
     }
 
     func largestFolders(excluding rootID: String) -> [StorageItem] {
-        sortedRankedItems(largestFolderItems.filter { $0.id != rootID }, limit: options.maxRankedResults) {
+        if let summaryStore = fixedWorkerSummaryStore {
+            return materializedFixedWorkerRankedItems(fixedWorkerLargestFolderItems, summaryStore: summaryStore)
+                .filter { $0.id != rootID }
+        }
+        return sortedRankedItems(largestFolderItems.filter { $0.id != rootID }, limit: options.maxRankedResults) {
             $0.displaySize > $1.displaySize
         }
     }
 
     var oldLargeFiles: [StorageItem] {
-        sortedRankedItems(oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
+        if let summaryStore = fixedWorkerSummaryStore {
+            return materializedFixedWorkerRankedItems(fixedWorkerOldLargeFileItems, summaryStore: summaryStore)
+        }
+        return sortedRankedItems(oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize }
     }
 
     var typeBreakdown: [FileTypeStat] {
@@ -986,16 +2547,11 @@ private final class ScanAccumulator {
     }
 
     var duplicateSizeGroups: [DuplicateSizeGroup] {
-        duplicateCandidatesBySize
-            .compactMap { byteSize, items in
-                items.count > 1 ? DuplicateSizeGroup(byteSize: byteSize, items: items.sorted { $0.url.path < $1.url.path }) : nil
-            }
-            .sorted { lhs, rhs in
-                if lhs.totalBytes == rhs.totalBytes {
-                    return lhs.byteSize > rhs.byteSize
-                }
-                return lhs.totalBytes > rhs.totalBytes
-            }
+        if let summaryStore = fixedWorkerSummaryStore,
+           let retention = fixedWorkerDuplicateCandidateRetention {
+            return retention.sizeGroups(using: summaryStore)
+        }
+        return duplicateCandidateRetention.sizeGroups
     }
 
     var duplicateCandidateItemLimit: Int {
@@ -1003,11 +2559,45 @@ private final class ScanAccumulator {
     }
 
     var duplicateCandidateItemsRetained: Int {
-        duplicateCandidateItemCount
+        if let retention = fixedWorkerDuplicateCandidateRetention {
+            return retention.retainedCount
+        }
+        return duplicateCandidateRetention.retainedCount
     }
 
     var duplicateCandidateItemsConsidered: Int {
-        duplicateCandidateConsideredCount
+        if let retention = fixedWorkerDuplicateCandidateRetention {
+            return retention.consideredCount
+        }
+        return duplicateCandidateRetention.consideredCount
+    }
+
+    var duplicateCandidateEvictionCount: Int {
+        if let retention = fixedWorkerDuplicateCandidateRetention {
+            return retention.evictionCount
+        }
+        return duplicateCandidateRetention.evictionCount
+    }
+
+    var duplicateCandidateLimitReached: Bool {
+        if let retention = fixedWorkerDuplicateCandidateRetention {
+            return retention.limitReached
+        }
+        return duplicateCandidateRetention.limitReached
+    }
+
+    private func materializedFixedWorkerRankedItems(
+        _ references: [FixedWorkerRankedReference],
+        summaryStore: FixedWorkerSummaryStore
+    ) -> [StorageItem] {
+        references
+            .sorted { lhs, rhs in
+                if lhs.displaySize == rhs.displaySize {
+                    return lhs.path < rhs.path
+                }
+                return lhs.displaySize > rhs.displaySize
+            }
+            .map { summaryStore.makeItem(summary: $0.summary, urlOverride: $0.url) }
     }
 
     func cleanupCandidates(
@@ -1023,8 +2613,27 @@ private final class ScanAccumulator {
         }
 
         let duplicateItemIDs = Set(verifiedDuplicateGroups.flatMap { group in group.items.dropFirst().map(\.id) })
-        var candidatesByID = cleanupCandidatesByID.filter { id, _ in
-            id != rootID && !duplicateItemIDs.contains(id)
+        var candidatesByID: [String: CleanupCandidate]
+        if let summaryStore = fixedWorkerSummaryStore {
+            var fixedCandidatesByID: [String: CleanupCandidate] = [:]
+            for candidate in fixedWorkerCleanupCandidatesByID.values {
+                let item = summaryStore.makeItem(summary: candidate.summary, urlOverride: candidate.url)
+                guard item.id != rootID, !duplicateItemIDs.contains(item.id) else {
+                    continue
+                }
+                fixedCandidatesByID[item.id] = CleanupCandidate(
+                    kind: candidate.kind,
+                    item: item,
+                    reason: candidate.reason,
+                    reclaimableBytes: candidate.reclaimableBytes,
+                    confidence: candidate.confidence
+                )
+            }
+            candidatesByID = fixedCandidatesByID
+        } else {
+            candidatesByID = cleanupCandidatesByID.filter { id, _ in
+                id != rootID && !duplicateItemIDs.contains(id)
+            }
         }
 
         for group in verifiedDuplicateGroups {
@@ -1058,7 +2667,7 @@ private final class ScanAccumulator {
 
     private func emitProgressLocked(path: String, force: Bool = false, phase: ScanPhase = .enumerating) {
         let now = Date()
-        guard force || scannedItemCount == 1 || scannedItemCount.isMultiple(of: 25) || now.timeIntervalSince(lastProgressDate) > 0.35 else {
+        guard force || scannedItemCount == 1 || now.timeIntervalSince(lastProgressDate) > 0.35 else {
             return
         }
 
@@ -1068,7 +2677,10 @@ private final class ScanAccumulator {
         // ScanTick. Firing progress first would pair each tick with the *previous* tick's
         // snapshot — a one-tick lag that leaves cancel-preserved partial results stale by
         // a full throttle interval.
-        if let onSnapshot {
+        let shouldBuildSnapshot = force || scannedItemCount == 1 || now.timeIntervalSince(lastSnapshotDate) > 1.0
+        if let onSnapshot, shouldBuildSnapshot {
+            lastSnapshotDate = now
+            snapshotBuildCount += 1
             onSnapshot(snapshotLocked())
         }
         progress?(ScanProgress(scannedItemCount: scannedItemCount, totalBytes: totalBytes, currentPath: path, phase: phase))
@@ -1091,6 +2703,36 @@ private final class ScanAccumulator {
             descendantCount: scannedItemCount,
             isReadable: true
         )
+        let snapshotLargestFiles: [StorageItem]
+        let snapshotLargestFolders: [StorageItem]
+        let snapshotOldLargeFiles: [StorageItem]
+        if let summaryStore = fixedWorkerSummaryStore {
+            snapshotLargestFiles = materializedFixedWorkerRankedItems(
+                fixedWorkerLargestFileItems,
+                summaryStore: summaryStore
+            )
+            snapshotLargestFolders = materializedFixedWorkerRankedItems(
+                fixedWorkerLargestFolderItems,
+                summaryStore: summaryStore
+            )
+            snapshotOldLargeFiles = materializedFixedWorkerRankedItems(
+                fixedWorkerOldLargeFileItems,
+                summaryStore: summaryStore
+            )
+        } else {
+            snapshotLargestFiles = sortedRankedItems(
+                largestFileItems,
+                limit: options.maxRankedResults
+            ) { $0.displaySize > $1.displaySize }
+            snapshotLargestFolders = sortedRankedItems(
+                largestFolderItems,
+                limit: options.maxRankedResults
+            ) { $0.displaySize > $1.displaySize }
+            snapshotOldLargeFiles = sortedRankedItems(
+                oldLargeFileItems,
+                limit: options.maxRankedResults
+            ) { $0.displaySize > $1.displaySize }
+        }
         return StorageScan(
             rootURL: rootURL,
             startedAt: startedAt,
@@ -1100,17 +2742,19 @@ private final class ScanAccumulator {
             scannedItemCount: scannedItemCount,
             inaccessibleItemCount: inaccessibleItemCount,
             totalBytes: totalBytes,
-            largestFiles: sortedRankedItems(largestFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
-            largestFolders: sortedRankedItems(largestFolderItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
-            oldLargeFiles: sortedRankedItems(oldLargeFileItems, limit: options.maxRankedResults) { $0.displaySize > $1.displaySize },
+            largestFiles: snapshotLargestFiles,
+            largestFolders: snapshotLargestFolders,
+            oldLargeFiles: snapshotOldLargeFiles,
             typeBreakdown: typeBreakdown,
             categoryBreakdown: categoryBreakdown,
             duplicateSizeGroups: [],
             verifiedDuplicateGroups: [],
             duplicateCandidateItemLimit: duplicateCandidateItemLimit,
-            duplicateCandidateItemsRetained: duplicateCandidateItemCount,
-            duplicateCandidateItemsConsidered: duplicateCandidateConsideredCount,
+            duplicateCandidateItemsRetained: duplicateCandidateItemsRetained,
+            duplicateCandidateItemsConsidered: duplicateCandidateItemsConsidered,
+            duplicateCandidateEvictionCount: duplicateCandidateEvictionCount,
             duplicateCandidateLimitReached: duplicateCandidateLimitReached,
+            snapshotBuildCount: snapshotBuildCount,
             duplicateVerificationDuration: 0,
             enumerateDuration: Date().timeIntervalSince(startedAt),
             cleanupCandidates: [],
@@ -1151,58 +2795,7 @@ private final class ScanAccumulator {
         fileTypeStats[typeLabel] = typeStat
 
         if item.byteSize >= options.duplicateCandidateThreshold {
-            recordDuplicateCandidateLocked(item)
-        }
-    }
-
-    private func recordDuplicateCandidateLocked(_ item: StorageItem) {
-        duplicateCandidateConsideredCount += 1
-        let candidateLimit = max(0, options.maxDuplicateCandidateItems)
-        guard candidateLimit > 0 else {
-            duplicateCandidateLimitReached = true
-            return
-        }
-
-        if duplicateCandidateItemCount >= candidateLimit,
-           let smallestDuplicateCandidateByteSize,
-           item.byteSize < smallestDuplicateCandidateByteSize {
-            duplicateCandidateLimitReached = true
-            return
-        }
-
-        duplicateCandidatesBySize[item.byteSize, default: []].append(item)
-        duplicateCandidateItemCount += 1
-        if smallestDuplicateCandidateByteSize.map({ item.byteSize < $0 }) ?? true {
-            smallestDuplicateCandidateByteSize = item.byteSize
-        }
-
-        guard duplicateCandidateItemCount > candidateLimit else {
-            return
-        }
-
-        duplicateCandidateLimitReached = true
-        removeSmallestDuplicateCandidateLocked()
-    }
-
-    private func removeSmallestDuplicateCandidateLocked() {
-        guard let smallestByteSize = smallestDuplicateCandidateByteSize ?? duplicateCandidatesBySize.keys.min(),
-              var items = duplicateCandidatesBySize[smallestByteSize],
-              !items.isEmpty else {
-            smallestDuplicateCandidateByteSize = duplicateCandidatesBySize.keys.min()
-            return
-        }
-
-        let removalIndex = items.indices.max { lhs, rhs in
-            items[lhs].url.path.localizedStandardCompare(items[rhs].url.path) == .orderedAscending
-        } ?? items.startIndex
-        items.remove(at: removalIndex)
-        duplicateCandidateItemCount -= 1
-
-        if items.isEmpty {
-            duplicateCandidatesBySize.removeValue(forKey: smallestByteSize)
-            smallestDuplicateCandidateByteSize = duplicateCandidatesBySize.keys.min()
-        } else {
-            duplicateCandidatesBySize[smallestByteSize] = items
+            duplicateCandidateRetention.record(item)
         }
     }
 
@@ -1283,6 +2876,103 @@ private final class ScanAccumulator {
                 item: item,
                 reason: "Large file not modified recently.",
                 reclaimableBytes: item.displaySize,
+                confidence: .review
+            )
+        }
+
+        return nil
+    }
+
+    private func fixedWorkerCleanupCandidate(
+        for summary: FixedWorkerItemSummary,
+        url: URL
+    ) -> FixedWorkerCleanupCandidateReference? {
+        let lowercasedName = summary.metadata.name.lowercased()
+        let path = url.path.lowercased()
+        let fileExtension = summary.fileExtension ?? ""
+
+        if summary.kind == .folder || summary.kind == .package {
+            if ["cache", "caches", ".cache"].contains(lowercasedName) {
+                return FixedWorkerCleanupCandidateReference(
+                    summary: summary,
+                    url: url,
+                    kind: .cacheFolder,
+                    reason: "Cache folder. Review before deleting if an app is currently using it.",
+                    reclaimableBytes: summary.displaySize,
+                    confidence: .medium
+                )
+            }
+
+            if ["deriveddata", "node_modules", ".build", "build", "dist", "target", ".gradle"].contains(lowercasedName) ||
+                path.contains("/deriveddata/") {
+                return FixedWorkerCleanupCandidateReference(
+                    summary: summary,
+                    url: url,
+                    kind: .buildArtifact,
+                    reason: "Build or dependency artifact. Usually rebuildable, but project-specific.",
+                    reclaimableBytes: summary.displaySize,
+                    confidence: .medium
+                )
+            }
+        }
+
+        guard summary.kind == .file else {
+            return nil
+        }
+
+        if ["dmg", "iso", "toast", "sparsebundle", "sparseimage"].contains(fileExtension) {
+            return FixedWorkerCleanupCandidateReference(
+                summary: summary,
+                url: url,
+                kind: .diskImage,
+                reason: "Disk image. Often disposable after installation or extraction.",
+                reclaimableBytes: summary.displaySize,
+                confidence: .medium
+            )
+        }
+
+        if ["pkg", "mpkg", "xip", "ipsw"].contains(fileExtension) {
+            return FixedWorkerCleanupCandidateReference(
+                summary: summary,
+                url: url,
+                kind: .installer,
+                reason: "Installer package. Usually removable after the install is complete.",
+                reclaimableBytes: summary.displaySize,
+                confidence: .medium
+            )
+        }
+
+        if ["zip", "zipx", "rar", "7z", "tar", "tgz", "gz", "bz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "lz4"].contains(fileExtension) {
+            return FixedWorkerCleanupCandidateReference(
+                summary: summary,
+                url: url,
+                kind: .archive,
+                reason: "Archive file. Review whether the extracted copy already exists.",
+                reclaimableBytes: summary.displaySize,
+                confidence: .review
+            )
+        }
+
+        if ["tmp", "temp", "bak", "old"].contains(fileExtension) || lowercasedName.hasSuffix("~") {
+            return FixedWorkerCleanupCandidateReference(
+                summary: summary,
+                url: url,
+                kind: .temporary,
+                reason: "Temporary or backup-looking file.",
+                reclaimableBytes: summary.displaySize,
+                confidence: .review
+            )
+        }
+
+        if let modifiedAt = summary.metadata.modifiedAt,
+           summary.displaySize >= 1_000_000_000,
+           modifiedAt <= oldFileCutoff {
+            return FixedWorkerCleanupCandidateReference(
+                summary: summary,
+                url: url,
+                kind: .oldLargeFile,
+                reason: "Large file not modified recently.",
+                reclaimableBytes: summary.displaySize,
                 confidence: .review
             )
         }
