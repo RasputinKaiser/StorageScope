@@ -3,6 +3,7 @@ import os
 
 public struct ScanBenchmarkReport: Hashable, Sendable {
     public let scopeLabel: String
+    public let buildConfiguration: String
     public let duration: TimeInterval
     public let scannedItemCount: Int
     public let inaccessibleItemCount: Int
@@ -11,9 +12,12 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
     public let largestFolderCount: Int
     public let duplicateCandidateItemsConsidered: Int
     public let duplicateCandidateItemsRetained: Int
+    public let duplicateCandidateEvictionCount: Int
     public let duplicateCandidateLimitReached: Bool
+    public let snapshotBuildCount: Int
     public let verifiedDuplicateGroupCount: Int
     public let duplicateVerificationDuration: TimeInterval
+    public let duplicateVerificationBytesRead: Int64
     public let enumerateDuration: TimeInterval
     public let verifyDuration: TimeInterval
     public let persistDuration: TimeInterval
@@ -34,6 +38,7 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
         peakMemoryBytes: UInt64? = Self.currentPeakResidentMemoryBytes()
     ) {
         self.scopeLabel = scopeLabel
+        self.buildConfiguration = Self.currentBuildConfiguration()
         self.duration = scan.finishedAt.timeIntervalSince(scan.startedAt)
         self.scannedItemCount = scan.scannedItemCount
         self.inaccessibleItemCount = scan.inaccessibleItemCount
@@ -42,9 +47,12 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
         self.largestFolderCount = scan.largestFolders.count
         self.duplicateCandidateItemsConsidered = scan.duplicateCandidateItemsConsidered
         self.duplicateCandidateItemsRetained = scan.duplicateCandidateItemsRetained
+        self.duplicateCandidateEvictionCount = scan.duplicateCandidateEvictionCount
         self.duplicateCandidateLimitReached = scan.duplicateCandidateLimitReached
+        self.snapshotBuildCount = scan.snapshotBuildCount
         self.verifiedDuplicateGroupCount = scan.verifiedDuplicateGroups.count
         self.duplicateVerificationDuration = scan.duplicateVerificationDuration
+        self.duplicateVerificationBytesRead = scan.duplicateVerificationBytesRead
         self.enumerateDuration = scan.enumerateDuration
         self.verifyDuration = scan.duplicateVerificationDuration
         self.persistDuration = persistDuration
@@ -56,6 +64,7 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
         [
             "StorageScope benchmark",
             "Scope: \(scopeLabel)",
+            "Build configuration: \(buildConfiguration)",
             "Duration: \(Self.seconds(duration))",
             "Items scanned: \(scannedItemCount.formatted())",
             "Inaccessible: \(inaccessibleItemCount.formatted())",
@@ -63,9 +72,12 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
             "Largest files retained: \(largestFileCount.formatted())",
             "Largest folders retained: \(largestFolderCount.formatted())",
             "Duplicate candidates: \(duplicateCandidateItemsRetained.formatted()) retained / \(duplicateCandidateItemsConsidered.formatted()) considered",
+            "Duplicate evictions: \(duplicateCandidateEvictionCount.formatted())",
             "Duplicate cap reached: \(duplicateCandidateLimitReached ? "yes" : "no")",
+            "Snapshots built: \(snapshotBuildCount.formatted())",
             "Verified duplicate groups: \(verifiedDuplicateGroupCount.formatted())",
             "Duplicate verification: \(Self.seconds(duplicateVerificationDuration))",
+            "Duplicate verification bytes read: \(Self.bytes(duplicateVerificationBytesRead))",
             "Enumerate duration: \(Self.seconds(enumerateDuration))",
             "Verify duration: \(Self.seconds(verifyDuration))",
             "Persist duration: \(Self.seconds(persistDuration))",
@@ -94,6 +106,19 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
 
     private static func bytes(_ value: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .memory)
+    }
+
+    public static func currentBuildConfiguration() -> String {
+        if let override = ProcessInfo.processInfo.environment["STORAGESCOPE_BENCHMARK_CONFIGURATION"],
+           !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return override
+        }
+
+        #if DEBUG
+        return "debug"
+        #else
+        return "release"
+        #endif
     }
 
     public static func currentPeakResidentMemoryBytes() -> UInt64? {

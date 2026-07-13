@@ -233,8 +233,8 @@ func setSelectedView(_ view: SmartView) {
     private var cachedVerifiedDuplicateGroupsKey: DerivedCacheKey?
     private var cachedVerifiedDuplicateGroups: [VerifiedDuplicateGroup] = []
 
-    /// Test observability for `items(for:)` cache. DEBUG-only so production pays nothing.
-    #if DEBUG
+    /// Test observability for `items(for:)` cache. Excluded from normal release builds.
+    #if DEBUG || STORAGESCOPE_TESTING
     private(set) var itemsCacheHitCount: Int = 0
     private(set) var itemsCacheMissCount: Int = 0
 
@@ -933,18 +933,7 @@ func setSelectedView(_ view: SmartView) {
         progress = ScanProgress(scannedItemCount: 0, totalBytes: 0, currentPath: url.path)
 
         let scanID = UUID()
-        let thresholds = ScanOptionPolicy.interactiveScanThresholds()
-        let (excludedComponents, excludedPrefixes) = Self.splitExcludedPaths(filters.excludedPaths)
-        let options = ScanOptions(
-            includeHidden: filters.includeHiddenFiles,
-            oldFileAgeDays: filters.oldFileAgeDays,
-            largeFileThreshold: thresholds.largeFileThreshold,
-            duplicateCandidateThreshold: Int64(filters.duplicateCandidateThresholdMB) * 1_000_000,
-            maxRankedResults: Self.rankedResultsCap,
-            excludeEnabled: filters.excludeFoldersEnabled,
-            excludedPathComponents: excludedComponents,
-            excludedAbsolutePrefixes: excludedPrefixes
-        )
+        let options = makeScannerOptions()
         let optionsSnapshot = currentScanOptions
         let scanCancellation = ScanCancellation()
         activeScanID = scanID
@@ -967,11 +956,10 @@ func setSelectedView(_ view: SmartView) {
                 // Task.cancel() into the scanner's ScanCancellation handle AND finishes the
                 // stream so the consumer exits cleanly.
                 let (progressStream, progressContinuation) = AsyncStream<ScanTick>.makeStream()
-                // The scanner's `progress` and `onSnapshot` callbacks fire at the same
-                // throttled cadence (`onSnapshot` is invoked from inside `emitProgressLocked`
-                // right after the progress callback) but as two separate calls. Pair the
-                // latest snapshot with the next progress tick on this side rather than adding
-                // a second stream, so the consumer only has one `for await` loop to drain.
+                // Snapshots are emitted before their paired progress tick, but at a slower
+                // cadence than progress. Pair a newly staged snapshot with the next tick on
+                // this side rather than adding a second stream, so the consumer only has one
+                // `for await` loop to drain; intervening progress-only ticks carry nil.
                 let pendingSnapshotLock = NSLock()
                 var pendingSnapshot: StorageScan?
                 let result = try await withTaskCancellationHandler {
@@ -1043,10 +1031,11 @@ func setSelectedView(_ view: SmartView) {
 
                 scan = result
                 let cacheToPersist = hashCache
-                let pathsScanned = Set(result.retainedItems.map { $0.url.standardizedFileURL.path })
+                let retainedItems = result.retainedItems
                 let persistLog = Self.log
                 let persistSignpostID = Self.signpostID
                 Task.detached(priority: .utility) { [weak self] in
+                    let pathsScanned = Set(retainedItems.map { $0.url.standardizedFileURL.path })
                     os_signpost(.begin, log: persistLog, name: "persist", signpostID: persistSignpostID,
                                 "entries=%d", cacheToPersist.entryCount)
                     _ = cacheToPersist.purgeStale(except: pathsScanned)
@@ -1126,6 +1115,24 @@ func setSelectedView(_ view: SmartView) {
         }
     }
 
+    /// Builds the exact scanner configuration used by the interactive app path.
+    /// Internal so the opt-in release performance proof can compare ScanStore against
+    /// a callback-free FileSystemScanner without drifting to different thresholds.
+    func makeScannerOptions() -> ScanOptions {
+        let thresholds = ScanOptionPolicy.interactiveScanThresholds()
+        let (excludedComponents, excludedPrefixes) = Self.splitExcludedPaths(filters.excludedPaths)
+        return ScanOptions(
+            includeHidden: filters.includeHiddenFiles,
+            oldFileAgeDays: filters.oldFileAgeDays,
+            largeFileThreshold: thresholds.largeFileThreshold,
+            duplicateCandidateThreshold: Int64(filters.duplicateCandidateThresholdMB) * 1_000_000,
+            maxRankedResults: Self.rankedResultsCap,
+            excludeEnabled: filters.excludeFoldersEnabled,
+            excludedPathComponents: excludedComponents,
+            excludedAbsolutePrefixes: excludedPrefixes
+        )
+    }
+
     func items(for view: SmartView) -> [StorageItem] {
         guard let scan else {
             return []
@@ -1147,7 +1154,7 @@ func setSelectedView(_ view: SmartView) {
             ignoredCleanupCandidateIDs: cleanupRelevant ? ignoredCleanupCandidateIDs : []
         )
         if cachedItemsKey == key {
-            #if DEBUG
+            #if DEBUG || STORAGESCOPE_TESTING
             itemsCacheHitCount &+= 1
             #endif
             return cachedItems
@@ -1158,7 +1165,7 @@ func setSelectedView(_ view: SmartView) {
         defer {
             os_signpost(.end, log: Self.log, name: "items_rebuild", signpostID: Self.signpostID)
         }
-        #if DEBUG
+        #if DEBUG || STORAGESCOPE_TESTING
         itemsCacheMissCount &+= 1
         #endif
 

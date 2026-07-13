@@ -61,7 +61,7 @@ final class SearchRecentsStore: ObservableObject {
         let task = Task.detached(priority: .utility) { [writer = Self.writer] in
             await writer.write(snapshot, generation: generation)
         }
-        #if DEBUG
+        #if DEBUG || STORAGESCOPE_TESTING
         Self.pendingPersistTasks.append(task)
         #endif
     }
@@ -81,7 +81,7 @@ final class SearchRecentsStore: ObservableObject {
         }
     }
 
-    #if DEBUG
+    #if DEBUG || STORAGESCOPE_TESTING
     /// Drains detached `persist()` tasks from earlier tests so a test that
     /// mutates `UserDefaults` directly can assert deterministically. Production
     /// callers should never need this: the actor-serialized writer is already
