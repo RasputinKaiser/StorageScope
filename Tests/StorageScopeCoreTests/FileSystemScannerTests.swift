@@ -1122,8 +1122,8 @@ struct FileSystemScannerTests {
             contentsOf: repoRoot.appendingPathComponent("Sources/StorageScopeCore/Services/FileSystemScanner.swift"),
             encoding: .utf8
         )
-        let recordStart = try #require(source.range(of: "private struct FixedWorkerWalkRecord"))
-        let recordEnd = try #require(source[recordStart.upperBound...].range(of: "private struct FixedWorkerDirectoryJob")?.lowerBound)
+        let recordStart = try #require(source.range(of: "struct FixedWorkerWalkRecord"))
+        let recordEnd = try #require(source[recordStart.upperBound...].range(of: "struct FixedWorkerDirectoryJob")?.lowerBound)
         let recordSource = String(source[recordStart.lowerBound..<recordEnd])
 
         #expect(recordSource.contains("let parentID: Int"))

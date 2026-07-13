@@ -2,6 +2,12 @@ import Foundation
 import os.signpost
 
 public struct StorageScan: Sendable {
+    public enum RescanKind: String, Sendable {
+        case full
+        case incrementalUnchanged
+        case incrementalChanged
+    }
+
     /// os_signpost surface for Instruments. Shares the scan subsystem/category so the
     /// `lookup_build` span shows up alongside FileSystemScanner and ScanStore spans (#81-pattern).
     private static let log = OSLog(subsystem: "com.rasputinkaiser.StorageScope", category: "scan")
@@ -33,6 +39,9 @@ public struct StorageScan: Sendable {
     public let enumerateDuration: TimeInterval
     public let cleanupCandidates: [CleanupCandidate]
     public let isPartial: Bool
+    public let rescanKind: RescanKind
+    public let incrementalDirtySubtreeCount: Int
+    public let incrementalFallbackReason: String?
     private let itemLookupByID: [String: StorageItem]
 
     public init(
@@ -61,7 +70,10 @@ public struct StorageScan: Sendable {
         duplicateVerificationBytesRead: Int64 = 0,
         enumerateDuration: TimeInterval = 0,
         cleanupCandidates: [CleanupCandidate],
-        isPartial: Bool = false
+        isPartial: Bool = false,
+        rescanKind: RescanKind = .full,
+        incrementalDirtySubtreeCount: Int = 0,
+        incrementalFallbackReason: String? = nil
     ) {
         self.rootURL = rootURL
         self.startedAt = startedAt
@@ -89,6 +101,9 @@ public struct StorageScan: Sendable {
         self.enumerateDuration = enumerateDuration
         self.cleanupCandidates = cleanupCandidates
         self.isPartial = isPartial
+        self.rescanKind = rescanKind
+        self.incrementalDirtySubtreeCount = incrementalDirtySubtreeCount
+        self.incrementalFallbackReason = incrementalFallbackReason
         self.itemLookupByID = Self.buildItemLookup(
             retainedItems: retainedItems,
             largestFiles: largestFiles,
@@ -102,6 +117,40 @@ public struct StorageScan: Sendable {
 
     public func lookupItem(id: String) -> StorageItem? {
         itemLookupByID[id]
+    }
+
+    func reusedIncrementally(startedAt: Date, finishedAt: Date) -> StorageScan {
+        StorageScan(
+            rootURL: rootURL,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            rootItem: rootItem,
+            retainedItems: retainedItems,
+            scannedItemCount: scannedItemCount,
+            inaccessibleItemCount: inaccessibleItemCount,
+            totalBytes: totalBytes,
+            largestFiles: largestFiles,
+            largestFolders: largestFolders,
+            oldLargeFiles: oldLargeFiles,
+            typeBreakdown: typeBreakdown,
+            categoryBreakdown: categoryBreakdown,
+            duplicateSizeGroups: duplicateSizeGroups,
+            verifiedDuplicateGroups: verifiedDuplicateGroups,
+            duplicateCandidateItemLimit: duplicateCandidateItemLimit,
+            duplicateCandidateItemsRetained: duplicateCandidateItemsRetained,
+            duplicateCandidateItemsConsidered: duplicateCandidateItemsConsidered,
+            duplicateCandidateEvictionCount: duplicateCandidateEvictionCount,
+            duplicateCandidateLimitReached: duplicateCandidateLimitReached,
+            snapshotBuildCount: 0,
+            duplicateVerificationDuration: 0,
+            duplicateVerificationBytesRead: 0,
+            enumerateDuration: finishedAt.timeIntervalSince(startedAt),
+            cleanupCandidates: cleanupCandidates,
+            isPartial: false,
+            rescanKind: .incrementalUnchanged,
+            incrementalDirtySubtreeCount: 0,
+            incrementalFallbackReason: nil
+        )
     }
 
     private static func buildItemLookup(

@@ -970,7 +970,10 @@ func setSelectedView(_ view: SmartView) {
                             // this the progress-consumer sibling would block on `for await`
                             // forever and the task group would hang waiting for it.
                             defer { progressContinuation.finish() }
-                            let scanner = FileSystemScanner(hashCache: hashCache)
+                            let scanner = FileSystemScanner(
+                                hashCache: hashCache,
+                                incrementalRescans: true
+                            )
                             let scan = try scanner.scan(
                                 root: url,
                                 options: options,
