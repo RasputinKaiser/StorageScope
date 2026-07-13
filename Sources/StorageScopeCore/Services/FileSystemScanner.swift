@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import os
+import os.lock
 
 public enum FileSystemScannerError: LocalizedError {
     case cancelled
@@ -249,6 +250,7 @@ public final class FileSystemScanner {
         )
         let duplicateVerificationDuration = Date().timeIntervalSince(duplicateVerificationStartedAt)
         let duplicateVerificationBytesRead = accumulator.duplicateVerificationBytesRead
+        let duplicateVerificationPeakOpenFiles = accumulator.duplicateVerificationPeakOpenFiles
         let finishedAt = Date()
 
         os_signpost(.end, log: Self.log, name: "scan", signpostID: Self.signpostID,
@@ -278,6 +280,7 @@ public final class FileSystemScanner {
             snapshotBuildCount: accumulator.snapshotBuildCount,
             duplicateVerificationDuration: duplicateVerificationDuration,
             duplicateVerificationBytesRead: duplicateVerificationBytesRead,
+            duplicateVerificationPeakOpenFiles: duplicateVerificationPeakOpenFiles,
             enumerateDuration: enumerateDuration,
             cleanupCandidates: accumulator.cleanupCandidates(
                 rootID: rootItem.id,
@@ -409,12 +412,12 @@ public final class FileSystemScanner {
             os_signpost(.end, log: Self.log, name: "verify_on_demand", signpostID: verifySignpostID)
         }
 
-        let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
+        let ioLimiter = DuplicateHashReadLimiter(capacity: Self.hashConcurrency)
         let cacheLock = NSLock()
 
         return try verifiedDuplicateGroups(
             in: group,
-            ioSemaphore: ioSemaphore,
+            ioLimiter: ioLimiter,
             cacheLock: cacheLock,
             recordBytesRead: nil,
             cancellation: cancellation
@@ -1176,7 +1179,10 @@ public final class FileSystemScanner {
 
         let verifiedGroupsLock = NSLock()
         let cacheLock = NSLock()
-        let ioSemaphore = DispatchSemaphore(value: Self.hashConcurrency)
+        let ioLimiter = DuplicateHashReadLimiter(capacity: Self.hashConcurrency)
+        defer {
+            accumulator.recordDuplicateVerificationPeakOpenFiles(ioLimiter.peakOpenFiles)
+        }
         // Cancellation is cooperative: concurrentPerform can't throw, so iterations record
         // observed cancellation in a flag that we re-check after the call returns. This
         // mirrors the pattern used by the parallel-directory-enumeration path in scanItem.
@@ -1211,7 +1217,7 @@ public final class FileSystemScanner {
 
                 let verifiedForSize = try verifiedDuplicateGroups(
                     in: sizeGroup,
-                    ioSemaphore: ioSemaphore,
+                    ioLimiter: ioLimiter,
                     cacheLock: cacheLock,
                     recordBytesRead: accumulator.recordDuplicateVerificationBytes,
                     cancellation: cancellation
@@ -1247,7 +1253,7 @@ public final class FileSystemScanner {
 
     private func verifiedDuplicateGroups(
         in sizeGroup: DuplicateSizeGroup,
-        ioSemaphore: DispatchSemaphore,
+        ioLimiter: DuplicateHashReadLimiter,
         cacheLock: NSLock,
         recordBytesRead: ((Int) -> Void)?,
         cancellation: ScanCancellation?
@@ -1282,7 +1288,7 @@ public final class FileSystemScanner {
 
             if let prefixed = try prefixHashedFormItem(
                 item,
-                ioSemaphore: ioSemaphore,
+                ioLimiter: ioLimiter,
                 recordBytesRead: recordBytesRead,
                 cancellation: cancellation
             ) {
@@ -1313,7 +1319,7 @@ public final class FileSystemScanner {
 
                 if let hashed = try hashedFormItem(
                     prefixed.item,
-                    ioSemaphore: ioSemaphore,
+                    ioLimiter: ioLimiter,
                     cacheLock: cacheLock,
                     recordBytesRead: recordBytesRead,
                     cancellation: cancellation
@@ -1458,12 +1464,12 @@ public final class FileSystemScanner {
 
     private func prefixHashedFormItem(
         _ item: StorageItem,
-        ioSemaphore: DispatchSemaphore,
+        ioLimiter: DuplicateHashReadLimiter,
         recordBytesRead: ((Int) -> Void)?,
         cancellation: ScanCancellation?
     ) throws -> PrefixHashedStorageItem? {
-        ioSemaphore.wait()
-        defer { ioSemaphore.signal() }
+        ioLimiter.wait()
+        defer { ioLimiter.signal() }
 
         do {
             let result = try prefixChecksum(
@@ -1487,13 +1493,13 @@ public final class FileSystemScanner {
     }
 
     /// Hashes one item, consulting the persisted `hashCache` fast-path before falling back
-    /// to a full `sha256Checksum` read. I/O is throttled through `ioSemaphore`; cache writes
+    /// to a full `sha256Checksum` read. I/O is throttled through `ioLimiter`; cache writes
     /// are serialised through `cacheLock`. Returns `nil` for per-file read failures (logged
     /// via os_signpost so Instruments shows what was skipped), and re-throws
     /// `FileSystemScannerError.cancelled` so the caller can abort the whole batch.
     private func hashedFormItem(
         _ item: StorageItem,
-        ioSemaphore: DispatchSemaphore,
+        ioLimiter: DuplicateHashReadLimiter,
         cacheLock: NSLock,
         recordBytesRead: ((Int) -> Void)?,
         cancellation: ScanCancellation?
@@ -1504,8 +1510,8 @@ public final class FileSystemScanner {
             return HashedStorageItem(checksum: cached, item: item)
         }
 
-        ioSemaphore.wait()
-        defer { ioSemaphore.signal() }
+        ioLimiter.wait()
+        defer { ioLimiter.signal() }
 
         do {
             let checksum = try sha256Checksum(
@@ -1526,6 +1532,43 @@ public final class FileSystemScanner {
                         "path=%{public}@ reason=%{public}@", item.url.path, "\(error)")
             return nil
         }
+    }
+}
+
+/// Couples the duplicate verifier's file-handle budget with a measured peak so release
+/// benchmarks can prove descriptor use stayed bounded instead of inferring it from a
+/// semaphore constant. A permit is acquired immediately before opening a `FileHandle`
+/// and released after the handle's deferred close path has run.
+private final class DuplicateHashReadLimiter: @unchecked Sendable {
+    private struct State {
+        var activeOpenFiles = 0
+        var peakOpenFiles = 0
+    }
+
+    private let semaphore: DispatchSemaphore
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    init(capacity: Int) {
+        semaphore = DispatchSemaphore(value: max(1, capacity))
+    }
+
+    func wait() {
+        semaphore.wait()
+        state.withLock { state in
+            state.activeOpenFiles += 1
+            state.peakOpenFiles = max(state.peakOpenFiles, state.activeOpenFiles)
+        }
+    }
+
+    func signal() {
+        state.withLock { state in
+            state.activeOpenFiles = max(0, state.activeOpenFiles - 1)
+        }
+        semaphore.signal()
+    }
+
+    var peakOpenFiles: Int {
+        state.withLock { $0.peakOpenFiles }
     }
 }
 
@@ -2524,6 +2567,7 @@ private final class ScanAccumulator {
     var inaccessibleItemCount = 0
     var totalBytes: Int64 = 0
     private(set) var duplicateVerificationBytesRead: Int64 = 0
+    private(set) var duplicateVerificationPeakOpenFiles = 0
     private(set) var snapshotBuildCount = 0
 
     /// Guards every mutable field above. Held briefly during directory enumeration's
@@ -2782,6 +2826,13 @@ private final class ScanAccumulator {
         guard bytes > 0 else { return }
         lock.lock()
         duplicateVerificationBytesRead += Int64(bytes)
+        lock.unlock()
+    }
+
+    func recordDuplicateVerificationPeakOpenFiles(_ count: Int) {
+        guard count > 0 else { return }
+        lock.lock()
+        duplicateVerificationPeakOpenFiles = max(duplicateVerificationPeakOpenFiles, count)
         lock.unlock()
     }
 

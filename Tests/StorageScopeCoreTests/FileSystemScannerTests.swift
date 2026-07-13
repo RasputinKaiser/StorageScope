@@ -1040,6 +1040,7 @@ struct FileSystemScannerTests {
         #expect(text.contains("Duplicate candidates:"))
         #expect(text.contains("Duplicate evictions:"))
         #expect(text.contains("Duplicate verification:"))
+        #expect(text.contains("Duplicate verification peak open files:"))
         #expect(text.contains("Snapshots built:"))
         #expect(text.contains("Results are local only."))
         #expect(!text.contains(temporaryRoot.deletingLastPathComponent().path))

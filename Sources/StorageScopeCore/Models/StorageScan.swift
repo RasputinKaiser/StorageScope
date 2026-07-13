@@ -36,6 +36,7 @@ public struct StorageScan: Sendable {
     public let snapshotBuildCount: Int
     public let duplicateVerificationDuration: TimeInterval
     public let duplicateVerificationBytesRead: Int64
+    public let duplicateVerificationPeakOpenFiles: Int
     public let enumerateDuration: TimeInterval
     public let cleanupCandidates: [CleanupCandidate]
     public let isPartial: Bool
@@ -68,6 +69,7 @@ public struct StorageScan: Sendable {
         snapshotBuildCount: Int = 0,
         duplicateVerificationDuration: TimeInterval = 0,
         duplicateVerificationBytesRead: Int64 = 0,
+        duplicateVerificationPeakOpenFiles: Int = 0,
         enumerateDuration: TimeInterval = 0,
         cleanupCandidates: [CleanupCandidate],
         isPartial: Bool = false,
@@ -98,6 +100,7 @@ public struct StorageScan: Sendable {
         self.snapshotBuildCount = snapshotBuildCount
         self.duplicateVerificationDuration = duplicateVerificationDuration
         self.duplicateVerificationBytesRead = duplicateVerificationBytesRead
+        self.duplicateVerificationPeakOpenFiles = duplicateVerificationPeakOpenFiles
         self.enumerateDuration = enumerateDuration
         self.cleanupCandidates = cleanupCandidates
         self.isPartial = isPartial
@@ -144,6 +147,7 @@ public struct StorageScan: Sendable {
             snapshotBuildCount: 0,
             duplicateVerificationDuration: 0,
             duplicateVerificationBytesRead: 0,
+            duplicateVerificationPeakOpenFiles: 0,
             enumerateDuration: finishedAt.timeIntervalSince(startedAt),
             cleanupCandidates: cleanupCandidates,
             isPartial: false,
