@@ -18,6 +18,7 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
     public let verifiedDuplicateGroupCount: Int
     public let duplicateVerificationDuration: TimeInterval
     public let duplicateVerificationBytesRead: Int64
+    public let duplicateVerificationPeakOpenFiles: Int
     public let enumerateDuration: TimeInterval
     public let verifyDuration: TimeInterval
     public let persistDuration: TimeInterval
@@ -56,6 +57,7 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
         self.verifiedDuplicateGroupCount = scan.verifiedDuplicateGroups.count
         self.duplicateVerificationDuration = scan.duplicateVerificationDuration
         self.duplicateVerificationBytesRead = scan.duplicateVerificationBytesRead
+        self.duplicateVerificationPeakOpenFiles = scan.duplicateVerificationPeakOpenFiles
         self.enumerateDuration = scan.enumerateDuration
         self.verifyDuration = scan.duplicateVerificationDuration
         self.persistDuration = persistDuration
@@ -84,6 +86,7 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
             "Verified duplicate groups: \(verifiedDuplicateGroupCount.formatted())",
             "Duplicate verification: \(Self.seconds(duplicateVerificationDuration))",
             "Duplicate verification bytes read: \(Self.bytes(duplicateVerificationBytesRead))",
+            "Duplicate verification peak open files: \(duplicateVerificationPeakOpenFiles.formatted())",
             "Enumerate duration: \(Self.seconds(enumerateDuration))",
             "Verify duration: \(Self.seconds(verifyDuration))",
             "Persist duration: \(Self.seconds(persistDuration))",
