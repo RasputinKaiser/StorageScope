@@ -23,6 +23,9 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
     public let persistDuration: TimeInterval
     public let cleanupCandidateCount: Int
     public let peakMemoryBytes: UInt64?
+    public let rescanKind: StorageScan.RescanKind
+    public let incrementalDirtySubtreeCount: Int
+    public let incrementalFallbackReason: String?
 
     /// Sum of the three instrumented phases (enumerate + verify + persist). This typically
     /// under-shoots `duration` because bookkeeping between phases (cleanup candidate
@@ -58,6 +61,9 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
         self.persistDuration = persistDuration
         self.cleanupCandidateCount = scan.cleanupCandidates.count
         self.peakMemoryBytes = peakMemoryBytes
+        self.rescanKind = scan.rescanKind
+        self.incrementalDirtySubtreeCount = scan.incrementalDirtySubtreeCount
+        self.incrementalFallbackReason = scan.incrementalFallbackReason
     }
 
     public var text: String {
@@ -84,6 +90,9 @@ public struct ScanBenchmarkReport: Hashable, Sendable {
             "Phase total (enum+verify+persist): \(Self.seconds(totalDuration))",
             "Cleanup candidates: \(cleanupCandidateCount.formatted())",
             "Peak memory: \(peakMemoryBytes.map(Self.bytes) ?? "unavailable")",
+            "Rescan mode: \(rescanKind.rawValue)",
+            "Incremental dirty subtrees: \(incrementalDirtySubtreeCount.formatted())",
+            "Incremental fallback: \(incrementalFallbackReason ?? "none")",
             "Results are local only."
         ].joined(separator: "\n")
     }

@@ -115,6 +115,9 @@ public final class FileSystemScanner {
     private let fileManager: FileManager
     private let hashCache: DuplicateHashCache?
     private let walkerMode: FileSystemScannerWalkerMode
+    private let incrementalPersistence: IncrementalScanPersistence?
+    private let incrementalChangeSource: IncrementalChangeSource?
+    private let incrementalTrustButVerify: Bool
     private let resourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey,
         .isRegularFileKey,
@@ -128,22 +131,40 @@ public final class FileSystemScanner {
         .contentModificationDateKey
     ]
 
-    public convenience init(fileManager: FileManager = .default, hashCache: DuplicateHashCache? = nil) {
+    public convenience init(
+        fileManager: FileManager = .default,
+        hashCache: DuplicateHashCache? = nil,
+        incrementalRescans: Bool = false
+    ) {
+        let environment = ProcessInfo.processInfo.environment
+        let incrementalEnabled = environment["STORAGESCOPE_LEGACY_WALKER"] != "1" &&
+            (incrementalRescans || environment["STORAGESCOPE_INCREMENTAL_RESCAN"] == "1")
         self.init(
             fileManager: fileManager,
             hashCache: hashCache,
-            walkerMode: Self.configuredWalkerMode()
+            walkerMode: Self.configuredWalkerMode(),
+            incrementalPersistence: incrementalEnabled
+                ? IncrementalScanPersistence(baseURL: IncrementalScanPersistence.defaultBaseURL(fileManager: fileManager), fileManager: fileManager)
+                : nil,
+            incrementalChangeSource: incrementalEnabled ? SystemFSEventsChangeSource() : nil,
+            incrementalTrustButVerify: incrementalEnabled && environment["STORAGESCOPE_INCREMENTAL_TRUST_VERIFY"] != "0"
         )
     }
 
     init(
         fileManager: FileManager = .default,
         hashCache: DuplicateHashCache? = nil,
-        walkerMode: FileSystemScannerWalkerMode
+        walkerMode: FileSystemScannerWalkerMode,
+        incrementalPersistence: IncrementalScanPersistence? = nil,
+        incrementalChangeSource: IncrementalChangeSource? = nil,
+        incrementalTrustButVerify: Bool = false
     ) {
         self.fileManager = fileManager
         self.hashCache = hashCache
-        self.walkerMode = walkerMode
+        self.walkerMode = incrementalPersistence == nil ? walkerMode : .fixedWorker
+        self.incrementalPersistence = incrementalPersistence
+        self.incrementalChangeSource = incrementalChangeSource
+        self.incrementalTrustButVerify = incrementalTrustButVerify
     }
 
     private static func configuredWalkerMode() -> FileSystemScannerWalkerMode {
@@ -175,8 +196,23 @@ public final class FileSystemScanner {
                     "root=%{public}@", rootURL.path)
 
         let startedAt = Date()
+        try cancellation?.check()
+        if let reused = try reuseUnchangedScanIfAvailable(
+            rootURL: rootURL,
+            options: options,
+            startedAt: startedAt,
+            cancellation: cancellation,
+            progress: progress
+        ) {
+            os_signpost(.end, log: Self.log, name: "scan", signpostID: Self.signpostID,
+                        "items=%d verified=%d", reused.scannedItemCount, reused.verifiedDuplicateGroups.count)
+            return reused
+        }
         let accumulator = ScanAccumulator(options: options, progress: progress, onSnapshot: onSnapshot, rootURL: rootURL, startedAt: startedAt)
         let rootItem: StorageItem
+        let rescanKind: StorageScan.RescanKind
+        let incrementalDirtySubtreeCount: Int
+        let incrementalFallbackReason: String?
         switch walkerMode {
         case .legacy:
             rootItem = try scanItem(
@@ -186,13 +222,20 @@ public final class FileSystemScanner {
                 accumulator: accumulator,
                 depth: 0
             )
+            rescanKind = .full
+            incrementalDirtySubtreeCount = 0
+            incrementalFallbackReason = nil
         case .fixedWorker:
-            rootItem = try scanWithFixedWorker(
+            let fixedWorkerResult = try scanWithFixedWorker(
                 at: rootURL,
                 options: options,
                 cancellation: cancellation,
                 accumulator: accumulator
             )
+            rootItem = fixedWorkerResult.rootItem
+            rescanKind = fixedWorkerResult.rescanKind
+            incrementalDirtySubtreeCount = fixedWorkerResult.dirtySubtreeCount
+            incrementalFallbackReason = fixedWorkerResult.fallbackReason
         }
         let retainedItems = rootItem.flattened()
         let duplicateSizeGroups = accumulator.duplicateSizeGroups
@@ -211,7 +254,7 @@ public final class FileSystemScanner {
         os_signpost(.end, log: Self.log, name: "scan", signpostID: Self.signpostID,
                     "items=%d verified=%d", accumulator.scannedItemCount, verifiedDuplicateGroups.count)
 
-        return StorageScan(
+        let finalScan = StorageScan(
             rootURL: rootURL,
             startedAt: startedAt,
             finishedAt: finishedAt,
@@ -241,8 +284,106 @@ public final class FileSystemScanner {
                 verifiedDuplicateGroups: verifiedDuplicateGroups,
                 limit: options.maxRankedResults
             ),
-            isPartial: false
+            isPartial: false,
+            rescanKind: rescanKind,
+            incrementalDirtySubtreeCount: incrementalDirtySubtreeCount,
+            incrementalFallbackReason: incrementalFallbackReason
         )
+        storeIncrementalScanInMemory(finalScan, options: options)
+        return finalScan
+    }
+
+    private func reuseUnchangedScanIfAvailable(
+        rootURL: URL,
+        options: ScanOptions,
+        startedAt: Date,
+        cancellation: ScanCancellation?,
+        progress: ProgressHandler?
+    ) throws -> StorageScan? {
+        guard walkerMode == .fixedWorker,
+              let incrementalPersistence,
+              let incrementalChangeSource,
+              let volumeIdentity = IncrementalVolumeIdentity.read(from: rootURL) else {
+            return nil
+        }
+        try cancellation?.check()
+        let fingerprint = IncrementalScanOptionsFingerprint(options)
+        guard let entry = IncrementalScanMemoryCache.shared.entry(
+            rootURL: rootURL,
+            volumeIdentity: volumeIdentity,
+            options: fingerprint,
+            cacheIdentity: incrementalPersistence.cacheIdentity(rootURL: rootURL)
+        ) else {
+            return nil
+        }
+        let checkpoint = incrementalChangeSource.currentEventID()
+        guard entry.checkpoint <= checkpoint else { return nil }
+        let changes: IncrementalChangeSet
+        if incrementalChangeSource is SystemFSEventsChangeSource,
+           let liveChanges = LiveFSEventsMonitorRegistry.shared.flushAndDrainIfReady(rootURL: rootURL) {
+            changes = liveChanges
+        } else if entry.checkpoint == checkpoint {
+            changes = IncrementalChangeSet(paths: [], requiresFullScan: false, reason: nil)
+        } else {
+            changes = incrementalChangeSource.changes(rootURL: rootURL, since: entry.checkpoint)
+        }
+        guard !changes.requiresFullScan, changes.paths.isEmpty else {
+            return nil
+        }
+
+        try cancellation?.check()
+        try incrementalPersistence.saveCheckpoint(checkpoint, rootURL: rootURL)
+        let finishedAt = Date()
+        let reused = entry.scan.reusedIncrementally(startedAt: startedAt, finishedAt: finishedAt)
+        if let cacheIdentity = incrementalPersistence.cacheIdentity(rootURL: rootURL) {
+            IncrementalScanMemoryCache.shared.store(
+                scan: reused,
+                checkpoint: checkpoint,
+                volumeIdentity: volumeIdentity,
+                options: fingerprint,
+                cacheIdentity: cacheIdentity
+            )
+        }
+        progress?(ScanProgress(
+            scannedItemCount: reused.scannedItemCount,
+            totalBytes: reused.totalBytes,
+            currentPath: rootURL.path,
+            phase: .enumerating
+        ))
+        schedulePersistedTrustVerification(rootURL: rootURL, options: options)
+        return reused
+    }
+
+    private func storeIncrementalScanInMemory(_ scan: StorageScan, options: ScanOptions) {
+        guard let incrementalPersistence,
+              let volumeIdentity = IncrementalVolumeIdentity.read(from: scan.rootURL),
+              let checkpoint = incrementalPersistence.loadCheckpoint(rootURL: scan.rootURL),
+              let cacheIdentity = incrementalPersistence.cacheIdentity(rootURL: scan.rootURL) else {
+            return
+        }
+        IncrementalScanMemoryCache.shared.store(
+            scan: scan,
+            checkpoint: checkpoint,
+            volumeIdentity: volumeIdentity,
+            options: IncrementalScanOptionsFingerprint(options),
+            cacheIdentity: cacheIdentity
+        )
+    }
+
+    private func schedulePersistedTrustVerification(rootURL: URL, options: ScanOptions) {
+        guard incrementalTrustButVerify,
+              let incrementalPersistence else { return }
+        DispatchQueue.global(qos: .utility).async {
+            guard let expected = try? incrementalPersistence.load(rootURL: rootURL) else {
+                incrementalPersistence.invalidate(rootURL: rootURL)
+                return
+            }
+            self.scheduleIncrementalTrustVerification(
+                expected: expected,
+                rootURL: rootURL,
+                options: options
+            )
+        }
     }
 
     /// Hashes every item in `group` and returns verified duplicate groups (matching SHA-256,
@@ -495,8 +636,13 @@ public final class FileSystemScanner {
         options: ScanOptions,
         cancellation: ScanCancellation?,
         accumulator: ScanAccumulator
-    ) throws -> StorageItem {
-        let prepared: (rootSummary: FixedWorkerItemSummary?, summaryStore: FixedWorkerSummaryStore?)
+    ) throws -> (
+        rootItem: StorageItem,
+        rescanKind: StorageScan.RescanKind,
+        dirtySubtreeCount: Int,
+        fallbackReason: String?
+    ) {
+        let prepared: FixedWorkerPreparedSummary
         do {
             prepared = try prepareFixedWorkerSummary(
                 at: rootURL,
@@ -511,18 +657,19 @@ public final class FileSystemScanner {
             // record set is available. If a worker-only failure escapes the
             // filesystem error handling below, retry the root through the legacy
             // implementation rather than returning a partial tree.
-            return try scanItem(
+            let rootItem = try scanItem(
                 at: rootURL,
                 options: options,
                 cancellation: cancellation,
                 accumulator: accumulator,
                 depth: 0
             )
+            return (rootItem, .full, 0, "fixed-worker-failed")
         }
 
         guard let rootSummary = prepared.rootSummary,
               let summaryStore = prepared.summaryStore else {
-            return StorageItem(
+            let rootItem = StorageItem(
                 url: rootURL,
                 kind: .other,
                 byteSize: 0,
@@ -533,9 +680,15 @@ public final class FileSystemScanner {
                 isReadable: false,
                 fileExtension: nil
             )
+            return (rootItem, prepared.rescanKind, prepared.dirtySubtreeCount, prepared.fallbackReason)
         }
 
-        return summaryStore.makeItem(summary: rootSummary, urlOverride: rootURL)
+        return (
+            summaryStore.makeItem(summary: rootSummary, urlOverride: rootURL),
+            prepared.rescanKind,
+            prepared.dirtySubtreeCount,
+            prepared.fallbackReason
+        )
     }
 
     private func prepareFixedWorkerSummary(
@@ -543,22 +696,21 @@ public final class FileSystemScanner {
         options: ScanOptions,
         cancellation: ScanCancellation?,
         accumulator: ScanAccumulator
-    ) throws -> (
-        rootSummary: FixedWorkerItemSummary?,
-        summaryStore: FixedWorkerSummaryStore?
-    ) {
-        let walker = FixedWorkerDirectoryWalker(
-            fileManager: fileManager,
-            resourceKeys: resourceKeys,
+    ) throws -> FixedWorkerPreparedSummary {
+        let preparedWalk = try prepareFixedWorkerWalk(
+            at: rootURL,
             options: options,
-            cancellation: cancellation,
-            shouldExclude: { url in
-                options.excludeEnabled && Self.isExcluded(url, options: options)
-            }
+            cancellation: cancellation
         )
-        let result = try walker.walk(root: rootURL)
+        let result = preparedWalk.result
         guard let rootMetadata = result.rootMetadata else {
-            return (nil, nil)
+            return FixedWorkerPreparedSummary(
+                rootSummary: nil,
+                summaryStore: nil,
+                rescanKind: preparedWalk.rescanKind,
+                dirtySubtreeCount: preparedWalk.dirtySubtreeCount,
+                fallbackReason: preparedWalk.fallbackReason
+            )
         }
 
         let (rootSummary, summaryStore) = try buildFixedWorkerSummaryStore(
@@ -569,7 +721,277 @@ public final class FileSystemScanner {
             accumulator: accumulator,
             rootURL: rootURL
         )
-        return (rootSummary, summaryStore)
+        return FixedWorkerPreparedSummary(
+            rootSummary: rootSummary,
+            summaryStore: summaryStore,
+            rescanKind: preparedWalk.rescanKind,
+            dirtySubtreeCount: preparedWalk.dirtySubtreeCount,
+            fallbackReason: preparedWalk.fallbackReason
+        )
+    }
+
+    private func prepareFixedWorkerWalk(
+        at rootURL: URL,
+        options: ScanOptions,
+        cancellation: ScanCancellation?
+    ) throws -> FixedWorkerPreparedWalk {
+        let walker = makeFixedWorkerWalker(rootOptions: options, cancellation: cancellation)
+        guard let incrementalPersistence,
+              let incrementalChangeSource else {
+            return FixedWorkerPreparedWalk(
+                result: try walker.walk(root: rootURL),
+                rescanKind: .full,
+                dirtySubtreeCount: 0,
+                fallbackReason: nil
+            )
+        }
+
+        let checkpointBeforeWalk = incrementalChangeSource.currentEventID()
+        if incrementalChangeSource is SystemFSEventsChangeSource {
+            LiveFSEventsMonitorRegistry.shared.ensure(
+                rootURL: rootURL,
+                since: checkpointBeforeWalk
+            )
+        }
+        let standardizedRootPath = rootURL.standardizedFileURL.path
+        let fingerprint = IncrementalScanOptionsFingerprint(options)
+        let volumeIdentity = IncrementalVolumeIdentity.read(from: rootURL)
+        var fallbackReason: String?
+
+        do {
+            var tree = try incrementalPersistence.load(rootURL: rootURL)
+            guard tree.schemaVersion == PersistedWalkTree.schemaVersion else {
+                throw IncrementalScanFallback.schemaIncompatible
+            }
+            guard tree.standardizedRootPath == standardizedRootPath else {
+                throw IncrementalScanFallback.rootChanged
+            }
+            guard let volumeIdentity, tree.volumeIdentity == volumeIdentity else {
+                throw IncrementalScanFallback.volumeChanged
+            }
+            guard tree.options == fingerprint else {
+                throw IncrementalScanFallback.optionsChanged
+            }
+            guard tree.checkpoint <= checkpointBeforeWalk else {
+                throw IncrementalScanFallback.eventHistoryUnavailable
+            }
+            let changes = tree.checkpoint == checkpointBeforeWalk
+                ? IncrementalChangeSet(paths: [], requiresFullScan: false, reason: nil)
+                : incrementalChangeSource.changes(rootURL: rootURL, since: tree.checkpoint)
+            guard !changes.requiresFullScan else {
+                fallbackReason = changes.reason ?? IncrementalScanFallback.eventHistoryUnavailable.rawValue
+                throw IncrementalScanFallback.eventHistoryUnavailable
+            }
+            let dirtySubtrees = try incrementalDirtySubtrees(
+                eventPaths: changes.paths,
+                rootURL: rootURL,
+                fileManager: fileManager
+            )
+            guard dirtySubtrees.count <= 128 else {
+                throw IncrementalScanFallback.tooManyDirtySubtrees
+            }
+
+            if dirtySubtrees.isEmpty {
+                tree.checkpoint = checkpointBeforeWalk
+                try incrementalPersistence.saveCheckpoint(checkpointBeforeWalk, rootURL: rootURL)
+                let result = try tree.makeWalkResult()
+                scheduleIncrementalTrustVerification(
+                    expected: tree,
+                    rootURL: rootURL,
+                    options: options
+                )
+                return FixedWorkerPreparedWalk(
+                    result: result,
+                    rescanKind: .incrementalUnchanged,
+                    dirtySubtreeCount: 0,
+                    fallbackReason: nil
+                )
+            }
+
+            for relativePath in dirtySubtrees {
+                try cancellation?.check()
+                let subtreeURL = relativePath.isEmpty
+                    ? rootURL
+                    : rootURL.appendingPathComponent(relativePath, isDirectory: true)
+                var isDirectory: ObjCBool = false
+                if fileManager.fileExists(atPath: subtreeURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                    let subtreeResult = try walker.walk(root: subtreeURL)
+                    let replacement = try PersistedWalkTree(
+                        result: subtreeResult,
+                        rootURL: subtreeURL,
+                        volumeIdentity: volumeIdentity,
+                        options: fingerprint,
+                        checkpoint: checkpointBeforeWalk
+                    )
+                    try tree.replaceSubtree(at: relativePath, with: replacement)
+                } else {
+                    try tree.replaceSubtree(at: relativePath, with: nil)
+                }
+            }
+            tree.checkpoint = checkpointBeforeWalk
+            try incrementalPersistence.save(tree, rootURL: rootURL)
+            if incrementalChangeSource is SystemFSEventsChangeSource {
+                LiveFSEventsMonitorRegistry.shared.restart(
+                    rootURL: rootURL,
+                    since: checkpointBeforeWalk
+                )
+            }
+            let result = try tree.makeWalkResult()
+            scheduleIncrementalTrustVerification(
+                expected: tree,
+                rootURL: rootURL,
+                options: options
+            )
+            return FixedWorkerPreparedWalk(
+                result: result,
+                rescanKind: .incrementalChanged,
+                dirtySubtreeCount: dirtySubtrees.count,
+                fallbackReason: nil
+            )
+        } catch let fallback as IncrementalScanFallback {
+            fallbackReason = fallbackReason ?? fallback.rawValue
+        } catch FileSystemScannerError.cancelled {
+            throw FileSystemScannerError.cancelled
+        } catch {
+            fallbackReason = IncrementalScanFallback.persistenceCorrupt.rawValue
+        }
+
+        if incrementalChangeSource is SystemFSEventsChangeSource {
+            LiveFSEventsMonitorRegistry.shared.restart(
+                rootURL: rootURL,
+                since: checkpointBeforeWalk
+            )
+        }
+        let fullResult = try walker.walk(root: rootURL)
+        if let volumeIdentity {
+            do {
+                let tree = try PersistedWalkTree(
+                    result: fullResult,
+                    rootURL: rootURL,
+                    volumeIdentity: volumeIdentity,
+                    options: fingerprint,
+                    checkpoint: checkpointBeforeWalk
+                )
+                try incrementalPersistence.save(tree, rootURL: rootURL)
+            } catch {
+                fallbackReason = fallbackReason ?? "persistence-write-failed"
+            }
+        } else {
+            fallbackReason = fallbackReason ?? IncrementalScanFallback.volumeChanged.rawValue
+        }
+        return FixedWorkerPreparedWalk(
+            result: fullResult,
+            rescanKind: .full,
+            dirtySubtreeCount: 0,
+            fallbackReason: fallbackReason
+        )
+    }
+
+    private func makeFixedWorkerWalker(
+        rootOptions options: ScanOptions,
+        cancellation: ScanCancellation?
+    ) -> FixedWorkerDirectoryWalker {
+        FixedWorkerDirectoryWalker(
+            fileManager: fileManager,
+            resourceKeys: resourceKeys,
+            options: options,
+            cancellation: cancellation,
+            shouldExclude: { url in
+                options.excludeEnabled && Self.isExcluded(url, options: options)
+            }
+        )
+    }
+
+    private func incrementalDirtySubtrees(
+        eventPaths: [String],
+        rootURL: URL,
+        fileManager: FileManager
+    ) throws -> [String] {
+        let rootPath = IncrementalPathIdentity.canonicalPath(rootURL.path, fileManager: fileManager)
+        var candidates: Set<String> = []
+        for rawPath in eventPaths {
+            let path = IncrementalPathIdentity.canonicalPath(rawPath, fileManager: fileManager)
+            guard path == rootPath || path.hasPrefix(rootPath + "/") else {
+                continue
+            }
+            if path == rootPath {
+                candidates.insert("")
+                continue
+            }
+            var isDirectory: ObjCBool = false
+            let exists = fileManager.fileExists(atPath: path, isDirectory: &isDirectory)
+            let dirtyPath = exists && isDirectory.boolValue
+                ? path
+                : URL(fileURLWithPath: path).deletingLastPathComponent().path
+            if dirtyPath == rootPath {
+                candidates.insert("")
+            } else if dirtyPath.hasPrefix(rootPath + "/") {
+                candidates.insert(String(dirtyPath.dropFirst(rootPath.count + 1)))
+            } else {
+                throw IncrementalScanFallback.stateInconsistent
+            }
+        }
+
+        let ordered = candidates.sorted { lhs, rhs in
+            let lhsDepth = lhs.isEmpty ? 0 : lhs.split(separator: "/").count
+            let rhsDepth = rhs.isEmpty ? 0 : rhs.split(separator: "/").count
+            return lhsDepth == rhsDepth ? lhs < rhs : lhsDepth < rhsDepth
+        }
+        var coalesced: [String] = []
+        for candidate in ordered {
+            if coalesced.contains(where: { ancestor in
+                ancestor.isEmpty || candidate == ancestor || candidate.hasPrefix(ancestor + "/")
+            }) {
+                continue
+            }
+            coalesced.append(candidate)
+        }
+        return coalesced
+    }
+
+    private func scheduleIncrementalTrustVerification(
+        expected: PersistedWalkTree,
+        rootURL: URL,
+        options: ScanOptions
+    ) {
+        guard incrementalTrustButVerify,
+              let volumeIdentity = IncrementalVolumeIdentity.read(from: rootURL),
+              let incrementalPersistence,
+              IncrementalTrustVerificationRegistry.shared.begin(rootURL: rootURL) else {
+            return
+        }
+        let fileManager = self.fileManager
+        let resourceKeys = self.resourceKeys
+        DispatchQueue.global(qos: .utility).async {
+            defer { IncrementalTrustVerificationRegistry.shared.finish(rootURL: rootURL) }
+            let walker = FixedWorkerDirectoryWalker(
+                fileManager: fileManager,
+                resourceKeys: resourceKeys,
+                options: options,
+                cancellation: nil,
+                shouldExclude: { url in
+                    options.excludeEnabled && Self.isExcluded(url, options: options)
+                }
+            )
+            do {
+                let fullResult = try walker.walk(root: rootURL)
+                let fullTree = try PersistedWalkTree(
+                    result: fullResult,
+                    rootURL: rootURL,
+                    volumeIdentity: volumeIdentity,
+                    options: IncrementalScanOptionsFingerprint(options),
+                    checkpoint: expected.checkpoint
+                )
+                if fullTree.comparisonSignature != expected.comparisonSignature {
+                    incrementalPersistence.invalidate(rootURL: rootURL)
+                    os_log("incremental trust verification diverged; next scan must use full fallback",
+                           log: Self.log, type: .fault)
+                }
+            } catch {
+                os_log("incremental trust verification failed: %{public}@",
+                       log: Self.log, type: .error, String(describing: error))
+            }
+        }
     }
 
     private func buildFixedWorkerSummaryStore(
@@ -1113,7 +1535,7 @@ private extension StorageItem.Kind {
     }
 }
 
-private struct FixedWorkerResourceIdentifier: Hashable, Sendable {
+struct FixedWorkerResourceIdentifier: Hashable, Sendable {
     let low: UInt64
     let high: UInt64
 
@@ -1132,7 +1554,7 @@ private struct FixedWorkerMetadataSeed: Sendable {
     let hardLinkCount: UInt16
 }
 
-private struct FixedWorkerWalkRecord: Sendable {
+struct FixedWorkerWalkRecord: Sendable {
     let id: Int
     let parentID: Int
     let name: String
@@ -1156,15 +1578,30 @@ private struct FixedWorkerDirectoryJob: Sendable {
     let url: URL
 }
 
-private struct FixedWorkerDirectoryRecord: Sendable {
+struct FixedWorkerDirectoryRecord: Sendable {
     let metadata: FixedWorkerWalkRecord
     let children: [FixedWorkerWalkRecord]
     let isInaccessible: Bool
 }
 
-private struct FixedWorkerWalkResult: Sendable {
+struct FixedWorkerWalkResult: Sendable {
     let rootMetadata: FixedWorkerWalkRecord?
     let directoryRecords: [FixedWorkerDirectoryRecord]
+}
+
+private struct FixedWorkerPreparedWalk: Sendable {
+    let result: FixedWorkerWalkResult
+    let rescanKind: StorageScan.RescanKind
+    let dirtySubtreeCount: Int
+    let fallbackReason: String?
+}
+
+private struct FixedWorkerPreparedSummary {
+    let rootSummary: FixedWorkerItemSummary?
+    let summaryStore: FixedWorkerSummaryStore?
+    let rescanKind: StorageScan.RescanKind
+    let dirtySubtreeCount: Int
+    let fallbackReason: String?
 }
 
 private struct FixedWorkerCompactChild: Sendable {

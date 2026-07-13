@@ -111,6 +111,22 @@ Users re-scan the same folders repeatedly; today every re-scan pays full price. 
 
 Effort: L (the one new-feature-sized item). Risk: medium — correctness depends on FSEvents semantics; the trust-but-verify rollout and the fallback rules bound it.
 
+**Implemented 2026-07-13.** The app now uses the compact fixed-worker tree as a
+binary persisted snapshot and maintains a bounded live FSEvents monitor per recent
+root. Re-scans coalesce changed paths to ancestor subtrees, walk only those
+directories, splice them into the parent-indexed tree, and rebuild the public scan
+result. Missing/corrupt/incompatible state, volume or option changes, dropped or
+overflowed event history, inconsistent parent IDs, and excessive dirty-subtree counts
+all take a conservative full-walk fallback. A deduplicated background full walk
+compares names, kinds, sizes, timestamps, readability, inaccessible state, filesystem
+identities, and hard-link metadata; divergence invalidates the cache for the next scan.
+
+The final 100k kept-fixture release proof measured same-process unchanged re-scans at
+0.10 s and 0.07 s with 126.9 MB peak runtime memory. Cold-process persisted-tree
+reconstruction took 4.03 s and is not claimed as sub-second. Full commands, scope,
+and proof boundaries are recorded in
+`docs/perf-baselines/v0.7.1/phase3-incremental.md`.
+
 ### 3.2 Perceived performance during first scan
 
 - **Converge big numbers first:** walk the frontier largest-known-first (size from parent enumeration) so top-level folder sizes and the Overview stabilize in the first seconds even if leaves take longer.
@@ -282,8 +298,9 @@ three app runs. The opt-in proof is `ScanStoreAppPerformanceProofTests` and requ
 build plus `STORAGESCOPE_TESTING`, so ordinary release builds retain no debug counters or test
 drain hooks. Focused differential/fault/pause/cancel coverage passed 10 tests across 3 suites;
 the full rebased default suite passed 221 tests across 22 suites with the expensive proof skipped by
-default. All Phase 2 exit criteria are now satisfied. Phase 3 starts with tiered verification,
-hard-link reclaimability, and perceived-progress streaming.
+default. All Phase 2 exit criteria are now satisfied. Phase 3 incremental re-scan is
+implemented with trust-but-verify; tiered verification, hard-link reclaimability, and
+perceived-progress streaming remain follow-up tracks.
 
 ---
 
@@ -322,8 +339,8 @@ hard-link reclaimability, and perceived-progress streaming.
 | 0 | v0.7.2 | §6.1–2 hygiene + counters + re-baseline | Trustworthy baseline incl. profile committed |
 | 1 | v0.7.3 | §1 eviction fix + lock decomposition + heaps | `__psynch_mutexwait` < 5 % of samples; enumerate ≥ 5× vs Phase-0 baseline |
 | 2 | v0.8.0 | §2.1 worker-pool walker (flagged), §2.2.1–2 per-item costs, §2.3 app snapshot fix | Enumerate < 10 s; pause/cancel green on both walkers; in-app scan within 15 % of benchmark scan |
-| 3 | v0.8.1 | §3.3 tiered hashing; §3.2 perceived-perf streaming | Verification bytes −90 % on duplicates fixture; hard links excluded; Overview stable < 3 s into a 100 k scan |
-| 4 | v0.9.0 | §4 walk records; §2.2.3 `getattrlistbulk` (flagged); §3.1 incremental re-scan (trust-but-verify) | RSS < 150 MB @ 100 k; unchanged-tree re-scan < 1 s; bulk backend ≥ 2× with identical trees |
+| 3 | v0.8.1 | §3.1 incremental re-scan (trust-but-verify) | Same-process unchanged-tree re-scan < 1 s; RSS < 150 MB @ 100 k; mutation and fallback parity green |
+| 4 | v0.9.0 | §4 remaining memory work; §2.2.3 `getattrlistbulk` (flagged); §3.2–3 tiered verification and perceived-progress follow-ups | Verification bytes −90 % on duplicates fixture; hard links excluded; bulk backend ≥ 2× with identical trees |
 | 5 | v0.9.x | §5 `@Observable` + search keys | SwiftUI update count during live scan −80 %; no dropped frames typing in filter @ 25 k items |
 
 **Decision rule** (replacing PLAN §6.3's debug-based thresholds): each phase re-runs fixtures in release, 3 runs, medians, warm *and* cold. A change ships if its target counter improves ≥ 10 % without regressing any other counter > 5 %; otherwise it stays flagged and the hypothesis table is updated with the measured result. Any claim of "X is the bottleneck" must cite a profile, not code reading — this document needed two corrections for exactly that reason.

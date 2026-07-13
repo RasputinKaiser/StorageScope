@@ -14,12 +14,13 @@ struct BenchmarkArguments {
     /// Fraction in [0, 1] of `items` that become content-identical duplicates. Stored
     /// as the raw user-supplied string so we can validate before parsing (e.g. 0.05 = 5%).
     var duplicateRatio: Double = 0
+    var repeatCount = 1
 }
 
 func usage() -> String {
     """
     Usage:
-      StorageScopeBenchmark [--show-full-path] <folder>
+      StorageScopeBenchmark [--show-full-path] [--repeat <n>] <folder>
       StorageScopeBenchmark --synthetic [--keep-fixture] [--show-full-path]
       StorageScopeBenchmark --synthetic --items <n> [--depth <d>] [--duplicates <0..1>] [--keep-fixture]
 
@@ -31,6 +32,7 @@ func usage() -> String {
     Examples:
       swift run StorageScopeBenchmark --synthetic --items 100000 --depth 8 --duplicates 0.2
       swift run StorageScopeBenchmark --synthetic --items 500000 --depth 12 --keep-fixture
+      STORAGESCOPE_INCREMENTAL_RESCAN=1 swift run -c release StorageScopeBenchmark --repeat 3 <folder>
     """
 }
 
@@ -73,6 +75,12 @@ func parseArguments(_ rawArguments: [String]) throws -> BenchmarkArguments {
                 throw BenchmarkError.invalidArgument("--duplicates requires a fraction in [0,1], got \(raw)")
             }
             arguments.duplicateRatio = parsed
+        case "--repeat":
+            let raw = try consumeNextValue(flag: value)
+            guard let parsed = Int(raw), parsed > 0 else {
+                throw BenchmarkError.invalidArgument("--repeat requires a positive integer, got \(raw)")
+            }
+            arguments.repeatCount = parsed
         case "-h", "--help":
             print(usage())
             exit(0)
@@ -140,11 +148,17 @@ do {
         cleanup?()
     }
 
-    let report = try ScanBenchmarkRunner().run(
-        rootURL: rootURL,
-        showFullPath: arguments.showFullPath
-    )
-    print(report.text)
+    let runner = ScanBenchmarkRunner()
+    for run in 1...arguments.repeatCount {
+        if arguments.repeatCount > 1 {
+            print("Run \(run)/\(arguments.repeatCount)")
+        }
+        let report = try runner.run(
+            rootURL: rootURL,
+            showFullPath: arguments.showFullPath
+        )
+        print(report.text)
+    }
 } catch {
     let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
     FileHandle.standardError.write(
