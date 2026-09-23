@@ -21,7 +21,10 @@ struct SizeBar: View {
         Canvas { context, size in
             let track = Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 4)
             context.fill(track, with: .style(.quaternary))
-            let width = min(max(minimumWidth, size.width * CGFloat(fraction)), size.width)
+            let proportion = fraction.isFinite ? min(max(fraction, 0), 1) : 0
+            let width = proportion > 0
+                ? min(max(minimumWidth, size.width * CGFloat(proportion)), size.width)
+                : 0
             let bar = Path(
                 roundedRect: CGRect(x: 0, y: 0, width: width, height: size.height),
                 cornerRadius: 4

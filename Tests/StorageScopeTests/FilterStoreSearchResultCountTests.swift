@@ -27,11 +27,13 @@ struct FilterStoreSearchResultCountTests {
         #expect((store.filters.searchResultCount ?? 0) > 0)
     }
 
-    @Test("searchResultCount reflects subtree matches, includes parent folders")
-    func reflectsSubtreeCount() async throws {
+    @Test("searchResultCount excludes ancestors retained only for navigation")
+    func excludesAncestorCount() async throws {
         let store = await makeStoreWithReadyScan()
         store.filters.query = "alpha"
-        #expect(store.filters.searchResultCount == store.filters.searchSubtreeMatchIDs?.count)
+        #expect(store.filters.searchResultCount == 2)
+        #expect(store.filters.searchResultIDs?.count == 2)
+        #expect(store.filters.searchSubtreeMatchIDs?.count == 3)
     }
 
     @Test("searchResultCount is zero when query has no matches")

@@ -175,6 +175,7 @@ private struct SidebarSmartButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(view.title)
         .accessibilityHint(view.subtitle)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -304,8 +305,14 @@ private struct ScanStatusFooter: View {
         VStack(alignment: .leading, spacing: 8) {
             if store.isScanning {
                 HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
+                    if store.isScanPaused {
+                        Image(systemName: "pause.circle.fill")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Scanning folder")
+                    }
                     Text(store.isScanPaused ? "Paused" : store.scanStage.title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)

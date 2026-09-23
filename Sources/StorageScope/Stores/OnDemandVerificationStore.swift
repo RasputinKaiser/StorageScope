@@ -25,6 +25,8 @@ final class OnDemandVerificationStore: ObservableObject {
     /// spinner + "Verifying…" label in the same-size candidate UI.
     @Published private(set) var verifyingGroupIDs: Set<String> = []
 
+    typealias VerifyGroup = @Sendable (DuplicateSizeGroup, ScanCancellation) throws -> [VerifiedDuplicateGroup]
+    private let verifyGroup: VerifyGroup
     private let hashCache: DuplicateHashCache
     private let scanLookup: () -> StorageScan?
     private let coordinateInvalidate: () -> Void
@@ -41,14 +43,18 @@ final class OnDemandVerificationStore: ObservableObject {
     /// after hashing) are intentionally absent from `verifiedGroupsByChecksum`, so the
     /// item-coverage check in `isGroupAlreadyVerified` would incorrectly re-verify them.
     /// Tracking completed IDs separately ensures re-verify taps are always a no-op.
-    private var completedVerificationGroupIDs: Set<String> = []
+    @Published private var completedVerificationGroupIDs: Set<String> = []
 
     init(
         hashCache: DuplicateHashCache,
         scanLookup: @escaping () -> StorageScan?,
         coordinateInvalidate: @escaping () -> Void,
-        reportError: @escaping (String) -> Void
+        reportError: @escaping (String) -> Void,
+        verifyGroup: VerifyGroup? = nil
     ) {
+        self.verifyGroup = verifyGroup ?? { group, cancellation in
+            try FileSystemScanner(hashCache: hashCache).verifySizeGroup(group, cancellation: cancellation)
+        }
         self.hashCache = hashCache
         self.scanLookup = scanLookup
         self.coordinateInvalidate = coordinateInvalidate
@@ -65,7 +71,7 @@ final class OnDemandVerificationStore: ObservableObject {
 
         let cancellation = ScanCancellation()
         verifyCancellationsByID[group.id] = cancellation
-        let cache = hashCache
+        let verifyGroup = verifyGroup
 
         // Pass a `ScanCancellation` (in addition to the Swift Task) so hashing I/O bails
         // at the next read-chunk boundary instead of finishing the whole file before the
@@ -74,9 +80,8 @@ final class OnDemandVerificationStore: ObservableObject {
             let result: Result<[VerifiedDuplicateGroup], Error>
             do {
                 try Task.checkCancellation()
-                let groups = try await Task.detached(priority: .userInitiated) { [cache] in
-                    let scanner = FileSystemScanner(hashCache: cache)
-                    return try scanner.verifySizeGroup(group, cancellation: cancellation)
+                let groups = try await Task.detached(priority: .userInitiated) {
+                    try verifyGroup(group, cancellation)
                 }.value
 
                 // FileSystemScanner swallows `cancellation.check()` errors inside a `try?`
@@ -96,7 +101,9 @@ final class OnDemandVerificationStore: ObservableObject {
             }
 
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                // A cancelled attempt may finish after a retry for the same group.
+                // Only the current attempt owns the spinner, handles, and result.
+                guard let self, self.verifyCancellationsByID[group.id] === cancellation else { return }
                 self.verifyingGroupIDs.remove(group.id)
                 self.verifyCancellationsByID.removeValue(forKey: group.id)
                 self.verifyTasksByID.removeValue(forKey: group.id)
@@ -171,6 +178,11 @@ final class OnDemandVerificationStore: ObservableObject {
             verified.byteSize == group.byteSize &&
                 targetIDs.isSubset(of: Set(verified.items.map(\.id)))
         }
+    }
+
+    /// Completion records the attempt; only verifiedGroupsByChecksum proves duplicates.
+    func hasCompletedVerification(for group: DuplicateSizeGroup) -> Bool {
+        isGroupAlreadyVerified(group)
     }
 
     /// Reset state called from `ScanStore.scan(_:)`'s new-scan path. Drops verified

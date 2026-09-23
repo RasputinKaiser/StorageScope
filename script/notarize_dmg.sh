@@ -38,12 +38,12 @@ if [[ -z "$DMG_PATH" ]]; then
 fi
 
 if [[ ! -f "$DMG_PATH" ]]; then
-  echo "DMG does not exist: $DMG_PATH" >&2
+  echo "DMG does not exist at the supplied path." >&2
   exit 2
 fi
 
 if [[ "$DMG_PATH" != *.dmg ]]; then
-  echo "Path must end in .dmg: $DMG_PATH" >&2
+  echo "DMG path must end in .dmg." >&2
   exit 2
 fi
 
@@ -87,10 +87,22 @@ redact() {
   fi
 }
 
-echo "Notarizing DMG: $DMG_PATH"
+# Commands receive real paths, but their diagnostic output can include both the
+# DMG location and the private API key location. Preserve command failure via
+# pipefail while replacing those paths in console output.
+redact_paths() {
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line//"$DMG_PATH"/[DMG path]}"
+    line="${line//"$APP_STORE_CONNECT_API_KEY_FILEPATH"/[API key path]}"
+    printf '%s\n' "$line"
+  done
+}
+
+echo "Notarizing DMG: [DMG path]"
 echo "  API key id:   $(redact "$APP_STORE_CONNECT_API_KEY_ID")"
 echo "  Issuer id:    $(redact "$APP_STORE_CONNECT_API_ISSUER_ID")"
-echo "  Key filepath: $APP_STORE_CONNECT_API_KEY_FILEPATH"
+echo "  Key filepath: [API key path]"
 
 # --- Verify DMG is Developer ID-signed (not ad-hoc) ------------------------
 if ! command -v codesign >/dev/null 2>&1; then
@@ -120,7 +132,7 @@ EOF
   exit 2
 fi
 
-echo "DMG signature verified: $sign_authority"
+printf 'DMG signature verified: %s\n' "$sign_authority" | redact_paths
 
 # --- Submit to Apple's notary service --------------------------------------
 # --wait blocks until Apple finishes processing the submission.
@@ -129,16 +141,16 @@ xcrun notarytool submit "$DMG_PATH" \
   --key "$APP_STORE_CONNECT_API_KEY_FILEPATH" \
   --key-id "$APP_STORE_CONNECT_API_KEY_ID" \
   --issuer "$APP_STORE_CONNECT_API_ISSUER_ID" \
-  --wait
+  --wait 2>&1 | redact_paths
 
 # --- Staple the notarization ticket ----------------------------------------
 echo "Stapling notarization ticket..."
-xcrun stapler staple "$DMG_PATH"
+xcrun stapler staple "$DMG_PATH" 2>&1 | redact_paths
 
 # --- Verify notarization + signing -----------------------------------------
 echo "Validating staple and signature..."
-xcrun stapler validate "$DMG_PATH"
-codesign --verify --deep --strict "$DMG_PATH"
+xcrun stapler validate "$DMG_PATH" 2>&1 | redact_paths
+codesign --verify --deep --strict "$DMG_PATH" 2>&1 | redact_paths
 
 echo "Notarization complete."
-echo "$DMG_PATH"
+echo "[DMG path]"

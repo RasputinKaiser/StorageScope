@@ -4,6 +4,7 @@ public enum BatchTrashError: LocalizedError {
     case duplicateTargets
     case nestedTargets(parent: URL, child: URL)
     case missingTargets([URL])
+    case changedTargets([URL])
     case rollbackSucceeded(originalError: Error)
     case rollbackFailed(
         originalError: Error,
@@ -22,6 +23,9 @@ public enum BatchTrashError: LocalizedError {
         case .missingTargets(let urls):
             let names = urls.map(\.lastPathComponent).joined(separator: ", ")
             return "Some selected items no longer exist: \(names). Rescan before moving items to Trash."
+        case .changedTargets(let urls):
+            let names = urls.map(\.lastPathComponent).joined(separator: ", ")
+            return "These items changed since the scan or cleanup review: \(names). Rescan and review them again before moving them to Trash."
         case .rollbackSucceeded(let originalError):
             return "Trash failed and StorageScope restored the items it had already moved. Original error: \(originalError.localizedDescription)"
         case .rollbackFailed(let originalError, let rollbackError, let restored, let unrestored):
@@ -91,9 +95,10 @@ public struct TransactionalTrashMover {
         preflightResult(urls.map(\.standardizedFileURL))
     }
 
-    public func moveToTrash(_ urls: [URL]) throws {
+    public func moveToTrash(_ urls: [URL], validateTarget: ((URL) throws -> Void)? = nil) throws {
         let standardizedURLs = urls.map(\.standardizedFileURL)
         try preflightBatchTrash(standardizedURLs)
+        for url in standardizedURLs { try validateTarget?(url) }
         guard !standardizedURLs.isEmpty else {
             return
         }
@@ -102,6 +107,7 @@ public struct TransactionalTrashMover {
 
         do {
             for original in standardizedURLs {
+                try validateTarget?(original)
                 let trashedURL = try trashItem(original)
                 movedItems.append((original: original, trashed: trashedURL))
             }
@@ -111,12 +117,18 @@ public struct TransactionalTrashMover {
             }
 
             let outcome = rollbackMovedItems(movedItems)
-            if let rollbackError = outcome.error {
+            let unknownLocation: [URL]
+            if case BatchTrashError.missingTrashLocation(let url) = originalError {
+                unknownLocation = [url]
+            } else {
+                unknownLocation = []
+            }
+            if let rollbackError = outcome.error ?? (unknownLocation.isEmpty ? nil : originalError) {
                 throw BatchTrashError.rollbackFailed(
                     originalError: originalError,
                     rollbackError: rollbackError,
                     restored: outcome.restored,
-                    unrestored: outcome.unrestored
+                    unrestored: outcome.unrestored + unknownLocation
                 )
             }
             throw BatchTrashError.rollbackSucceeded(originalError: originalError)
@@ -155,7 +167,7 @@ public struct TransactionalTrashMover {
                 missing.append(url)
             }
             var currentPath = (url.path as NSString).deletingLastPathComponent
-            while currentPath != "/" && !currentPath.isEmpty {
+            while !currentPath.isEmpty {
                 if let matchingParent = urlByPath[currentPath] {
                     nested.append(NestedTargetPair(parent: matchingParent, child: url))
                     break
@@ -183,15 +195,11 @@ public struct TransactionalTrashMover {
         var capturedError: Error?
 
         for movedItem in movedItems.reversed() {
-            if capturedError != nil {
-                unrestored.append(movedItem.original)
-                continue
-            }
             do {
                 try restoreItem(movedItem.trashed, movedItem.original)
                 restored.append(movedItem.original)
             } catch {
-                capturedError = error
+                if capturedError == nil { capturedError = error }
                 unrestored.append(movedItem.original)
             }
         }

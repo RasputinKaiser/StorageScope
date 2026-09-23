@@ -25,9 +25,9 @@
     "name": "StorageScope",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "macOS 14+",
-    "softwareVersion": "0.7.1",
+    "softwareVersion": "0.8.0",
     "datePublished": "2026-06-21",
-    "dateModified": "2026-07-02",
+    "dateModified": "2026-09-23",
     "programmingLanguage": "Swift",
     "license": "https://opensource.org/license/mit",
     "description": "Free open-source macOS disk space analyzer and Mac storage cleaner for large folders, stale files, duplicate review, and local-first cleanup planning.",
@@ -763,7 +763,7 @@
 
   <div class="site-nav" role="banner">
     <div class="nav-inner">
-      <a class="brand" href="./">StorageScope <span class="ver">v0.7.1</span></a>
+      <a class="brand" href="./">StorageScope <span class="ver">v0.8.0</span></a>
       <nav aria-label="Site navigation">
         <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
@@ -786,9 +786,9 @@
           then plans cleanup you confirm — <strong>without uploading a byte</strong>.
         </p>
         <div class="actions">
-          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg">
+          <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 11.5L3.5 7H6V2h4v5h2.5L8 11.5Z" fill="white"/><rect x="2" y="13" width="12" height="1.5" rx=".75" fill="white"/></svg>
-            Download v0.7.1
+            Download v0.8.0
           </a>
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -797,18 +797,19 @@
           <a class="button" href="https://github.com/RasputinKaiser/StorageScope#build-and-run">Build from source</a>
         </div>
         <p class="actions-note">
-          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg.sha256">sha256 checksum</a>
+          <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg.sha256">sha256 checksum</a>
           <span class="divider">·</span>
           <a href="https://github.com/RasputinKaiser/StorageScope/releases">all releases</a>
           <span class="divider">·</span>
           <a href="privacy.html">privacy</a>
         </p>
+        <p class="actions-note">Apple Silicon · macOS 14+. The DMG is ad hoc signed and not Apple notarized. If macOS declines to open it, you can build from source; Intel has not been validated.</p>
       </div>
 
       <div class="scan-window" role="img" aria-label="Illustration of a StorageScope scan: ranked folders with proportional size bars, plus verified duplicate groups found">
         <div class="scan-chrome">
           <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
-          <p class="scan-title"><strong>Scanning ~</strong> · 412,384 items · 91,240 items/s</p>
+          <p class="scan-title"><strong>Example scan</strong> · 412,384 items</p>
         </div>
         <div class="scan-rows">
           <div class="scan-row">
@@ -857,36 +858,36 @@
   </div>
 
   <main>
-    <section class="whats-new" aria-label="What's new in v0.7.1">
+    <section class="whats-new" aria-label="What's new in v0.8.0">
       <div class="whats-new-head">
-        <span class="tag">v0.7.1</span>
-        <h2>Roomier windows and keyboard-first cleanup</h2>
+        <span class="tag">v0.8.0</span>
+        <h2>Incremental scans and clearer review</h2>
         <a href="changelog.html">Full changelog →</a>
       </div>
       <div class="whats-new-grid">
         <div class="new-item" style="--mark: var(--blue)">
-          <h3>Better default windows</h3>
-          <p>Main and Settings windows open with more practical dimensions, keeping dense controls and review panels visible.</p>
+          <h3>Incremental rescanning</h3>
+          <p>Unchanged scan state can be reused, while changed folders are rescanned. Untrusted saved state falls back to a full walk.</p>
         </div>
         <div class="new-item" style="--mark: var(--teal)">
-          <h3>Keyboard cleanup flow</h3>
-          <p>Cleanup Review supports keyboard movement and selection so verified reclaim can be reviewed without constant pointer travel.</p>
+          <h3>Search that follows your view</h3>
+          <p>Find navigation resets when the query or view changes and reveals matches inside collapsed folder trees.</p>
         </div>
         <div class="new-item" style="--mark: var(--green)">
-          <h3>Folder-tree reveal</h3>
-          <p>Selection and reveal behavior now keep the folder tree, sidebar, and detail pane in sync across navigation paths.</p>
+          <h3>Complete duplicate review</h3>
+          <p>All Sizes includes smaller unverified same-size groups, keeping them distinct from SHA-256-verified copies.</p>
         </div>
         <div class="new-item" style="--mark: var(--amber)">
-          <h3>Steadier tables</h3>
-          <p>Item rows and columns were tuned for clearer scanning, predictable keyboard focus, and less visual churn.</p>
+          <h3>Safer Trash review</h3>
+          <p>Cleanup review reports candidates that disappeared before confirmation instead of presenting them as actionable.</p>
         </div>
         <div class="new-item" style="--mark: var(--violet)">
-          <h3>Polished view states</h3>
-          <p>Overview, duplicate review, type breakdown, tree, and empty/loading states read more cleanly at a glance.</p>
+          <h3>More reliable hash cache</h3>
+          <p>Byte limits evict enough old entries, and persistence recreates a cache file removed outside the app.</p>
         </div>
         <div class="new-item" style="--mark: var(--rose)">
-          <h3>Regression coverage</h3>
-          <p>New app-level tests cover keyboard selection, folder-tree reveal behavior, and tree navigation state.</p>
+          <h3>Validated release</h3>
+          <p>The final local audit passed 251 tests across 26 suites, with a separate synthetic duplicate-verification proof.</p>
         </div>
       </div>
     </section>
@@ -949,8 +950,8 @@
 
     <p class="section-label">In the app</p>
     <h2 class="section-title">The whole picture, one window</h2>
-    <p class="section-sub">Ranked storage views, cleanup review, folder tree, and inspector — the same scan, four ways to read it.</p>
-    <img class="shot" src="images/storagescope-overview.png" alt="StorageScope macOS disk space analyzer showing storage views, cleanup review, folder tree, and inspector panes" loading="lazy">
+    <p class="section-sub">Ranked storage views, cleanup review, folder tree, and inspector — the same scan, four ways to read it. This v0.7.1 screenshot is a reference for the established interface.</p>
+    <img class="shot" src="images/storagescope-overview.png" alt="StorageScope v0.7.1 interface reference showing storage views, cleanup review, folder tree, and inspector panes" loading="lazy">
 
     <div class="privacy" style="margin-top: 72px" aria-label="Privacy posture">
       <h2>Nothing leaves this Mac</h2>
@@ -992,7 +993,7 @@
         <span class="divider">·</span>
         <a href="architecture.html">Architecture</a>
       </div>
-      <div class="mono">v0.7.1 · macOS 14+ · SwiftUI/AppKit</div>
+      <div class="mono">v0.8.0 · macOS 14+ · SwiftUI/AppKit</div>
     </footer>
   </main>
 

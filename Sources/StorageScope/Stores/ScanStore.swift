@@ -97,6 +97,7 @@ var selectedView: SmartView? {
 func setSelectedView(_ view: SmartView) {
     let old = selectedView
     guard old != view else { return }
+    resetSearchResultNavigation()
     objectWillChange.send()
     storedSelectedView = view.rawValue
     invalidateItemsCache()
@@ -123,55 +124,96 @@ func setSelectedView(_ view: SmartView) {
         searchFieldFocusRequest &+= 1
     }
 
-    /// Index of the search result currently "focused" for Cmd+G find-next
-    /// navigation. Nil while no search is active OR if the result list becomes
-    /// empty. Set by `advanceSearchResult()` / `reverseSearchResult()` and
-    /// consulted by views that want to render a "Result 3 of 12" badge.
+    /// Index of the current result in the active view's navigable matches.
     @Published private(set) var currentSearchResultIndex: Int?
+    private var lastSearchNavigationIDs: [String]?
 
-    /// Cmd+G &mdash; advances the current find-next target through `filters.searchResultIDs`
-    /// in DFS order (top-to-bottom in the visible tree). Wraps around at the end.
-    /// Also writes `selection.selectedItemID` so the row becomes selected &mdash;
-    /// matching Mail's "Find Next" semantics where the matched row takes focus.
-    /// Resets to nil when `searchResultIDs` becomes nil/empty (query cleared)
-    /// so a stale index can't reference an item that's no longer a match.
+    /// Cmd+G advances through rows in the active view; Folder Tree retains DFS
+    /// order and expands the chosen row's ancestors before selecting it.
     func advanceSearchResult() {
-        guard let ids = filters.searchResultIDs, !ids.isEmpty else {
-            currentSearchResultIndex = nil
-            return
-        }
-        let next: Int
-        if let current = currentSearchResultIndex {
-            next = (current + 1) % ids.count
-        } else {
-            next = 0
-        }
-        currentSearchResultIndex = next
-        selection.selectedItemID = ids[next]
+        navigateSearchResult(direction: 1)
     }
 
     /// Cmd+Shift+G &mdash; reverses direction; wraps around at the start.
     func reverseSearchResult() {
-        guard let ids = filters.searchResultIDs, !ids.isEmpty else {
-            currentSearchResultIndex = nil
-            return
-        }
-        let prev: Int
-        if let current = currentSearchResultIndex {
-            prev = (current - 1 + ids.count) % ids.count
-        } else {
-            prev = ids.count - 1
-        }
-        currentSearchResultIndex = prev
-        selection.selectedItemID = ids[prev]
+        navigateSearchResult(direction: -1)
     }
 
-    /// Drop `currentSearchResultIndex` when the search query is cleared
-    /// (FilterStore.searchResultIDs becomes nil). Cheap to call idempotently.
-    func resetSearchResultNavigationIfApplicable() {
-        if filters.searchResultIDs == nil {
-            currentSearchResultIndex = nil
+    private func navigateSearchResult(direction: Int) {
+        let ids = searchNavigationIDs()
+        guard !ids.isEmpty else {
+            resetSearchResultNavigation()
+            return
         }
+        let current = lastSearchNavigationIDs == ids ? currentSearchResultIndex : nil
+        let index = current.map { ($0 + direction + ids.count) % ids.count }
+            ?? (direction > 0 ? 0 : ids.count - 1)
+        lastSearchNavigationIDs = ids
+        currentSearchResultIndex = index
+        let id = ids[index]
+        if activeView == .tree, let root = scan?.rootItem {
+            var chain: [String] = []
+            if Self.ancestorChain(from: root, to: id, chain: &chain) {
+                treeExpandedIDs.formUnion(chain)
+            }
+        }
+        selection.selectedItemID = id
+    }
+
+    var hasNavigableSearchResults: Bool {
+        !searchNavigationIDs().isEmpty
+    }
+
+    private func searchNavigationIDs() -> [String] {
+        guard !filters.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        if activeView == .tree {
+            guard let matches = filters.searchResultIDs, !matches.isEmpty else { return [] }
+            guard let root = scan?.rootItem else { return [] }
+            let threshold = filters.sizeFilter.threshold
+            if threshold == 0 { return matches }
+            let matchSet = Set(matches)
+            var result: [String] = []
+            func visit(_ item: StorageItem) {
+                if matchSet.contains(item.id) { result.append(item.id) }
+                guard item.isContainer else { return }
+                for child in item.children where child.displaySize >= threshold {
+                    visit(child)
+                }
+            }
+            visit(root)
+            return result
+        }
+        if activeView == .duplicateCandidates {
+            // Verified groups appear above same-size candidates in the view.
+            // A selection hook expands candidate groups beyond their first eight rows.
+            return (verifiedDuplicateGroups.flatMap(\.items)
+                    + duplicateGroups.flatMap(\.items))
+                .map(\.id)
+        }
+        if activeView == .cleanupReview {
+            return cleanupCandidates.map(\.item.id)
+        }
+        // File Types renders extension statistics, not selectable StorageItem rows.
+        if activeView == .typeBreakdown { return [] }
+        if activeView == .overview {
+            // Overview shows twelve immediate children plus three insight cards.
+            // Cards may point deeper into the scan than the children table.
+            let children = items(for: .overview).prefix(12)
+            let cards = [items(for: .largestFiles).first,
+                         items(for: .largestFolders).first,
+                         oldLargeFiles.first].compactMap { $0 }
+            var seen = Set<String>()
+            return (Array(children) + cards).map(\.id).filter {
+                seen.insert($0).inserted
+            }
+        }
+        // Ranked views navigate their displayed rows in the active sort order.
+        return items(for: activeView).map(\.id)
+    }
+
+    private func resetSearchResultNavigation() {
+        currentSearchResultIndex = nil
+        lastSearchNavigationIDs = nil
     }
     private var markResultsNeedRefreshWhenCurrentScanCompletes = false
     private var selectedViewWhenCurrentScanCompletes: SmartView?
@@ -274,6 +316,7 @@ func setSelectedView(_ view: SmartView) {
         let store = FilterStore(
             scanLookup: { [weak self] in self?.scan },
             coordinateInvalidate: { [weak self] in self?.invalidateDerivedCaches() },
+            resetSearchNavigation: { [weak self] in self?.resetSearchResultNavigation() },
             recordSearchRecent: { [weak self] term in self?.searchRecents.add(term) }
         )
         filtersCancellable = store.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
@@ -306,6 +349,7 @@ func setSelectedView(_ view: SmartView) {
     var scan: StorageScan? {
         get { session.scan }
         set {
+            resetSearchResultNavigation()
             session.scan = newValue
             invalidateDerivedCaches()
             filters.rebuildAfterScanChange()
@@ -1232,7 +1276,7 @@ func setSelectedView(_ view: SmartView) {
             sizeGroups: scan.duplicateSizeGroups,
             verifiedGroups: mergedVerifiedGroups
         )
-            .filter { $0.byteSize >= max(filters.sizeFilter.threshold, 100_000_000) }
+            .filter { $0.byteSize >= filters.sizeFilter.threshold }
             .map { group in
                 DuplicateSizeGroup(byteSize: group.byteSize, items: filtered(group.items))
             }
@@ -1510,10 +1554,23 @@ func setSelectedView(_ view: SmartView) {
             selectedCleanupCandidateIDs = Set(candidates.map(\.id))
         }
 
-        pendingTrashReviewPlan = TrashReviewPlan(candidates: candidates)
+        prepareTrashReview(candidates)
+    }
+
+    private func prepareTrashReview(_ candidates: [CleanupCandidate]) {
+        let plan = TrashReviewPlan(candidates: candidates) { url in
+            FileManager.default.fileExists(atPath: url.path)
+        }
+        pendingTrashReviewPlan = plan.items.isEmpty ? nil : plan
+        if !plan.missingPaths.isEmpty {
+            let count = plan.missingPaths.count
+            errorMessage = "\(count) selected \(count == 1 ? "item is" : "items are") no longer on disk. \(count == 1 ? "It was" : "They were") removed from this review. Rescan to refresh the results."
+            markResultsNeedRefresh()
+        }
     }
 
     func cancelPendingTrashReview() {
+        guard !isMovingToTrash else { return }
         pendingTrashReviewPlan = nil
     }
 
@@ -1535,28 +1592,17 @@ func setSelectedView(_ view: SmartView) {
     }
 
     func removePendingTrashReviewItem(_ item: TrashReviewPlan.Item) {
-        selectedCleanupCandidateIDs.remove(item.id)
-        let remaining = selectedCleanupBatchCandidates
-        if remaining.isEmpty {
-            pendingTrashReviewPlan = nil
-        } else {
-            pendingTrashReviewPlan = TrashReviewPlan(candidates: remaining)
-        }
+        removeAllPendingTrashReviewItems([item])
     }
 
-    /// Drops every item in `items` from the pending review plan in one update. Used by
-    /// `TrashReviewSection`'s "Remove All" affordance so the user can drop a whole section
-    /// (e.g. all review-suggested items, leaving verified-only) without N clicks.
+    /// Update the batch being reviewed, even if the user selected an item manually
+    /// or the display filters changed after opening the sheet.
     func removeAllPendingTrashReviewItems(_ items: [TrashReviewPlan.Item]) {
-        guard !items.isEmpty else { return }
+        guard !isMovingToTrash, !items.isEmpty, let plan = pendingTrashReviewPlan else { return }
         let ids = Set(items.map(\.id))
         selectedCleanupCandidateIDs.subtract(ids)
-        let remaining = selectedCleanupBatchCandidates
-        if remaining.isEmpty {
-            pendingTrashReviewPlan = nil
-        } else {
-            pendingTrashReviewPlan = TrashReviewPlan(candidates: remaining)
-        }
+        let remaining = plan.removingItems(withIDs: ids)
+        pendingTrashReviewPlan = remaining.items.isEmpty ? nil : remaining
     }
 
     func confirmPendingTrashReview() {
@@ -1568,14 +1614,16 @@ func setSelectedView(_ view: SmartView) {
         }
 
         let keeperItemIDs = currentKeeperItemIDs
-        let itemsToMove = plan.items.filter { !keeperItemIDs.contains($0.id) }
+        let approvedPlan = plan.protectingKeepers(withIDs: keeperItemIDs)
+        let itemsToMove = approvedPlan.items
         guard !itemsToMove.isEmpty else {
-            errorMessage = "Every selected item is currently designated as the keeper for its duplicate group. Reassign the keeper before moving copies to Trash."
+            errorMessage = "Every selected item is a duplicate keeper or a folder containing one. Reassign the keeper before moving these items to Trash."
             pendingTrashReviewPlan = nil
             return
         }
 
-        let urls = itemsToMove.map(\.url)
+        let groupsToValidate = verifiedDuplicateGroups
+        let cacheToValidate = hashCache
         let movedIDs = Set(itemsToMove.map(\.id))
         isMovingToTrash = true
 
@@ -1583,7 +1631,8 @@ func setSelectedView(_ view: SmartView) {
             let result: Result<Void, Error>
             do {
                 try await Task.detached(priority: .userInitiated) {
-                    try FileActionService.moveToTrashTransactionally(urls)
+                    let keepers = try approvedPlan.validateVerifiedCopies(in: groupsToValidate, keeping: keeperItemIDs, scanner: FileSystemScanner(hashCache: cacheToValidate))
+                    try FileActionService.moveToTrashTransactionally(approvedPlan, keepers: keepers)
                 }.value
                 result = .success(())
             } catch {
@@ -1605,7 +1654,7 @@ func setSelectedView(_ view: SmartView) {
                     self.errorMessage = error.localizedDescription
                     if let batchError = error as? BatchTrashError {
                         switch batchError {
-                        case .rollbackFailed, .missingTargets:
+                        case .rollbackFailed, .missingTargets, .changedTargets, .missingTrashLocation:
                             self.markResultsNeedRefresh()
                         default:
                             break
@@ -1734,7 +1783,7 @@ func setSelectedView(_ view: SmartView) {
         }
 
         let candidate = selectedCleanupCandidate ?? synthesizedTrashCandidate(for: selectedItem)
-        pendingTrashReviewPlan = TrashReviewPlan(candidates: [candidate])
+        prepareTrashReview([candidate])
     }
 
     private func synthesizedTrashCandidate(for item: StorageItem) -> CleanupCandidate {

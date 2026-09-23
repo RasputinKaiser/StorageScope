@@ -6,8 +6,9 @@ struct DuplicateCandidatesView: View {
     @State private var expandedCandidateGroupIDs = Set<String>()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Duplicate Review")
                         .font(.headline)
@@ -57,8 +58,22 @@ struct DuplicateCandidatesView: View {
                         }
                     }
                 }
+                }
+                .padding(20)
             }
-            .padding(20)
+            .onChange(of: store.selectedItemID) { _, id in
+                guard let id else { return }
+                if let group = store.duplicateGroups.first(where: { $0.items.contains(where: { $0.id == id }) }),
+                   let index = group.items.firstIndex(where: { $0.id == id }), index >= 8,
+                   !expandedCandidateGroupIDs.contains(group.id) {
+                    expandedCandidateGroupIDs.insert(group.id)
+                } else {
+                    proxy.scrollTo(id, anchor: nil)
+                }
+            }
+            .onChange(of: expandedCandidateGroupIDs) { _, _ in
+                if let id = store.selectedItemID { proxy.scrollTo(id, anchor: nil) }
+            }
         }
     }
 
@@ -210,23 +225,31 @@ private struct DuplicateGroupCard: View {
                     .help(isExpanded ? "Collapse this same-size group" : "Show every file in this same-size group")
                 }
 
-                Button {
-                    store.onDemandVerification.verify(group)
-                } label: {
-                    if isVerifying {
-                        HStack(spacing: 6) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Verifying…")
-                        }
-                    } else {
+                if isVerifying {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Verifying duplicate candidates")
+                    Button("Cancel") {
+                        store.onDemandVerification.cancelVerification(forGroupID: group.id)
+                    }
+                    .controlSize(.small)
+                    .help("Cancel verification of this group")
+                } else if store.onDemandVerification.hasCompletedVerification(for: group) {
+                    Label("Checked", systemImage: "checkmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("Verification attempt finished. Only files listed under Verified Duplicates have a confirmed content match. Rescan to check again.")
+                } else {
+                    Button {
+                        store.onDemandVerification.verify(group)
+                    } label: {
                         Label("Verify Now", systemImage: "checkmark.seal")
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(store.isScanning)
+                    .help("Hash every file in this group and surface verified duplicate matches")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(isVerifying || store.isScanning)
-                .help("Hash every file in this group and surface verified duplicate matches")
 
                 Spacer()
 
@@ -298,6 +321,7 @@ private struct DuplicateItemList: View {
                     onExclude?(item)
                 }
                 .equatable()
+                .id(item.id)
 
                 if item.id != lastItemID {
                     Divider()

@@ -5,35 +5,36 @@ struct WelcomeView: View {
     @ObservedObject var store: ScanStore
     @AppStorage("StorageScope.didDismissFirstRunCard") private var didDismissFirstRunCard = false
     @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
             VStack(spacing: 32) {
                 WelcomeHeroView()
-                    .appear(appeared, delay: 0)
+                    .appear(appeared, reduceMotion: reduceMotion, delay: 0)
 
                 WelcomeHeadline()
-                    .appear(appeared, delay: 0.07)
+                    .appear(appeared, reduceMotion: reduceMotion, delay: 0.07)
 
                 if !didDismissFirstRunCard {
                     FirstRunPermissionCard {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82)) {
                             didDismissFirstRunCard = true
                         }
                     }
                     .frame(maxWidth: 680)
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
-                    .appear(appeared, delay: 0.12)
+                    .appear(appeared, reduceMotion: reduceMotion, delay: 0.12)
                 }
 
                 WelcomeCTAButtons(
                     chooseFolderAction: { store.chooseFolderAndScan() },
                     scanHomeAction: store.scanHome
                 )
-                .appear(appeared, delay: 0.17)
+                .appear(appeared, reduceMotion: reduceMotion, delay: 0.17)
 
                 WelcomeCapabilitySection()
-                    .appear(appeared, delay: 0.23)
+                    .appear(appeared, reduceMotion: reduceMotion, delay: 0.23)
 
                 if !store.recents.entries.isEmpty {
                     WelcomeRecentScans(
@@ -41,7 +42,7 @@ struct WelcomeView: View {
                         isScanning: store.isScanning,
                         onSelect: store.scanRecentPath
                     )
-                    .appear(appeared, delay: 0.29)
+                    .appear(appeared, reduceMotion: reduceMotion, delay: 0.29)
                 }
             }
             .padding(40)
@@ -54,10 +55,10 @@ struct WelcomeView: View {
 // MARK: - Appear animation
 
 private extension View {
-    func appear(_ appeared: Bool, delay: Double) -> some View {
-        opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 12)
-            .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(delay), value: appeared)
+    func appear(_ appeared: Bool, reduceMotion: Bool, delay: Double) -> some View {
+        opacity(appeared || reduceMotion ? 1 : 0)
+            .offset(y: appeared || reduceMotion ? 0 : 12)
+            .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.82).delay(delay), value: appeared)
     }
 }
 
@@ -152,6 +153,7 @@ private struct WelcomeCapabilityCard: View {
     let detail: String
     let systemImage: String
     @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -178,7 +180,7 @@ private struct WelcomeCapabilityCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.primary.opacity(isHovered ? 0.06 : 0), lineWidth: 1)
         )
-        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isHovered)
+        .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8), value: isHovered)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .combine)
     }

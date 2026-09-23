@@ -100,6 +100,25 @@ struct StorageItemSearchQueryTests {
         #expect(item.searchHighlightRanges(for: "Documents").isEmpty)
     }
 
+    @Test("All whitespace separates search terms, including pasted multiline text")
+    func whitespaceSeparatesTerms() {
+        let item = makeItem(name: "Budget Report.pdf", path: "/tmp/Documents/Budget Report.pdf")
+        for query in ["Documents\tBudget", "Budget\nReport", "Documents\u{00a0}Report"] {
+            #expect(item.matchesSearchQuery(query))
+        }
+        #expect(!item.matchesSearchQuery("Budget\tmissing"))
+        #expect(item.searchHighlightRanges(for: "Budget\nReport").count == 2)
+    }
+
+    @Test("Unicode filenames and custom display names remain searchable")
+    func unicodeSearch() {
+        let item = makeItem(name: "Résumé 📁 東京", path: "/tmp/文書/別名.pdf")
+        #expect(item.matchesSearchQuery("résumé 東京"))
+        #expect(item.matchesSearchQuery("文書 📁"))
+        #expect(!item.matchesSearchQuery("東京 missing"))
+        #expect(item.searchHighlightRanges(for: "📁\t東京").count == 2)
+    }
+
     // MARK: - Helpers
 
     private func makeItem(name: String, path: String) -> StorageItem {

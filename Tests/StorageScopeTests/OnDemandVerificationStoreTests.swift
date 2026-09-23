@@ -196,6 +196,56 @@ struct OnDemandVerificationStoreTests {
         #expect(store.verifyingGroupIDs.isEmpty)
     }
 
+    @Test("cancelled attempt cannot clear the spinner or cancellation handle of its retry")
+    func cancelledAttemptDoesNotOwnRetry() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let started = DispatchSemaphore(value: 0)
+        let finish = DispatchSemaphore(value: 0)
+        defer { finish.signal() }
+        let store = OnDemandVerificationStore(
+            hashCache: DuplicateHashCache(), scanLookup: { nil },
+            coordinateInvalidate: {}, reportError: { _ in Issue.record("Unexpected verification error") },
+            verifyGroup: { _, _ in
+                started.signal()
+                finish.wait()
+                return []
+            }
+        )
+        let group = fixture.unverifiedGroup
+        store.verify(group)
+        store.cancelVerification(forGroupID: group.id)
+        store.verify(group)
+        let deadline = ContinuousClock.now + .seconds(5)
+        var retryStarted = false
+        while ContinuousClock.now < deadline {
+            if started.wait(timeout: .now()) == .success { retryStarted = true; break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(retryStarted)
+        // The old cancelled task has run; the new hash is held open deterministically.
+        #expect(store.verifyingGroupIDs.contains(group.id))
+        #expect(store.cancelVerification(forGroupID: group.id))
+        #expect(store.verifiedGroupsByChecksum.isEmpty)
+    }
+
+    @Test("A completed attempt without duplicates is visible and is reset on a new scan")
+    func completedAttemptWithoutMatches() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let store = OnDemandVerificationStore(
+            hashCache: DuplicateHashCache(), scanLookup: { nil },
+            coordinateInvalidate: {}, reportError: { _ in Issue.record("Unexpected verification error") },
+            verifyGroup: { _, _ in [] }
+        )
+        store.verify(fixture.unverifiedGroup)
+        try await waitForVerifyToSettle(store: store, groupID: fixture.unverifiedGroup.id)
+        #expect(store.hasCompletedVerification(for: fixture.unverifiedGroup))
+        #expect(store.verifiedGroupsByChecksum.isEmpty)
+        store.clear()
+        #expect(!store.hasCompletedVerification(for: fixture.unverifiedGroup))
+    }
+
     // MARK: - Helpers
 
     private struct Fixture {
