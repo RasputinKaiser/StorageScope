@@ -89,7 +89,10 @@ enum FileActionService {
         return nil
     }
 
-    nonisolated static func moveToTrashTransactionally(_ urls: [URL]) throws {
-        try TransactionalTrashMover().moveToTrash(urls)
+    nonisolated static func moveToTrashTransactionally(_ plan: TrashReviewPlan, keepers: TrashReviewPlan.KeeperValidation) throws {
+        try TransactionalTrashMover().moveToTrash(plan.items.map(\.url)) { url in
+            try plan.validateUnchanged(url)
+            try keepers.validateBeforeMoving(url)
+        }
     }
 }

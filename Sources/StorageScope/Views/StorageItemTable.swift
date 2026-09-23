@@ -33,10 +33,10 @@ struct StorageItemTable: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    if let searchResultCount = store.filters.searchResultCount {
-                        SearchResultCountBadge(count: searchResultCount)
+                    if store.filters.searchResultCount != nil {
+                        SearchResultCountBadge(count: items.count)
                     }
-                    Text(countLabel ?? "\(items.count.formatted()) items")
+                    Text(countLabel ?? "\(items.count.formatted()) \(items.count == 1 ? "item" : "items")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -115,6 +115,10 @@ struct StorageItemTable: View {
                         }
                         .onKeyPress(.escape) {
                             store.clearSearchIfActive() ? .handled : .ignored
+                        }
+                        .onChange(of: store.selectedItemID) { _, id in
+                            guard let id, items.contains(where: { $0.id == id }) else { return }
+                            proxy.scrollTo(id, anchor: nil)
                         }
                         .onKeyPress(characters: .alphanumerics, phases: .down) { press in
                             typeToSelect(press.characters, proxy: proxy)
@@ -200,7 +204,7 @@ private struct OldLargeFilesThresholdHint: View {
 }
 
 /// Pill-shaped badge displayed alongside `StorageItemTable`'s item-count label
-/// whenever a search query is active. Backed by `FilterStore.searchResultCount`
+/// whenever a search query is active. Counts the filtered rows in this list
 /// (derived from `searchSubtreeMatchIDs.count`). Extracted as its own `View` struct
 /// because the `.tint`-tinted Capsule background + caption weight combined with
 /// the surrounding HStack ternary was tripping the Swift type-checker inside the
@@ -219,7 +223,7 @@ private struct SearchResultCountBadge: View {
             .padding(.vertical, 2)
             .background(.tint.opacity(0.12), in: Capsule())
             .accessibilityLabel("\(count.formatted()) search \(count == 1 ? "match" : "matches")")
-            .help("Items in the current scan whose name or path match the search query")
+            .help("Matching items in this list after the active filters")
     }
 
     private var label: String {

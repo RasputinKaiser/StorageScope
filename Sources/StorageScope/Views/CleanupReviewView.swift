@@ -32,6 +32,10 @@ struct CleanupReviewView: View {
                 .onKeyPress(.escape) {
                     store.clearSearchIfActive() ? .handled : .ignored
                 }
+                .onChange(of: store.selectedItemID) { _, id in
+                    guard let id, store.cleanupCandidates.contains(where: { $0.item.id == id }) else { return }
+                    proxy.scrollTo(id, anchor: nil)
+                }
         }
     }
 

@@ -10,19 +10,21 @@ The app scans only folders the user grants through macOS folder selection or sto
 
 The name is intentional: StorageScope is not a black-box cleaner. It scopes storage pressure, separates verified duplicates from review-only suggestions, and helps the user decide what to reclaim.
 
-**Current release:** v0.7.1, focused on window sizing, keyboard cleanup navigation, and visual polish across the main storage views.
+**Current release:** v0.8.0, with incremental rescanning and fixes across search navigation, duplicate review, Trash review, and hash-cache persistence.
 
-[Download v0.7.1](https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg) · [Changelog](docs/changelog.html) · [Privacy](PRIVACY.md) · [GitHub Pages](https://rasputinkaiser.github.io/StorageScope/)
+[Download v0.8.0](https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg) · [SHA-256 checksum](https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg.sha256) · [Changelog](docs/changelog.html) · [Privacy](PRIVACY.md) · [GitHub Pages](https://rasputinkaiser.github.io/StorageScope/)
 
-![StorageScope v0.7.1 overview with redacted file and folder names](docs/images/storagescope-overview.png)
+The GitHub DMG is for Apple Silicon Macs running macOS 14 or newer. It is ad hoc signed and has not been notarized by Apple. If macOS declines to open it, you can [build from source](#build-and-run) or wait for a notarized build. Intel Macs have not been validated for this release.
 
-## What's New In v0.7.1
+![StorageScope v0.7.1 interface reference with redacted file and folder names](docs/images/storagescope-overview.png)
 
-- Main and Settings windows now open at roomier default sizes so dense controls and cleanup review states are not clipped.
-- Cleanup Review, Folder Tree, and item tables support keyboard-first movement, reveal, and selection flows.
-- Storage views use cleaner row spacing, stronger empty/loading states, and steadier column behavior for large scans.
-- Overview, sidebar, tree, type breakdown, and duplicate-review surfaces were visually tuned for better scanning at a glance.
-- New tests cover keyboard selection, folder-tree reveal behavior, and tree navigation state.
+## What's New In v0.8.0
+
+- Incremental rescanning reuses unchanged scan state and tracks changed folders, with a conservative full-scan fallback when saved state or event history cannot be trusted.
+- Find Next and Find Previous now follow the displayed search scope, reset after query or view changes, and reveal matches inside collapsed folder trees.
+- Duplicate Review includes smaller unverified same-size groups in All Sizes and keeps verified copies separate from suggestions.
+- Trash review detects candidates that disappeared before confirmation. Hash-cache limits and deleted-cache recovery are more reliable.
+- The final local audit passed 251 tests across 26 suites. See the [v0.8.0 release notes](docs/releases/v0.8.0.md) for measured, fixture-specific duplicate verification results.
 
 ## Highlights
 
@@ -38,7 +40,7 @@ The name is intentional: StorageScope is not a black-box cleaner. It scopes stor
 
 ## Screenshots
 
-The scanned-state screenshots below were captured from the v0.7.1 macOS build with redaction mode enabled, so placeholder names are visible while sizes, counts, and cleanup classifications remain real.
+These screenshots are a v0.7.1 interface reference, not new v0.8.0 captures. They were made with redaction mode enabled, so placeholder names are visible while sizes, counts, and cleanup classifications remain real.
 
 | Cold Launch | Scanned Overview |
 | --- | --- |
@@ -115,7 +117,7 @@ Before publishing or pushing a release-prep branch, run:
 ./script/public_upload_audit.sh
 ```
 
-The audit checks the exact Git upload candidate set for ignored local artifacts, signing/provisioning files, private distribution outputs, absolute local paths, and common credential patterns. It also runs `swift test`, plist linting, and script syntax checks.
+The audit checks the exact Git upload candidate set for ignored local artifacts, signing/provisioning files, private distribution outputs, absolute local paths, and common credential patterns. It also runs `swift test`, plist linting, script syntax checks, and mocked release-script behavior checks.
 
 ## Open Source Maintenance
 
@@ -147,7 +149,7 @@ Create a local DMG:
 
 The DMG is written to `exports/`, which is intentionally ignored by Git.
 
-For public binary downloads outside the Mac App Store, sign with an Apple Developer ID Application certificate and notarize the DMG before uploading. For Mac App Store submission, use `script/package_app_store.sh` with Apple distribution identities and any required provisioning profile.
+The v0.8.0 GitHub DMG contains an Apple Silicon binary and is ad hoc signed and unnotarized. The repository also includes a Developer ID signing and notarization workflow for a future distribution build. For Mac App Store submission, use `script/package_app_store.sh` with Apple distribution identities and any required provisioning profile.
 
 Do not commit signing identities, provisioning profiles, notarization credentials, exported packages, generated DMGs, local scan outputs, or Codex state.
 

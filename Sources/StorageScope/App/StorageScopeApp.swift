@@ -364,7 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate, NSM
         case #selector(findNextSearchResult), #selector(findPreviousSearchResult):
             // Only enabled when a search is active and produced at least one hit.
             // Matches Mail's behavior: Cmd+G is no-op when no find is in flight.
-            return store.filters.searchResultIDs?.isEmpty == false
+            return store.hasNavigableSearchResults
         case #selector(chooseFolder), #selector(scanHome), #selector(scanDocuments), #selector(scanDownloads),
              #selector(scanRecentFromMenu):
             return !store.isScanning

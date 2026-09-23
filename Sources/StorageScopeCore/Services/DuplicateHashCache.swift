@@ -1,18 +1,20 @@
 import Foundation
 
-/// Persisted cache of SHA-256 checksums for duplicate verification.
-/// Keyed by file path, validated against byte size and modification date on lookup.
+/// Persisted full and prefix SHA-256 digests for duplicate verification.
+/// Scanner lookups require size, mtime, inode, and change stamps.
 /// Keeps rescans fast: unchanged files skip hashing entirely.
 public final class DuplicateHashCache: @unchecked Sendable {
     public struct LookupKey: Hashable, Sendable {
         public let path: String
         public let byteSize: Int64
         public let modificationDate: Date?
+        public let identity: String?
 
-        public init(path: String, byteSize: Int64, modificationDate: Date?) {
+        public init(path: String, byteSize: Int64, modificationDate: Date?, identity: String? = nil) {
             self.path = path
             self.byteSize = byteSize
             self.modificationDate = modificationDate
+            self.identity = identity
         }
     }
 
@@ -72,25 +74,33 @@ public final class DuplicateHashCache: @unchecked Sendable {
     /// `ScanStore.scan(_:)` and `OnDemandVerificationStore.verify(_:)`).
     public typealias ErrorHandler = @Sendable (Error) -> Void
 
-    private struct Entry: Codable {
+    private struct Entry: Codable, Equatable {
         let byteSize: Int64
         let modificationDate: Date?
-        let checksum: String
+        let checksum: String?
+        let identity: String?
+        let prefixChecksum: String?
+        let prefixByteCount: Int?
     }
 
     private let lock = NSLock()
+    private let persistenceLock = NSRecursiveLock()
     private var entries: [String: Entry] = [:]
     private let cacheURL: URL?
     private let maxEntries: Int
     private let maxBytes: Int
     private let reportError: ErrorHandler?
-    private(set) var hits = 0
-    private(set) var misses = 0
+    private var hitCount = 0
+    private var missCount = 0
+    var hits: Int { lock.lock(); defer { lock.unlock() }; return hitCount }
+    var misses: Int { lock.lock(); defer { lock.unlock() }; return missCount }
     private var lastPersistedAtInternal: Date?
     /// Approximate per-entry JSON footprint accumulator. Used to trigger byte-budget
     /// eviction in `record(_:)`. Recomputed from `entries` on `load()` so a corrupt
     /// or stale value never accumulates across reloads.
     private var approximateBytes: Int = 0
+    private var generation: UInt64 = 0
+    private var persistedGeneration: UInt64?
 
     /// - Parameters:
     ///   - cacheURL: Optional on-disk location for the persisted JSON. When `nil`, the
@@ -110,7 +120,7 @@ public final class DuplicateHashCache: @unchecked Sendable {
     ) {
         self.cacheURL = cacheURL
         self.maxEntries = max(100, maxEntries)
-        self.maxBytes = max(1_024, maxBytes)
+        self.maxBytes = max(0, maxBytes)
         self.reportError = reportError
         load()
         lastPersistedAtInternal = lastPersistedFromFile()
@@ -119,31 +129,53 @@ public final class DuplicateHashCache: @unchecked Sendable {
     public func checksum(for key: LookupKey) -> String? {
         lock.lock()
         defer { lock.unlock() }
-        guard let entry = entries[key.path],
-              entry.byteSize == key.byteSize,
-              entry.modificationDate == key.modificationDate else {
-            misses += 1
+        guard let entry = matchingEntry(for: key), let checksum = entry.checksum else {
+            missCount += 1
             return nil
         }
-        hits += 1
-        return entry.checksum
+        hitCount += 1
+        return checksum
+    }
+
+    public func prefixChecksum(for key: LookupKey, byteCount: Int) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = matchingEntry(for: key), entry.prefixByteCount == byteCount else { return nil }
+        return entry.prefixChecksum
+    }
+
+    private func matchingEntry(for key: LookupKey) -> Entry? {
+        guard let entry = entries[key.path], entry.byteSize == key.byteSize,
+              entry.modificationDate == key.modificationDate, entry.identity == key.identity else { return nil }
+        return entry
     }
 
     public func record(_ key: LookupKey, checksum: String) {
+        record(key, checksum: checksum, prefixChecksum: nil, prefixByteCount: nil)
+    }
+
+    public func recordPrefix(_ key: LookupKey, checksum: String, byteCount: Int) {
+        record(key, checksum: nil, prefixChecksum: checksum, prefixByteCount: byteCount)
+    }
+
+    private func record(_ key: LookupKey, checksum: String?, prefixChecksum: String?, prefixByteCount: Int?) {
         lock.lock()
         defer { lock.unlock() }
-        let isNew = entries[key.path] == nil
+        let matching = matchingEntry(for: key)
+        let entry = Entry(
+            byteSize: key.byteSize, modificationDate: key.modificationDate,
+            checksum: checksum ?? matching?.checksum, identity: key.identity,
+            prefixChecksum: prefixChecksum ?? matching?.prefixChecksum,
+            prefixByteCount: prefixByteCount ?? matching?.prefixByteCount
+        )
+        guard entries[key.path] != entry else { return }
         if let existing = entries[key.path] {
             approximateBytes -= entryByteSize(path: key.path, entry: existing)
         }
-        let entry = Entry(
-            byteSize: key.byteSize,
-            modificationDate: key.modificationDate,
-            checksum: checksum
-        )
+        generation &+= 1
         entries[key.path] = entry
         approximateBytes += entryByteSize(path: key.path, entry: entry)
-        if isNew, entries.count > maxEntries || approximateBytes > maxBytes {
+        if entries.count > maxEntries || approximateBytes > maxBytes {
             pruneOldest()
         }
     }
@@ -157,8 +189,18 @@ public final class DuplicateHashCache: @unchecked Sendable {
     /// the legacy `persist()` swallow path: a `nil` `cacheURL` is a no-op, not an error.
     public func persistThrowing() throws {
         guard let cacheURL else { return }
+        persistenceLock.lock()
+        defer { persistenceLock.unlock() }
+        // A user or cleanup process may remove the file after our last write.
+        // Check outside the entries lock, then recreate it from the snapshot.
+        let cacheFileExists = FileManager.default.fileExists(atPath: cacheURL.path)
         lock.lock()
+        if persistedGeneration == generation && cacheFileExists {
+            lock.unlock()
+            return
+        }
         let snapshot = entries
+        let snapshotGeneration = generation
         lock.unlock()
         let data: Data
         do {
@@ -184,6 +226,7 @@ public final class DuplicateHashCache: @unchecked Sendable {
             try data.write(to: cacheURL, options: .atomic)
             lock.lock()
             lastPersistedAtInternal = Date()
+            persistedGeneration = snapshotGeneration
             lock.unlock()
         } catch {
             reportError?(.persistWriteFailed(
@@ -220,8 +263,12 @@ public final class DuplicateHashCache: @unchecked Sendable {
     /// wants to force a re-hash on the next scan (e.g. after moving files around) or to
     /// reclaim the disk footprint.
     public func clear() {
+        persistenceLock.lock()
+        defer { persistenceLock.unlock() }
         lock.lock()
         entries.removeAll()
+        generation &+= 1
+        persistedGeneration = nil
         approximateBytes = 0
         lastPersistedAtInternal = nil
         lock.unlock()
@@ -246,32 +293,31 @@ public final class DuplicateHashCache: @unchecked Sendable {
     /// exist, even if their size/mtime has shifted (that's handled by `checksum(for:)`).
     public func purgeStale(except itemPaths: Set<String> = []) -> Int {
         lock.lock()
-        defer { lock.unlock() }
-        var dropped = 0
-        for path in Array(entries.keys) {
-            if itemPaths.contains(path) {
-                continue
-            }
+        let snapshot = entries
+        lock.unlock()
+        var stale: [String: Entry] = [:]
+        var errors: [Error] = []
+        for (path, entry) in snapshot where !itemPaths.contains(path) {
             if !FileManager.default.fileExists(atPath: path) {
-                if let entry = entries.removeValue(forKey: path) {
-                    approximateBytes -= entryByteSize(path: path, entry: entry)
+                stale[path] = entry
+            } else {
+                do { _ = try FileManager.default.attributesOfItem(atPath: path) }
+                catch {
+                    stale[path] = entry
+                    errors.append(.purgeAttributeLookupFailed(path: path, underlyingDescription: error.localizedDescription))
                 }
-                dropped += 1
-                continue
-            }
-            do {
-                _ = try FileManager.default.attributesOfItem(atPath: path)
-            } catch {
-                if let entry = entries.removeValue(forKey: path) {
-                    approximateBytes -= entryByteSize(path: path, entry: entry)
-                }
-                dropped += 1
-                reportError?(.purgeAttributeLookupFailed(
-                    path: path,
-                    underlyingDescription: error.localizedDescription
-                ))
             }
         }
+        lock.lock()
+        var dropped = 0
+        for (path, oldEntry) in stale where entries[path] == oldEntry {
+            entries.removeValue(forKey: path)
+            approximateBytes -= entryByteSize(path: path, entry: oldEntry)
+            dropped += 1
+        }
+        if dropped > 0 { generation &+= 1 }
+        lock.unlock()
+        errors.forEach { reportError?($0) }
         return dropped
     }
 
@@ -294,8 +340,13 @@ public final class DuplicateHashCache: @unchecked Sendable {
         do {
             let decoded = try JSONDecoder().decode([String: Entry].self, from: data)
             entries = decoded
+            persistedGeneration = generation
             approximateBytes = entries.reduce(into: 0) { partial, pair in
                 partial += entryByteSize(path: pair.key, entry: pair.value)
+            }
+            if entries.count > maxEntries || approximateBytes > maxBytes {
+                pruneOldest()
+                generation &+= 1
             }
         } catch {
             // Corrupt or partially-written JSON: drop everything and start fresh so the
@@ -332,8 +383,8 @@ public final class DuplicateHashCache: @unchecked Sendable {
     /// literals), plus JSON quoting / structural overhead around each entry.
     private func entryByteSize(path: String, entry: Entry) -> Int {
         let pathBytes = path.utf8.count
-        let checksumBytes = entry.checksum.utf8.count
-        return pathBytes + checksumBytes + 32 + 40
+        let checksumBytes = (entry.checksum?.utf8.count ?? 0) + (entry.prefixChecksum?.utf8.count ?? 0)
+        return pathBytes + checksumBytes + (entry.identity?.utf8.count ?? 0) + 200
     }
 
     private func pruneOldest() {
@@ -341,7 +392,7 @@ public final class DuplicateHashCache: @unchecked Sendable {
         // back under cap. Always drops at least `dropCount` entries so the caller
         // doesn't immediately re-trigger eviction on the next `record(_:)`.
         guard !entries.isEmpty else { return }
-        let dropCount = max(1, maxEntries / 10)
+        let dropCount = entries.count > maxEntries ? max(1, maxEntries / 10) : 0
         let oldest = entries
             .sorted { lhs, rhs in
                 let lhsDate = lhs.value.modificationDate ?? .distantPast

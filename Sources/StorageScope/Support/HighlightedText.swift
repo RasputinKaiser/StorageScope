@@ -38,25 +38,22 @@ struct HighlightedText: View {
     }
 
     private func buildAttributed() -> AttributedString? {
-        let terms = query.split(separator: " ", omittingEmptySubsequences: true)
+        let terms = query.split(whereSeparator: \.isWhitespace)
         guard !terms.isEmpty else { return nil }
 
         var attributed = AttributedString(text)
         var matched = false
         for term in terms {
             let termStr = String(term)
-            var searchStart = attributed.startIndex
-            while searchStart < attributed.endIndex,
-                  let range = attributed[searchStart...].range(of: termStr, options: .caseInsensitive) {
-                var run = attributed[range]
-                run.foregroundColor = matchedColor
-                attributed.replaceSubrange(range, with: run)
-                matched = true
-                if range.upperBound < attributed.endIndex {
-                    searchStart = range.upperBound
-                } else {
-                    break
+            var searchStart = text.startIndex
+            while searchStart < text.endIndex,
+                  let range = text.range(of: termStr, options: .caseInsensitive, range: searchStart..<text.endIndex) {
+                if let lower = AttributedString.Index(range.lowerBound, within: attributed),
+                   let upper = AttributedString.Index(range.upperBound, within: attributed) {
+                    attributed[lower..<upper].foregroundColor = matchedColor
+                    matched = true
                 }
+                searchStart = range.upperBound
             }
         }
         return matched ? attributed : nil

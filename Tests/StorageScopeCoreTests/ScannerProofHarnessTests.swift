@@ -39,7 +39,7 @@ struct ScannerProofHarnessTests {
         #expect(signatures.first?.treePaths != signatures.last?.treePaths)
     }
 
-    @Test("differential harness preserves hard-link fixture semantics")
+    @Test("differential harness excludes hard-link aliases from duplicate candidates")
     func hardLinkFixtureHasStableParity() throws {
         let fixture = try ScannerProofFixture.make(.hardLinks)
         defer { fixture.tearDown() }
@@ -58,9 +58,15 @@ struct ScannerProofHarnessTests {
         let aliasFileNumber = try #require(aliasAttributes[.systemFileNumber] as? NSNumber)
 
         #expect(sourceFileNumber == aliasFileNumber)
-        #expect(signature.duplicateSizeGroups.contains { group in
-            group.paths.contains(ScannerProofHarness.relativePath(pair.source, from: fixture.root)) &&
-                group.paths.contains(ScannerProofHarness.relativePath(pair.alias, from: fixture.root))
+        let hardLinkPaths = Set([
+            ScannerProofHarness.relativePath(pair.source, from: fixture.root),
+            ScannerProofHarness.relativePath(pair.alias, from: fixture.root)
+        ])
+        #expect(signature.duplicateSizeGroups.allSatisfy { group in
+            Set(group.paths).isDisjoint(with: hardLinkPaths)
+        })
+        #expect(signature.verifiedDuplicateGroups.allSatisfy { group in
+            Set(group.paths).isDisjoint(with: hardLinkPaths)
         })
     }
 

@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import os
 import os.lock
@@ -413,12 +414,10 @@ public final class FileSystemScanner {
         }
 
         let ioLimiter = DuplicateHashReadLimiter(capacity: Self.hashConcurrency)
-        let cacheLock = NSLock()
 
         return try verifiedDuplicateGroups(
             in: group,
             ioLimiter: ioLimiter,
-            cacheLock: cacheLock,
             recordBytesRead: nil,
             cancellation: cancellation
         )
@@ -1178,7 +1177,6 @@ public final class FileSystemScanner {
         )
 
         let verifiedGroupsLock = NSLock()
-        let cacheLock = NSLock()
         let ioLimiter = DuplicateHashReadLimiter(capacity: Self.hashConcurrency)
         defer {
             accumulator.recordDuplicateVerificationPeakOpenFiles(ioLimiter.peakOpenFiles)
@@ -1218,8 +1216,7 @@ public final class FileSystemScanner {
                 let verifiedForSize = try verifiedDuplicateGroups(
                     in: sizeGroup,
                     ioLimiter: ioLimiter,
-                    cacheLock: cacheLock,
-                    recordBytesRead: accumulator.recordDuplicateVerificationBytes,
+                            recordBytesRead: accumulator.recordDuplicateVerificationBytes,
                     cancellation: cancellation
                 )
 
@@ -1242,6 +1239,7 @@ public final class FileSystemScanner {
         if didCancel {
             throw FileSystemScannerError.cancelled
         }
+        try cancellation?.check()
 
         return verifiedGroups.sorted { lhs, rhs in
             if lhs.reclaimableBytes == rhs.reclaimableBytes {
@@ -1254,82 +1252,68 @@ public final class FileSystemScanner {
     private func verifiedDuplicateGroups(
         in sizeGroup: DuplicateSizeGroup,
         ioLimiter: DuplicateHashReadLimiter,
-        cacheLock: NSLock,
         recordBytesRead: ((Int) -> Void)?,
         cancellation: ScanCancellation?
     ) throws -> [VerifiedDuplicateGroup] {
-        var cachedFullHashesByPath: [String: String] = [:]
-        cachedFullHashesByPath.reserveCapacity(sizeGroup.items.count)
-
+        var candidates: [(item: StorageItem, snapshot: FileVerificationSnapshot)] = []
+        var seenPaths: Set<String> = []
         for item in sizeGroup.items {
             try cancellation?.check()
-            let cacheKey = DuplicateHashCache.LookupKey(item: item)
-            if let cached = hashCache?.checksum(for: cacheKey) {
-                cachedFullHashesByPath[cacheKey.path] = cached
-            }
+            guard item.byteSize == sizeGroup.byteSize, seenPaths.insert(item.id).inserted,
+                  let snapshot = FileVerificationSnapshot.read(at: item.url), snapshot.matches(item) else { continue }
+            candidates.append((item, snapshot))
         }
+        guard candidates.count > 1 else { return [] }
 
-        if cachedFullHashesByPath.count == sizeGroup.items.count {
-            let hashedItems = sizeGroup.items.compactMap { item -> HashedStorageItem? in
-                let path = DuplicateHashCache.LookupKey(item: item).path
-                guard let checksum = cachedFullHashesByPath[path] else { return nil }
-                return HashedStorageItem(checksum: checksum, item: item)
-            }
-            return verifiedDuplicateGroups(from: hashedItems, byteSize: sizeGroup.byteSize)
+        var fullHashes: [String: String] = [:]
+        for candidate in candidates {
+            fullHashes[candidate.item.id] = hashCache?.checksum(for: candidate.snapshot.key(for: candidate.item))
         }
-
-        var prefixHashedItems: [PrefixHashedStorageItem] = []
-        prefixHashedItems.reserveCapacity(sizeGroup.items.count)
-
-        for item in sizeGroup.items {
-            if cancellation?.isCancelled ?? false {
-                throw FileSystemScannerError.cancelled
-            }
-
-            if let prefixed = try prefixHashedFormItem(
-                item,
-                ioLimiter: ioLimiter,
-                recordBytesRead: recordBytesRead,
-                cancellation: cancellation
-            ) {
-                prefixHashedItems.append(prefixed)
-            }
-        }
-
-        let groupedByPrefix = Dictionary(grouping: prefixHashedItems, by: \.prefixChecksum)
-        var fullyHashedItems: [HashedStorageItem] = []
-
-        for prefixGroup in groupedByPrefix.values where prefixGroup.count > 1 {
-            for prefixed in prefixGroup {
-                let cacheKey = DuplicateHashCache.LookupKey(item: prefixed.item)
-                if let cached = cachedFullHashesByPath[cacheKey.path] {
-                    fullyHashedItems.append(HashedStorageItem(checksum: cached, item: prefixed.item))
-                    continue
-                }
-
-                if prefixed.isCompleteFile {
-                    if let hashCache {
-                        cacheLock.lock()
-                        hashCache.record(cacheKey, checksum: prefixed.prefixChecksum)
-                        cacheLock.unlock()
-                    }
-                    fullyHashedItems.append(HashedStorageItem(checksum: prefixed.prefixChecksum, item: prefixed.item))
-                    continue
-                }
-
-                if let hashed = try hashedFormItem(
-                    prefixed.item,
-                    ioLimiter: ioLimiter,
-                    cacheLock: cacheLock,
-                    recordBytesRead: recordBytesRead,
-                    cancellation: cancellation
+        if fullHashes.count != candidates.count {
+            var byPrefix: [String: [(item: StorageItem, snapshot: FileVerificationSnapshot)]] = [:]
+            for candidate in candidates {
+                try cancellation?.check()
+                let key = candidate.snapshot.key(for: candidate.item)
+                let prefixLength = Int(min(Int64(Self.duplicatePrefixByteCount), candidate.snapshot.size))
+                let prefix: String?
+                if let cached = hashCache?.prefixChecksum(for: key, byteCount: prefixLength) {
+                    prefix = cached
+                } else if let digest = try verifiedDigest(
+                    for: candidate.item, snapshot: candidate.snapshot, maxBytes: prefixLength,
+                    ioLimiter: ioLimiter, recordBytesRead: recordBytesRead, cancellation: cancellation
                 ) {
-                    fullyHashedItems.append(hashed)
+                    hashCache?.recordPrefix(key, checksum: digest, byteCount: prefixLength)
+                    if candidate.snapshot.size <= Self.duplicatePrefixByteCount {
+                        hashCache?.record(key, checksum: digest)
+                        fullHashes[candidate.item.id] = digest
+                    }
+                    prefix = digest
+                } else {
+                    prefix = nil
+                }
+                if let prefix { byPrefix[prefix, default: []].append(candidate) }
+            }
+            for group in byPrefix.values where group.count > 1 {
+                for candidate in group where fullHashes[candidate.item.id] == nil {
+                    try cancellation?.check()
+                    if let digest = try verifiedDigest(
+                        for: candidate.item, snapshot: candidate.snapshot, maxBytes: nil,
+                        ioLimiter: ioLimiter, recordBytesRead: recordBytesRead, cancellation: cancellation
+                    ) {
+                        hashCache?.record(candidate.snapshot.key(for: candidate.item), checksum: digest)
+                        fullHashes[candidate.item.id] = digest
+                    }
                 }
             }
         }
-
-        return verifiedDuplicateGroups(from: fullyHashedItems, byteSize: sizeGroup.byteSize)
+        try cancellation?.check()
+        let hashedItems = candidates.compactMap { candidate -> HashedStorageItem? in
+            guard let digest = fullHashes[candidate.item.id],
+                  FileVerificationSnapshot.read(at: candidate.item.url) == candidate.snapshot else { return nil }
+            return HashedStorageItem(checksum: digest, item: candidate.item)
+        }
+        try cancellation?.check()
+        return verifiedDuplicateGroups(from: hashedItems, byteSize: sizeGroup.byteSize)
     }
 
     private func verifiedDuplicateGroups(
@@ -1387,144 +1371,44 @@ public final class FileSystemScanner {
         return plannedGroups
     }
 
-    private func sha256Checksum(
-        for url: URL,
-        recordBytesRead: ((Int) -> Void)?,
-        cancellation: ScanCancellation?
-    ) throws -> String {
-        // Probe cancellation before opening so a cancelled batch doesn't keep paying the
-        // cost of `FileHandle(forReadingFrom:)` for files that no one will ever read.
-        try cancellation?.check()
-
-        let handle = try FileHandle(forReadingFrom: url)
-        defer {
-            // close() can fail (e.g. NFS flush errors); surface it as an os_signpost event
-            // rather than silently swallowing via `try?`. The hash result on disk is
-            // already finalised by the time we get here, so a close failure is informational.
-            do {
-                try handle.close()
-            } catch {
-                os_signpost(.event, log: Self.log, name: "handle_close_failed",
-                            "path=%{public}@ reason=%{public}@", url.path, "\(error)")
-            }
-        }
-
-        var hasher = SHA256()
-        while true {
-            // Probe on every chunk so a slow read on a huge file still gets a cooperative
-            // cancellation window within one megabyte of additional I/O.
-            try cancellation?.check()
-            let data = try handle.read(upToCount: 1_048_576) ?? Data()
-            if data.isEmpty {
-                break
-            }
-            recordBytesRead?(data.count)
-            hasher.update(data: data)
-        }
-
-        return hasher.finalize().hexEncodedString()
-    }
-
-    private func prefixChecksum(
-        for url: URL,
-        maxBytes: Int,
-        recordBytesRead: ((Int) -> Void)?,
-        cancellation: ScanCancellation?
-    ) throws -> (checksum: String, bytesRead: Int) {
-        try cancellation?.check()
-
-        let handle = try FileHandle(forReadingFrom: url)
-        defer {
-            do {
-                try handle.close()
-            } catch {
-                os_signpost(.event, log: Self.log, name: "handle_close_failed",
-                            "path=%{public}@ reason=%{public}@", url.path, "\(error)")
-            }
-        }
-
-        var remaining = max(0, maxBytes)
-        var bytesRead = 0
-        var hasher = SHA256()
-        while remaining > 0 {
-            try cancellation?.check()
-            let readSize = min(remaining, 1_048_576)
-            let data = try handle.read(upToCount: readSize) ?? Data()
-            if data.isEmpty {
-                break
-            }
-            bytesRead += data.count
-            remaining -= data.count
-            recordBytesRead?(data.count)
-            hasher.update(data: data)
-        }
-
-        return (hasher.finalize().hexEncodedString(), bytesRead)
-    }
-
-    private func prefixHashedFormItem(
-        _ item: StorageItem,
+    /// A file must have the same identity before and after reading. No symlink,
+    /// hard link, replacement, truncation, or in-place rewrite can yield a digest.
+    private func verifiedDigest(
+        for item: StorageItem,
+        snapshot: FileVerificationSnapshot,
+        maxBytes: Int?,
         ioLimiter: DuplicateHashReadLimiter,
         recordBytesRead: ((Int) -> Void)?,
         cancellation: ScanCancellation?
-    ) throws -> PrefixHashedStorageItem? {
+    ) throws -> String? {
+        try cancellation?.check()
         ioLimiter.wait()
         defer { ioLimiter.signal() }
-
-        do {
-            let result = try prefixChecksum(
-                for: item.url,
-                maxBytes: Self.duplicatePrefixByteCount,
-                recordBytesRead: recordBytesRead,
-                cancellation: cancellation
-            )
-            return PrefixHashedStorageItem(
-                prefixChecksum: result.checksum,
-                bytesRead: result.bytesRead,
-                item: item
-            )
-        } catch FileSystemScannerError.cancelled {
-            throw FileSystemScannerError.cancelled
-        } catch {
-            os_signpost(.event, log: Self.log, name: "hash_prefix_skip",
-                        "path=%{public}@ reason=%{public}@", item.url.path, "\(error)")
-            return nil
+        try cancellation?.check()
+        let descriptor = item.url.withUnsafeFileSystemRepresentation { path in
+            path.map { Darwin.open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC) } ?? -1
         }
-    }
-
-    /// Hashes one item, consulting the persisted `hashCache` fast-path before falling back
-    /// to a full `sha256Checksum` read. I/O is throttled through `ioLimiter`; cache writes
-    /// are serialised through `cacheLock`. Returns `nil` for per-file read failures (logged
-    /// via os_signpost so Instruments shows what was skipped), and re-throws
-    /// `FileSystemScannerError.cancelled` so the caller can abort the whole batch.
-    private func hashedFormItem(
-        _ item: StorageItem,
-        ioLimiter: DuplicateHashReadLimiter,
-        cacheLock: NSLock,
-        recordBytesRead: ((Int) -> Void)?,
-        cancellation: ScanCancellation?
-    ) throws -> HashedStorageItem? {
-        let cacheKey = DuplicateHashCache.LookupKey(item: item)
-
-        if let cached = hashCache?.checksum(for: cacheKey) {
-            return HashedStorageItem(checksum: cached, item: item)
-        }
-
-        ioLimiter.wait()
-        defer { ioLimiter.signal() }
-
+        guard descriptor >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        guard snapshot.matches(descriptor: descriptor) else { return nil }
         do {
-            let checksum = try sha256Checksum(
-                for: item.url,
-                recordBytesRead: recordBytesRead,
-                cancellation: cancellation
-            )
-            if let hashCache {
-                cacheLock.lock()
-                defer { cacheLock.unlock() }
-                hashCache.record(cacheKey, checksum: checksum)
+            let expectedBytes = maxBytes.map(Int64.init) ?? snapshot.size
+            var bytesRead: Int64 = 0
+            var hasher = SHA256()
+            while bytesRead < expectedBytes {
+                cancellation?.waitIfPaused()
+                try cancellation?.check()
+                let data = try handle.read(upToCount: Int(min(1_048_576, expectedBytes - bytesRead))) ?? Data()
+                guard !data.isEmpty else { return nil }
+                bytesRead += Int64(data.count)
+                recordBytesRead?(data.count)
+                hasher.update(data: data)
             }
-            return HashedStorageItem(checksum: checksum, item: item)
+            try cancellation?.check()
+            guard snapshot.matches(descriptor: descriptor),
+                  FileVerificationSnapshot.read(at: item.url) == snapshot else { return nil }
+            return hasher.finalize().hexEncodedString()
         } catch FileSystemScannerError.cancelled {
             throw FileSystemScannerError.cancelled
         } catch {
@@ -1533,6 +1417,7 @@ public final class FileSystemScanner {
             return nil
         }
     }
+
 }
 
 /// Couples the duplicate verifier's file-handle budget with a measured peak so release
@@ -2292,16 +2177,6 @@ private struct HashedStorageItem {
     let item: StorageItem
 }
 
-private struct PrefixHashedStorageItem {
-    let prefixChecksum: String
-    let bytesRead: Int
-    let item: StorageItem
-
-    var isCompleteFile: Bool {
-        Int64(bytesRead) >= item.byteSize
-    }
-}
-
 private struct DirectoryScanSummary {
     private let retainedCandidateLimit: Int
     private var retainedCandidateItems: [StorageItem] = []
@@ -2663,7 +2538,8 @@ private final class ScanAccumulator {
             typeStat.totalBytes += summary.displaySize
             fileTypeStats[typeLabel] = typeStat
 
-            if summary.metadata.byteSize >= options.duplicateCandidateThreshold {
+            if summary.metadata.byteSize >= options.duplicateCandidateThreshold,
+               !FileVerificationSnapshot.isHardLinked(at: url) {
                 fixedWorkerDuplicateCandidateRetention?.record(summary, url: url)
             }
         case .folder, .package:
@@ -3282,7 +3158,8 @@ private final class ScanAccumulator {
         typeStat.totalBytes += item.displaySize
         fileTypeStats[typeLabel] = typeStat
 
-        if item.byteSize >= options.duplicateCandidateThreshold {
+        if item.byteSize >= options.duplicateCandidateThreshold,
+           !FileVerificationSnapshot.isHardLinked(at: item.url) {
             duplicateCandidateRetention.record(item)
         }
     }

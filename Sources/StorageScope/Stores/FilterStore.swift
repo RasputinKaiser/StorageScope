@@ -52,6 +52,7 @@ final class FilterStore: ObservableObject {
     @Published var query: String = "" {
         didSet {
             guard oldValue != query else { return }
+            resetSearchNavigation()
             // Free-text search and file-type focus are parallel concerns — typing in
             // the search field shouldn't retain a stale file-type filter, and clicking
             // a new file-type row in TypeBreakdownView shouldn't carry an old query.
@@ -66,13 +67,22 @@ final class FilterStore: ObservableObject {
     }
 
     @Published var sizeFilter: SizeFilter = .all {
-        didSet { coordinateInvalidate() }
+        didSet {
+            if oldValue != sizeFilter { resetSearchNavigation() }
+            coordinateInvalidate()
+        }
     }
     @Published var sortOption: ItemSortOption = .sizeDescending {
-        didSet { coordinateInvalidate() }
+        didSet {
+            if oldValue != sortOption { resetSearchNavigation() }
+            coordinateInvalidate()
+        }
     }
     @Published var cleanupLaneFilter: CleanupLaneFilter = .all {
-        didSet { coordinateInvalidate() }
+        didSet {
+            if oldValue != cleanupLaneFilter { resetSearchNavigation() }
+            coordinateInvalidate()
+        }
     }
     @Published var includeHiddenFiles: Bool = false {
         didSet { coordinateInvalidate() }
@@ -133,21 +143,17 @@ final class FilterStore: ObservableObject {
     @Published var fileTypeFocus: String? {
         didSet {
             guard oldValue != fileTypeFocus else { return }
+            resetSearchNavigation()
             coordinateInvalidate()
         }
     }
 
     @Published private(set) var searchSubtreeMatchIDs: Set<String>?
 
-/// Read-only derived count of items in `searchSubtreeMatchIDs`. Nil when no
-    /// search is active (empty/whitespace-only `query`) so S3's empty-state can
-    /// distinguish "no search" from "search active, zero matches". Pure derivation
-    /// over `searchSubtreeMatchIDs` — never set externally, never introduces a
-    /// second filter-state dimension alongside the chip-bearing `query`/
-    /// `fileTypeFocus` pair. S2 surfaces this as the file-table search-result
-    /// count badge.
+    /// Counts direct matches only; ancestor folders are retained for navigation,
+    /// but must not inflate the number of search results.
     var searchResultCount: Int? {
-        searchSubtreeMatchIDs?.count
+        searchResultIDs?.count
     }
 
     /// Ordered array of item IDs whose own name/path matches the active query,
@@ -162,15 +168,18 @@ final class FilterStore: ObservableObject {
     private var searchTextDebounceTask: Task<Void, Never>?
     private let scanLookup: () -> StorageScan?
     private let coordinateInvalidate: () -> Void
+    private let resetSearchNavigation: () -> Void
     private let recordSearchRecent: (String) -> Void
 
     init(
         scanLookup: @escaping () -> StorageScan?,
         coordinateInvalidate: @escaping () -> Void,
+        resetSearchNavigation: @escaping () -> Void = {},
         recordSearchRecent: @escaping (String) -> Void = { _ in }
     ) {
         self.scanLookup = scanLookup
         self.coordinateInvalidate = coordinateInvalidate
+        self.resetSearchNavigation = resetSearchNavigation
         self.recordSearchRecent = recordSearchRecent
     }
 

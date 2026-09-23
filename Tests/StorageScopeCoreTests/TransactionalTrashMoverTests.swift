@@ -151,21 +151,17 @@ struct TransactionalTrashMoverTests {
             return
         }
         #expect(moved == [urlA, urlB])
-        // Rollback is reverse-order and fail-fast: the first restore attempt (B)
-        // throws, so A is never tried and is recorded as unrestored.
-        #expect(restored.count == 1)
-        #expect(restored.first?.trashed == trashedB)
-        #expect(restored.first?.original == urlB)
+        // Every moved item is attempted in reverse order even when a restore fails.
+        #expect(restored.map(\.trashed) == [trashedB, trashedA])
+        #expect(restored.map(\.original) == [urlB, urlA])
         #expect(restoredURLs.isEmpty)
-        // Reversed iteration: B fails first, then A is skipped. Order: [B, A].
         #expect(unrestoredURLs == [urlB, urlA])
     }
 
     @Test("partial rollback with later items successfully restored reports mix")
     func partialRollbackUnusedIndicesReportsMix() throws {
         // Four moved-candidates: trashItem moves A, B, C then throws on D.
-        // Rollback runs in reverse (C, B, A): C restores, B throws, and A is
-        // skipped because rollback stops at the first captured error.
+        // Rollback runs in reverse (C, B, A): C and A restore, while B fails.
         let urlA = URL(fileURLWithPath: "/tmp/rollback-a")
         let urlB = URL(fileURLWithPath: "/tmp/rollback-b")
         let urlC = URL(fileURLWithPath: "/tmp/rollback-c")
@@ -180,7 +176,7 @@ struct TransactionalTrashMoverTests {
             var errorDescription: String? { "restore b failed" }
         }
 
-        var restored: [(trashed: URL, original: URL)] = []
+        var attempted: [(trashed: URL, original: URL)] = []
         let mover = TransactionalTrashMover(
             fileExists: { _ in true },
             trashItem: { url in
@@ -192,11 +188,11 @@ struct TransactionalTrashMoverTests {
                 }
             },
             restoreItem: { trashed, original in
+                attempted.append((trashed, original))
                 // B throws; A and C restore cleanly.
                 if original == urlB {
                     throw RestoreError()
                 }
-                restored.append((trashed, original))
             }
         )
 
@@ -214,12 +210,10 @@ struct TransactionalTrashMoverTests {
             Issue.record("Expected rollbackFailed, got \(String(describing: caught))")
             return
         }
-        // Reverse iteration order: C, B, A. C restores. B throws. A is skipped
-        // because rollback stops at the first capture.
-        #expect(restored.count == 1)
-        #expect(restored.first?.original == urlC)
-        #expect(restoredURLs == [urlC])
-        #expect(unrestoredURLs == [urlB, urlA])
+        #expect(attempted.map(\.trashed) == [trashedC, trashedB, trashedA])
+        #expect(attempted.map(\.original) == [urlC, urlB, urlA])
+        #expect(restoredURLs == [urlC, urlA])
+        #expect(unrestoredURLs == [urlB])
     }
 
     @Test("rollback with missing trash location reports unrestored")
@@ -263,6 +257,51 @@ struct TransactionalTrashMoverTests {
         }
         #expect(restoredURLs.isEmpty)
         #expect(unrestoredURLs == [urlA])
+    }
+
+    @Test("unknown Trash location after earlier moves still restores every known item")
+    func missingTrashLocationAfterEarlierMoves() throws {
+        let urlA = URL(fileURLWithPath: "/tmp/unknown-location-a")
+        let urlB = URL(fileURLWithPath: "/tmp/unknown-location-b")
+        let urlC = URL(fileURLWithPath: "/tmp/unknown-location-c")
+        let trashedA = URL(fileURLWithPath: "/tmp/.Trash/unknown-location-a")
+        let trashedB = URL(fileURLWithPath: "/tmp/.Trash/unknown-location-b")
+        var attempted: [URL] = []
+        let mover = TransactionalTrashMover(
+            fileExists: { _ in true },
+            trashItem: { url in
+                switch url {
+                case urlA: return trashedA
+                case urlB: return trashedB
+                default: throw BatchTrashError.missingTrashLocation(urlC)
+                }
+            },
+            restoreItem: { _, original in attempted.append(original) }
+        )
+
+        var caught: BatchTrashError?
+        do {
+            try mover.moveToTrash([urlA, urlB, urlC])
+            Issue.record("Expected missing Trash location to fail the batch")
+        } catch let error as BatchTrashError {
+            caught = error
+        } catch {
+            Issue.record("Expected BatchTrashError, got \(error)")
+        }
+
+        guard case .rollbackFailed(let original, _, let restored, let unrestored)? = caught else {
+            Issue.record("Expected rollbackFailed, got \(String(describing: caught))")
+            return
+        }
+        guard let originalBatchError = original as? BatchTrashError,
+              case .missingTrashLocation(let unknown) = originalBatchError else {
+            Issue.record("Expected missingTrashLocation as the original error")
+            return
+        }
+        #expect(unknown == urlC)
+        #expect(attempted == [urlB, urlA])
+        #expect(restored == [urlB, urlA])
+        #expect(unrestored == [urlC])
     }
 
     @Test("empty batch throws nothing and runs no closures")

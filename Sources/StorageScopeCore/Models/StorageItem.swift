@@ -90,7 +90,7 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
         // via "Documents" segment + "foo" contiguous name substring). Single-term
         // queries degenerate to the v0.4.5 single-contains behavior on each of
         // name / path / path-segments.
-        let terms = query.split(separator: " ", omittingEmptySubsequences: true)
+        let terms = query.split(whereSeparator: \.isWhitespace)
         return terms.allSatisfy { term in
             matchesTerm(String(term))
         }
@@ -103,11 +103,9 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
         if url.path.localizedCaseInsensitiveContains(term) {
             return true
         }
-        // Path-segment awareness: term matches if it equals (case-insensitively) any
-        // segment of the `/`-split path. Segment-aware, NOT substring-across-segments —
-        // "xDoc" must NOT match `/tmp/Doc/file.txt` even though it's a substring of
-        // the contiguous string "/tmpDocfile".
-        return url.pathComponents.contains { $0.localizedCaseInsensitiveCompare(term) == .orderedSame }
+        // A full segment match is already a substring of the intact path.
+        // Splitting and comparing every component repeated locale work for every miss.
+        return false
     }
 
     /// Matched ranges of `name` for the given query, suitable for `Text(...)` highlight
@@ -117,7 +115,7 @@ public struct StorageItem: Identifiable, Hashable, Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
-        let terms = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+        let terms = trimmed.split(whereSeparator: \.isWhitespace)
         var ranges: [Range<String.Index>] = []
         for term in terms {
             let termStr = String(term)

@@ -167,8 +167,9 @@ if [[ -s "$secret_hits" ]]; then
   exit 1
 fi
 
-swift test --scratch-path "$audit_scratch_path" >/dev/null
+bash -n script/build_and_run.sh script/export_dmg.sh script/package_app_store.sh script/notarize_dmg.sh script/test_release_scripts.sh script/public_upload_audit.sh script/benchmark_scan.sh
+bash script/test_release_scripts.sh
+swift test --scratch-path "$audit_scratch_path"
 plutil -lint Config/StorageScope.entitlements Resources/PrivacyInfo.xcprivacy >/dev/null
-bash -n script/build_and_run.sh script/export_dmg.sh script/package_app_store.sh script/public_upload_audit.sh script/benchmark_scan.sh
 
 echo "public upload audit passed"

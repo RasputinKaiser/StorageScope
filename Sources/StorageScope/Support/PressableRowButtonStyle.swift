@@ -3,13 +3,13 @@ import SwiftUI
 /// Tactile press feedback for plain-styled row buttons (StorageItemRow, TreeNodeRow,
 /// StorageMapRow, DuplicateFileRow, CleanupCandidateRow). Visuals (hover tint, selection
 /// background) stay exactly as `.plain` already renders them; this only adds the press
-/// scale. 0.96 per the interface-polish rubric — below 0.95 reads as exaggerated for a
-/// list row.
+/// scale. Keep it subtle for wide rows and honor Reduce Motion.
 struct PressableRowButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.99 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

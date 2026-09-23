@@ -34,7 +34,7 @@ struct TrashConfirmationSheet: View {
                     HStack(spacing: 10) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Moving items to Trash…")
+                        Text("Checking files and moving to Trash…")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -46,11 +46,11 @@ struct TrashConfirmationSheet: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     if !plan.verifiedItems.isEmpty {
                         TrashReviewSection(
                             title: L10n.string("Verified Duplicates"),
-                            subtitle: "Content-hashed copies. Keep one copy and confirm the listed paths.",
+                            subtitle: "Content-matched copies. Your chosen keeper is checked again before removal.",
                             systemImage: "checkmark.seal.fill",
                             tint: .green,
                             items: plan.verifiedItems,
@@ -110,6 +110,7 @@ struct TrashConfirmationSheet: View {
             .padding(20)
         }
         .frame(minWidth: 640, idealWidth: 720, minHeight: 520)
+        .interactiveDismissDisabled(actions.isMoving)
     }
 
     private var summaryText: String {
@@ -177,7 +178,7 @@ private struct TrashReviewSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 let lastItemID = items.last?.id
                 ForEach(items) { item in
                     TrashReviewRow(item: item, filters: filters, reveal: reveal, open: open, remove: remove, isMoving: isMoving)
@@ -219,10 +220,12 @@ private struct TrashReviewRow: View {
                     Text(displayName)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
+                        .truncationMode(.middle)
 
                     Text(StorageFormat.bytes(item.reclaimableBytes))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .fixedSize()
                 }
 
                 Text(displayParentPath)

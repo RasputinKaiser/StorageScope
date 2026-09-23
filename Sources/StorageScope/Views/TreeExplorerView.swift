@@ -41,6 +41,10 @@ struct TreeExplorerView: View {
                 .onKeyPress(.escape) {
                     store.clearSearchIfActive() ? .handled : .ignored
                 }
+                .onChange(of: store.selectedItemID) { _, id in
+                    guard let id, store.visibleTreeItems().contains(where: { $0.id == id }) else { return }
+                    proxy.scrollTo(id, anchor: nil)
+                }
                 .quickLookPreview($quickLookURL)
         }
     }
@@ -241,7 +245,7 @@ private struct TreeNodeRow: View {
                 }
                 .buttonStyle(.pressableRow)
             }
-            .padding(.leading, CGFloat(depth * 18) + 12)
+            .padding(.leading, CGFloat(min(depth, 12) * 18) + 12)
             .padding(.trailing, 12)
             .padding(.vertical, 8)
             .contentShape(Rectangle())
@@ -250,7 +254,7 @@ private struct TreeNodeRow: View {
             .onHover { isHovered = $0 }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("\(displayName(item)), \(StorageFormat.label(for: item.kind)), \(StorageFormat.bytes(item.displaySize))")
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityValue(item.isContainer ? (isExpanded ? "Expanded" : "Collapsed") : "")
             .accessibilityHint(item.isContainer && !item.children.isEmpty
                 ? "Click the disclosure triangle to expand or collapse"
                 : "Selects this item")

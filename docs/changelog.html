@@ -38,7 +38,7 @@
 
   <div class="site-nav" role="banner">
     <div class="nav-inner">
-      <a class="brand" href="./">StorageScope <span class="ver">v0.7.1</span></a>
+      <a class="brand" href="./">StorageScope <span class="ver">v0.8.0</span></a>
       <nav aria-label="Site navigation">
         <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
@@ -53,6 +53,19 @@
   <main>
     <h1>Changelog</h1>
     <p>StorageScope release history. Download the latest from <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>.</p>
+
+    <section class="release">
+      <h2>v0.8.0 &mdash; Incremental Scans and Review Integrity</h2>
+      <div class="meta">Released 2026-09-23 &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/tag/v0.8.0">release notes</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg">download .dmg</a></div>
+      <p>Incremental rescanning reuses unchanged scan state and rescans changed folders, with a full-scan fallback when saved state or event history cannot be trusted. Search navigation now follows displayed results and reveals matches in collapsed Folder Tree branches.</p>
+      <ul>
+        <li>All Sizes in Duplicate Review includes smaller unverified same-size groups while keeping them separate from verified duplicates.</li>
+        <li>Trash review reports candidates that disappear before confirmation; rollback attempts continue across earlier moves after a later failure.</li>
+        <li>Duplicate hash-cache byte bounds and deleted-cache recovery are fixed, with regression tests for hard links and changed files.</li>
+        <li>The final local audit passed 251 tests across 26 suites. Synthetic duplicate-verification measurements and their limits are in the <a href="https://github.com/RasputinKaiser/StorageScope/blob/main/docs/releases/v0.8.0.md">full release notes</a>.</li>
+      </ul>
+      <p>The downloadable DMG is ad hoc signed and not Apple notarized. Its binary is for Apple Silicon Macs running macOS 14 or later; Intel has not been validated for this release.</p>
+    </section>
 
     <section class="release">
       <h2>v0.7.1 &mdash; Window Polish and Keyboard Navigation</h2>
@@ -389,10 +402,10 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg">Download v0.7.1 (.dmg)</a>
+      <a class="button primary" href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg">Download v0.8.0 (.dmg)</a>
       <a class="button" href="https://github.com/RasputinKaiser/StorageScope/releases">All releases</a>
     </div>
-    <p class="actions-note">Requires macOS 14 or later &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
+    <p class="actions-note">Apple Silicon &middot; macOS 14+ &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg.sha256">verify with SHA-256</a> &middot; <a href="privacy.html">Privacy</a></p>
 
     <footer class="site-footer">
       <div>
@@ -412,7 +425,7 @@
         &middot;
         <a href="architecture.html">Architecture</a>
       </div>
-      <div class="site-footer-meta">v0.7.1 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div class="site-footer-meta">v0.8.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

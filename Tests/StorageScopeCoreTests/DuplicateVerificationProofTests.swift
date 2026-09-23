@@ -49,10 +49,8 @@ struct DuplicateVerificationProofTests {
         let verifiedPaths = Set(coldScan.verifiedDuplicateGroups.flatMap(\.items).map { $0.url.standardizedFileURL.path })
         let hardLinksExcludedFromCandidates = candidatePaths.isDisjoint(with: hardLinkPaths)
         let hardLinksExcludedFromVerifiedGroups = verifiedPaths.isDisjoint(with: hardLinkPaths)
-        withKnownIssue("Phase 4 must exclude hard-link aliases before duplicate verification") {
-            #expect(hardLinksExcludedFromCandidates)
-            #expect(hardLinksExcludedFromVerifiedGroups)
-        }
+        #expect(hardLinksExcludedFromCandidates)
+        #expect(hardLinksExcludedFromVerifiedGroups)
 
         coldCache.persist()
         let warmCache = DuplicateHashCache(cacheURL: cacheURL)
@@ -61,9 +59,7 @@ struct DuplicateVerificationProofTests {
             options: options
         )
         #expect(warmScan.duplicateVerificationBytesRead < coldScan.duplicateVerificationBytesRead)
-        withKnownIssue("Phase 4 must persist prefix digests so a cold-process warm cache performs zero reads") {
-            #expect(warmScan.duplicateVerificationBytesRead == 0)
-        }
+        #expect(warmScan.duplicateVerificationBytesRead == 0)
 
         let exactGroup = try #require(
             coldScan.duplicateSizeGroups.first { group in
@@ -71,15 +67,45 @@ struct DuplicateVerificationProofTests {
             }
         )
         let changedURL = fixture.exactDuplicateURLs[1]
+        let changedPath = changedURL.resolvingSymlinksInPath().standardizedFileURL.path
+        let scannedItem = try #require(exactGroup.items.first {
+            $0.url.resolvingSymlinksInPath().standardizedFileURL.path == changedPath
+        })
+        let originalSnapshot = try #require(FileVerificationSnapshot.read(at: changedURL))
+        let originalMtime = try #require(scannedItem.modifiedAt)
+        #expect(warmCache.checksum(for: originalSnapshot.key(for: scannedItem)) != nil)
         try FileManager.default.setAttributes(
             [.modificationDate: Date(timeIntervalSinceNow: 120)],
             ofItemAtPath: changedURL.path
         )
         let changedResult = try FileSystemScanner().verifySizeGroup(exactGroup)
         let changedFileWasRejected = changedResult.isEmpty
-        withKnownIssue("Phase 4 must reject a file whose metadata changed after enumeration and before hashing") {
-            #expect(changedFileWasRejected)
-        }
+        #expect(changedFileWasRejected)
+
+        // Rewrite in place, keep the same length, and restore the scanned mtime.
+        // The cached full digest must still miss because the change stamp changed.
+        let handle = try FileHandle(forWritingTo: changedURL)
+        try handle.write(contentsOf: Data(repeating: 0xEE, count: Int(originalSnapshot.size)))
+        try handle.close()
+        try FileManager.default.setAttributes([.modificationDate: originalMtime], ofItemAtPath: changedURL.path)
+        let rewrittenSize = try #require(FileManager.default.attributesOfItem(atPath: changedURL.path)[.size] as? NSNumber)
+        #expect(rewrittenSize.int64Value == originalSnapshot.size)
+        let rewrittenSnapshot = try #require(FileVerificationSnapshot.read(at: changedURL))
+        #expect(rewrittenSnapshot.matches(scannedItem))
+        #expect(rewrittenSnapshot != originalSnapshot)
+        #expect(warmCache.checksum(for: rewrittenSnapshot.key(for: scannedItem)) == nil)
+        #expect(try FileSystemScanner(hashCache: warmCache).verifySizeGroup(exactGroup).isEmpty)
+
+        // A replacement alias must never inherit a cached digest or become a
+        // second independently allocated copy of the original.
+        try FileManager.default.removeItem(at: changedURL)
+        try FileManager.default.linkItem(at: fixture.exactDuplicateURLs[0], to: changedURL)
+        #expect(FileVerificationSnapshot.read(at: changedURL) == nil)
+        #expect(try FileSystemScanner(hashCache: warmCache).verifySizeGroup(exactGroup).isEmpty)
+        try FileManager.default.removeItem(at: changedURL)
+        try FileManager.default.createSymbolicLink(at: changedURL, withDestinationURL: fixture.exactDuplicateURLs[0])
+        #expect(FileVerificationSnapshot.read(at: changedURL) == nil)
+        #expect(try FileSystemScanner(hashCache: warmCache).verifySizeGroup(exactGroup).isEmpty)
 
         let largeGroup = try #require(
             coldScan.duplicateSizeGroups.first { $0.byteSize == 1 * 1_024 * 1_024 }

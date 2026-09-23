@@ -2,6 +2,7 @@ import StorageScopeCore
 import SwiftUI
 
 struct DetailView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: ScanStore
 
     var body: some View {
@@ -32,9 +33,10 @@ struct DetailView: View {
                     }
                     Divider()
                     viewContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .id(store.activeView)
                         .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.18), value: store.activeView)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.activeView)
                 }
                 // Leading inset between the split divider and content. Was 28pt —
                 // an offset baked into every view's minimum width (UI_PLAN.md P0.4).
@@ -59,6 +61,7 @@ struct DetailView: View {
                 items: store.items(for: store.activeView),
                 store: store
             )
+            .padding(20)
         case .typeBreakdown:
             TypeBreakdownView(store: store)
         case .duplicateCandidates:
@@ -118,8 +121,7 @@ private struct ScanHeaderView: View {
             Spacer(minLength: 12)
 
             if store.isScanning {
-                ProgressView()
-                    .controlSize(.small)
+                scanActivity
             }
 
             Text(compactMetricsText)
@@ -130,6 +132,19 @@ private struct ScanHeaderView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var scanActivity: some View {
+        if store.isScanPaused {
+            Label("Paused", systemImage: "pause.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Scanning folder")
+        }
     }
 
     private var compactMetricsText: String {
@@ -145,6 +160,8 @@ private struct ScanHeaderView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(titleText)
                         .font(.title2.weight(.semibold))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
                     Text(pathText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -154,8 +171,7 @@ private struct ScanHeaderView: View {
                 Spacer()
 
                 if store.isScanning {
-                    ProgressView()
-                        .controlSize(.small)
+                    scanActivity
                 }
             }
 
@@ -293,6 +309,7 @@ private struct ScanNoticeView: View {
                 .buttonStyle(.borderless)
                 .controlSize(.small)
                 .help("Dismiss")
+                .accessibilityLabel("Dismiss scan notice")
             }
         }
         .padding(.horizontal, 12)
@@ -381,16 +398,20 @@ private struct FilterBarView: View {
                 Divider()
                     .frame(height: 28)
 
-                HStack(spacing: 6) {
-                    Text("Old after")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Stepper("\(store.oldFileAgeDays) days", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
-                        .labelsHidden()
-                }
-                .help("Files older than this become 'old'. Rescan to apply the new threshold.")
+                ageControl
             }
         }
+    }
+
+    private var ageControl: some View {
+        HStack(spacing: 6) {
+            Text("Old after")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Stepper("\(store.oldFileAgeDays) days", value: store.filterBinding(\.oldFileAgeDays), in: 30...1440, step: 30)
+                .fixedSize()
+        }
+        .help("Files older than this become 'old'. Rescan to apply the new threshold.")
     }
 
     private var wideControls: some View {
@@ -405,13 +426,15 @@ private struct FilterBarView: View {
 
     private var compactControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            displayGroup
-
-            HStack(spacing: 12) {
-                Spacer(minLength: 0)
-
-                scanDurationLabel
+            if store.activeView.appliesSizeFilter {
+                sizePicker
             }
+            HStack(spacing: 12) {
+                if store.activeView.appliesSortOption { sortControl }
+                Spacer(minLength: 0)
+                if store.activeView == .oldLargeFiles { ageControl }
+            }
+            scanDurationLabel
         }
     }
 }
@@ -450,27 +473,32 @@ private struct ActiveDisplayFiltersView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            ForEach(chips) { chip in
-                Button {
-                    store.filters.clearActiveFilter(chip.id)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(chip.label)
-                            .font(.caption)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.secondary)
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(chips) { chip in
+                        Button {
+                            store.filters.clearActiveFilter(chip.id)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(chip.label)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.quaternary, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove \(chip.label)")
+                        .accessibilityLabel("Remove \(chip.label) filter")
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.quaternary, in: Capsule())
                 }
-                .buttonStyle(.plain)
-                .help("Remove \(chip.label)")
-                .accessibilityLabel("Remove \(chip.label) filter")
             }
+            .scrollIndicators(.hidden)
 
             Spacer(minLength: 0)
 

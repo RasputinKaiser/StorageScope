@@ -79,7 +79,7 @@
         "name": "Is there a Mac App Store version?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Not yet. StorageScope is currently distributed as source and as signed DMG downloads on GitHub Releases. A Mac App Store submission is possible using the included package_app_store.sh script with Apple distribution identities, but no App Store listing is published at this time."
+          "text": "Not yet. StorageScope is distributed as source and as an ad hoc signed, unnotarized DMG on GitHub Releases. The v0.8.0 DMG contains an Apple Silicon binary for macOS 14 or later; Intel has not been validated. No App Store listing is published."
         }
       },
       {
@@ -118,7 +118,7 @@
 
   <div class="site-nav" role="banner">
     <div class="nav-inner">
-      <a class="brand" href="./">StorageScope <span class="ver">v0.7.1</span></a>
+      <a class="brand" href="./">StorageScope <span class="ver">v0.8.0</span></a>
       <nav aria-label="Site navigation">
         <a href="macos-disk-space-analyzer.html">Disk analyzer</a>
         <a href="mac-storage-cleaner.html">Storage cleaner</a>
@@ -140,12 +140,12 @@
     <section class="qa"><h2>How are duplicates verified?</h2><p>During a scan, StorageScope groups files of the same size as duplicate candidates. Candidates within an automatic budget are hashed with SHA-256 to confirm they are byte-for-byte identical before being marked as verified duplicates. Larger groups can be verified on demand with the <em>Verify Now</em> button, which hashes the group out-of-band using the persisted hash cache so unchanged files are skipped on rescan.</p></section>
     <section class="qa"><h2>What is a keeper, and can I change it?</h2><p>Each verified duplicate group has one keeper copy that is excluded from cleanup by default. The keeper starts as the first file in the group and can be reassigned at any time from the context menu or the side-by-side keeper comparison sheet, which shows size, modification date, and full path for each candidate.</p></section>
     <section class="qa"><h2>Which macOS versions are supported?</h2><p>StorageScope requires macOS 14 (Sonoma) or later. It is a native SwiftUI and AppKit app, sandboxed, and signed with the project App Sandbox entitlements.</p></section>
-    <section class="qa"><h2>Is there a Mac App Store version?</h2><p>Not yet. StorageScope is currently distributed as source and as signed DMG downloads on <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>. A Mac App Store submission is possible using the included <code>package_app_store.sh</code> script with Apple distribution identities, but no App Store listing is published at this time.</p></section>
+    <section class="qa"><h2>Is there a Mac App Store version?</h2><p>Not yet. StorageScope is distributed as source and as an ad hoc signed, unnotarized DMG on <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a>. The v0.8.0 DMG contains an Apple Silicon binary for macOS 14 or later; Intel has not been validated. No App Store listing is published.</p></section>
     <section class="qa"><h2>How is StorageScope different from paid cleaners like CleanMyMac?</h2><p>StorageScope is open-source and local-first, so you can read the scanner, duplicate verifier, and Trash mover before running anything. It is deliberately not a one-click automatic cleaner: cleanup is review-first, with verified duplicate reclaim, review-suggested cleanup, and access gaps kept in separate lanes, and every action goes to Trash with transactional rollback rather than silent deletion. See the <a href="open-source-cleanmymac-alternative.html">CleanMyMac alternative page</a>.</p></section>
     <section class="qa"><h2>Do I need Full Disk Access?</h2><p>Only for folder-level scanning of locations outside what a sandboxed app can read by default. For most folders you select through the macOS folder picker, no Full Disk Access is needed. The first-run card links directly to System Settings so you can grant it only if a scan reports an access gap.</p></section>
     <section class="qa"><h2>Where do bug reports and feature requests go?</h2><p>Issues and pull requests are welcome on the <a href="https://github.com/RasputinKaiser/StorageScope">GitHub repository</a>. The full release history with notes and download checksums is on the <a href="https://github.com/RasputinKaiser/StorageScope/releases">GitHub Releases</a> page.</p></section>
 
-    <p class="actions-note"><a href="privacy.html">Privacy</a> &middot; <a href="changelog.html">Changelog</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.7.1/StorageScope-0.7.1.dmg">Download v0.7.1 (.dmg)</a></p>
+    <p class="actions-note"><a href="privacy.html">Privacy</a> &middot; <a href="changelog.html">Changelog</a> &middot; <a href="https://github.com/RasputinKaiser/StorageScope/releases/download/v0.8.0/StorageScope-0.8.0.dmg">Download v0.8.0 (.dmg)</a></p>
 
     <footer class="site-footer">
       <div>
@@ -165,7 +165,7 @@
         &middot;
         <a href="architecture.html">Architecture</a>
       </div>
-      <div class="site-footer-meta">v0.7.1 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
+      <div class="site-footer-meta">v0.8.0 &middot; macOS 14+ &middot; SwiftUI/AppKit</div>
     </footer>
   </main>
 </body>

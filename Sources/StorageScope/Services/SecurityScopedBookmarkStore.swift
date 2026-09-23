@@ -194,7 +194,7 @@ struct SecurityScopedBookmarkStore {
             do {
                 _ = try resolve(path: path)
             } catch {
-                os_log("pruned bookmark %{public}@: %{public}@",
+                os_log("pruned bookmark %{private}@: %{private}@",
                        log: Self.log, type: .error,
                        path, error.localizedDescription)
             }
@@ -208,7 +208,7 @@ struct SecurityScopedBookmarkStore {
             // Best-effort: the URL still resolves with the old data, so we keep it.
             // The next resolve may report stale again; surfacing the refresh failure
             // via logs makes it diagnosable when "Recents" eventually breaks.
-            os_log("could not refresh stale bookmark for %{public}@: %{public}@",
+            os_log("could not refresh stale bookmark for %{private}@: %{private}@",
                    log: Self.log, type: .info,
                    url.path, error.localizedDescription)
         }

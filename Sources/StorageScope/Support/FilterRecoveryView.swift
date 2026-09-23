@@ -114,6 +114,9 @@ struct FilterRecoveryView: View {
             if trimmed.isEmpty {
                 return "No items matched your search."
             }
+            if filters.count > 1 {
+                return "No items in this view match '\(trimmed)' with the current filters. Adjust or clear filters to see more items."
+            }
             return "No items matched '\(trimmed)'. Try a different search term or clear filters."
         case .filteredEmpty:
             return "Adjust active filters to see more items."

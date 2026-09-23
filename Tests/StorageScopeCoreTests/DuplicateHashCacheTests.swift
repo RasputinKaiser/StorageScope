@@ -130,6 +130,29 @@ struct DuplicateHashCacheTests {
         #expect(reloaded.checksum(for: key) == "abc")
     }
 
+    @Test("persist recreates an externally deleted cache without a new record")
+    func persistRecreatesDeletedCache() throws {
+        let dir = try makeTemporaryDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cacheURL = dir.appendingPathComponent("cache.json")
+        let key = DuplicateHashCache.LookupKey(
+            path: "/some/path.bin", byteSize: 100,
+            modificationDate: Date(timeIntervalSince1970: 1), identity: "device:inode:change"
+        )
+        let cache = DuplicateHashCache(cacheURL: cacheURL)
+        cache.recordPrefix(key, checksum: "prefix", byteCount: 64)
+        cache.record(key, checksum: "full")
+        try cache.persistThrowing()
+        try FileManager.default.removeItem(at: cacheURL)
+
+        try cache.persistThrowing()
+
+        #expect(FileManager.default.fileExists(atPath: cacheURL.path))
+        let reloaded = DuplicateHashCache(cacheURL: cacheURL)
+        #expect(reloaded.prefixChecksum(for: key, byteCount: 64) == "prefix")
+        #expect(reloaded.checksum(for: key) == "full")
+    }
+
     // MARK: - atomic write failure
 
     @Test("persist reports persistWriteFailed when the cache URL is unreachable")
@@ -344,8 +367,7 @@ struct DuplicateHashCacheTests {
         }
         // Cap=100; record() triggers pruneOldest once we push past the cap, which drops
         // the oldest 10% (dropCount = max(1, 100/10) = 10). Net entry count is bounded.
-        #expect(cache.entryCount <= cache.entryCount)
-        #expect(cache.entryCount <= 100 + 10, "eviction overshoot bound")
+        #expect(cache.entryCount <= 100, "entry count must honor the configured cap")
 
         // Oldest entries (timestamp baseDate + 0..9) should be evicted.
         let firstEntry = cache.checksum(
@@ -374,23 +396,25 @@ struct DuplicateHashCacheTests {
             .appendingPathComponent("DuplicateHashCacheTests-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: cacheURL) }
 
-        // Tight byte budget: each ~100-char path entry is ~132 bytes via entryByteSize.
-        // 256 bytes cap means we'll evict after ~2 entries.
-        let cache = DuplicateHashCache(cacheURL: cacheURL, maxEntries: 1_000, maxBytes: 256)
+        // A full digest, prefix digest, and file identity all consume budget.
+        let byteCap = 700
+        let cache = DuplicateHashCache(cacheURL: cacheURL, maxEntries: 1_000, maxBytes: byteCap)
         let baseDate = Date(timeIntervalSince1970: 1_000_000)
 
         for index in 0..<10 {
-            cache.record(
-                DuplicateHashCache.LookupKey(
-                    path: String(repeating: "p", count: 80) + "-\(index)",
-                    byteSize: Int64(index),
-                    modificationDate: baseDate.addingTimeInterval(TimeInterval(index))
-                ),
-                checksum: String(repeating: "h", count: 16)
+            let key = DuplicateHashCache.LookupKey(
+                path: String(repeating: "p", count: 80) + "-\(index)",
+                byteSize: Int64(index),
+                modificationDate: baseDate.addingTimeInterval(TimeInterval(index)),
+                identity: String(repeating: "i", count: 50)
             )
+            cache.recordPrefix(key, checksum: String(repeating: "p", count: 64), byteCount: 64)
+            cache.record(key, checksum: String(repeating: "h", count: 64))
+            #expect(cache.approximateSerializedBytes <= byteCap)
         }
 
-        #expect(cache.approximateSerializedBytes <= 256 * 2, "byte eviction should keep the cache bounded")
+        #expect(cache.entryCount == 1)
+        #expect(cache.approximateSerializedBytes <= byteCap)
         // Oldest entry should have been evicted.
         let firstEntry = cache.checksum(
             for: DuplicateHashCache.LookupKey(
@@ -400,6 +424,37 @@ struct DuplicateHashCacheTests {
             )
         )
         #expect(firstEntry == nil, "oldest entry should be evicted under byte budget")
+        let newestKey = DuplicateHashCache.LookupKey(
+            path: String(repeating: "p", count: 80) + "-9", byteSize: 9,
+            modificationDate: baseDate.addingTimeInterval(9),
+            identity: String(repeating: "i", count: 50)
+        )
+        #expect(cache.checksum(for: newestKey) == String(repeating: "h", count: 64))
+        #expect(cache.prefixChecksum(for: newestKey, byteCount: 64) == String(repeating: "p", count: 64))
+        cache.persist()
+        let reloaded = DuplicateHashCache(cacheURL: cacheURL, maxEntries: 1_000, maxBytes: byteCap)
+        #expect(reloaded.approximateSerializedBytes <= byteCap)
+        #expect(reloaded.entryCount == 1)
+        #expect(reloaded.checksum(for: newestKey) == String(repeating: "h", count: 64))
+        #expect(reloaded.prefixChecksum(for: newestKey, byteCount: 64) == String(repeating: "p", count: 64))
+    }
+
+    @Test("requested 256-byte and zero-byte caps evict oversized entries")
+    func requestedTinyByteCapsAreHonored() {
+        let key = DuplicateHashCache.LookupKey(
+            path: "/x", byteSize: 1,
+            modificationDate: Date(timeIntervalSince1970: 1), identity: "device:inode:change"
+        )
+        let tiny = DuplicateHashCache(maxBytes: 256)
+        tiny.recordPrefix(key, checksum: String(repeating: "p", count: 64), byteCount: 64)
+        tiny.record(key, checksum: String(repeating: "h", count: 64))
+        #expect(tiny.approximateSerializedBytes <= 256)
+        #expect(tiny.entryCount == 0)
+
+        let zero = DuplicateHashCache(maxBytes: 0)
+        zero.record(key, checksum: "h")
+        #expect(zero.approximateSerializedBytes == 0)
+        #expect(zero.entryCount == 0)
     }
 
     @Test("approximateSerializedBytes decrements when entries are removed")
