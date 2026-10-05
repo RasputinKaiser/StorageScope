@@ -4,10 +4,19 @@ Thanks for taking a look at StorageScope.
 
 ## Development Setup
 
-1. Install Xcode command line tools.
-2. Clone the repository.
-3. Run `swift test`.
-4. Run `./script/build_and_run.sh --verify` for a packaged-app smoke check.
+Use macOS 14 or newer and a Swift 5.9-or-newer Xcode command line toolchain. The package has no third-party package dependencies. AppKit/SwiftUI targets require macOS; the Linux Swift toolchain is not a substitute for running the app tests.
+
+```bash
+git clone https://github.com/RasputinKaiser/StorageScope.git
+cd StorageScope
+swift --version
+swift test
+bash ./script/build_and_run.sh --verify
+```
+
+For contributions, work on a focused branch (or fork if you do not have push access), and open a pull request against `main`. Link the issue when there is one, explain the behavior changed, and record which checks passed, failed, or were not run. Documentation-only changes should still check referenced paths, links, and commands against the current source.
+
+The build helper stops running processes named `StorageScope` and deletes/recreates its generated app bundle even with `--build-only`. If `STORAGESCOPE_DIST_DIR` is overridden, point it at dedicated build output. In `--verify`, the executable fallback is not proof that the packaged app remains running.
 
 ## Before Opening A Pull Request
 
@@ -31,6 +40,8 @@ Keep generated app bundles, DMGs, packages, local scan outputs, Codex state, sig
 
 `./script/build_and_run.sh --fixture-scan` launches the app with a synthetic fixture root so you can exercise scan views, cleanup review, duplicate verification, and the trash-flow sheets without granting access to real folders or waiting on a real scan.
 
+> **Fixture safety:** `--fixture-scan` recursively deletes the entire configured fixture root before recreating its files. Never set `STORAGESCOPE_FIXTURE_ROOT` to a real-data directory, a shared directory, your home directory, or a volume root. Use the default path or a dedicated disposable directory. File actions in the fixture UI still invoke the real macOS Trash APIs on the selected fixture files; this is not a dry-run mode.
+
 The fixture root is under `$HOME/Library/Containers/com.rasputinkaiser.StorageScope/Data/tmp/StorageScope/fixture-scan/` (or `$STORAGESCOPE_FIXTURE_ROOT` if you set it). On each run the fixture is regenerated with this layout:
 
 ```
@@ -51,6 +62,7 @@ Optional flags customize the scan state the launched app starts in:
 | `--mark-stale` | Sets the post-scan "results need refresh" notice so you can review the rescan-prompt UI |
 | `--view <SmartView rawValue>` | Switches to a specific view on launch (e.g. `cleanupReview`, `duplicateCandidates`, `tree`, `largestFiles`) |
 | `--select-verified-cleanup` | Pre-selects the verified-duplicate cleanup candidates so the trash review sheet is one click away |
+| `--redact` | Replaces displayed file and folder names for screenshots; it does not anonymize the files on disk |
 | `--query "<text>"` | Pre-fills the toolbar search with the given text |
 | `--size-filter all|100mb|1gb|10gb` | Pre-selects the size filter |
 | `--sort size|name|newest|oldest|kind` | Pre-selects the sort order |
@@ -63,7 +75,7 @@ Example workflows:
 # to the trash confirmation sheet.
 ./script/build_and_run.sh --fixture-scan --view cleanupReview --select-verified-cleanup
 
-# Force the duplicate-cap cap with 10 same-size leads and exercise same-size candidate review.
+# Exercise the duplicate-candidate cap with 10 same-size leads and exercise same-size candidate review.
 ./script/build_and_run.sh --fixture-scan --duplicates --view duplicateCandidates
 
 # Verify the rescan-prompt banner in the overview after a stale-trash result.
@@ -79,7 +91,7 @@ Valid `--view` values are the `SmartView` enum's raw values: `overview`, `cleanu
 
 ## Reporting Issues
 
-Please include macOS version, StorageScope build source, scan scope, expected behavior, actual behavior, and whether the app had folder access or Full Disk Access.
+Please include macOS version, StorageScope build source, scan scope, expected behavior, actual behavior, and whether the app had folder access or Full Disk Access. Follow [SUPPORT.md](SUPPORT.md) for the details to include and information to keep private. Use [GitHub Issues](https://github.com/RasputinKaiser/StorageScope/issues) for bugs and feature requests, and the existing [security reporting instructions](SECURITY.md) for security concerns.
 
 
 ## Notarization (for maintainers)
