@@ -18,6 +18,16 @@ The GitHub DMG is for Apple Silicon Macs running macOS 14 or newer. It is ad hoc
 
 ![StorageScope v0.7.1 interface reference with redacted file and folder names](docs/images/storagescope-overview.png)
 
+**Start here:** [First Scan](#first-scan) · [Build From Source](#build-and-run) · [Troubleshooting](#troubleshooting) · [Contributing](CONTRIBUTING.md) · [FAQ](docs/faq.html) · [Keyboard Shortcuts](docs/keyboard-shortcuts.html)
+
+## First Scan
+
+1. Download the DMG linked above, or [build from source](#build-and-run). For the DMG, copy `StorageScope.app` to Applications before opening it.
+2. Click **Choose Folder** and select a small folder you know. The macOS picker grants access to that location; broader scans can have additional access gaps.
+3. Inspect the Overview, largest files/folders, and folder tree. Scanning does not move files to Trash.
+4. In Duplicate Review and Cleanup Review, keep **verified duplicates** separate from **review suggestions**. Matching sizes, age, or a cache-like name alone are not proof that a file is safe to remove.
+5. Use **Reveal in Finder** or **Open** to inspect candidates, then review the selected batch before confirming **Move to Trash**. On a batch failure, StorageScope attempts to restore earlier moves; if restoration also fails, some items may remain in Trash. Read the error and inspect Finder Trash before retrying. Do not empty Trash until you are sure you no longer need the files.
+
 ## What's New In v0.8.0
 
 - Incremental rescanning reuses unchanged scan state and tracks changed folders, with a conservative full-scan fallback when saved state or event history cannot be trusted.
@@ -35,7 +45,7 @@ The GitHub DMG is for Apple Silicon Macs running macOS 14 or newer. It is ad hoc
 - Duplicate file review that starts from same-size candidates and verifies matches with SHA-256 within a bounded work budget.
 - Cleanup review for verified duplicate copies, cache folders, build artifacts, installers, archives, disk images, and temporary-looking files.
 - Confirmed file actions for Reveal in Finder, Open, Copy Path, and Move to Trash.
-- Transactional cleanup batches that collapse nested selections, disclose mixed-confidence risk, use macOS Trash APIs, and roll back earlier moves if a later move fails.
+- Transactional cleanup batches that collapse nested selections, disclose mixed-confidence risk, use macOS Trash APIs, and attempt to roll back earlier moves if a later move fails.
 - Broad-scan memory controls that retain a bounded UI tree while preserving full-scan summary results.
 
 ## Screenshots
@@ -79,15 +89,25 @@ StorageScope is useful for people looking for:
 ## Requirements
 
 - macOS 14 or newer
-- Xcode command line tools with Swift 5.9 or newer
+- Xcode command line tools with Swift 5.9 or newer for source builds
+- macOS is required for the app and its AppKit/SwiftUI test targets; Linux and Windows are not supported build hosts
+
+The Swift package declares no third-party package dependencies. The current downloadable DMG is Apple Silicon-only; Intel source builds are not validated by the release evidence.
 
 ## Build And Run
 
+From Terminal, clone the repository and enter its root:
+
 ```bash
+git clone https://github.com/RasputinKaiser/StorageScope.git
+cd StorageScope
+swift --version
 bash ./script/build_and_run.sh
 ```
 
-The script builds a local app bundle at `${TMPDIR}/StorageScope/dist/StorageScope.app` by default, signs it ad hoc with the app sandbox entitlements, and launches it. Some macOS hosts reject temporary ad hoc app bundles at launch time; `--verify` reports that case and falls back to a SwiftPM executable launch probe so local build verification remains useful.
+The script builds a local app bundle at `${TMPDIR:-/tmp}/StorageScope/dist/StorageScope.app` by default, signs it ad hoc with the app sandbox entitlements, and launches it. It stops running processes named `StorageScope` and replaces that generated app bundle, including in `--build-only` mode. If you override `STORAGESCOPE_DIST_DIR`, use a dedicated build-output directory.
+
+In `--verify` mode, if the bundle launch command succeeds but the app does not remain running, the script falls back to a SwiftPM executable launch probe. A successful fallback checks the executable launch, not that the packaged app stays running.
 
 Build without launching:
 
@@ -108,6 +128,15 @@ swift test
 ```
 
 The test suite covers scanner ranking, duplicate grouping and verification, bounded duplicate hashing, hidden-file behavior, cleanup candidates, reclaim-plan lanes, transactional Trash rollback, sandbox-aware Trash invocation, nested cleanup selection collapse, and broad-scan retention behavior.
+
+## Troubleshooting
+
+- **`swift` is missing or the build uses an unexpected toolchain:** check `swift --version` and `xcode-select -p`, and install/select a macOS Xcode command line toolchain compatible with the requirements above. Run commands from the cloned repository root.
+- **macOS blocks the downloaded app:** the current DMG is ad hoc signed and unnotarized. Use the source-build route or wait for a notarized release; this README does not require disabling macOS security checks.
+- **Folders are inaccessible or totals seem incomplete:** choose the folder again with the macOS picker, review the scan's access gaps, and check the permissions described below. Grant only the access needed for the folder you want to inspect, then rescan.
+- **Items changed or disappeared before cleanup:** rescan and review the batch again. The Trash operation checks target state and duplicate keepers before moving files.
+- **A Trash batch fails:** inspect the error for restored items and items still in Trash before trying again. Rollback is attempted, but is not guaranteed to succeed.
+- **Need help reproducing a bug:** follow [SUPPORT.md](SUPPORT.md), or use the [developer fixture instructions and safety notes](CONTRIBUTING.md#developer-fixtures). Redact file and folder names before sharing screenshots; do not post private paths or scan contents.
 
 ## Public Upload Audit
 
@@ -133,7 +162,7 @@ StorageScope is intended to be grant- and contributor-friendly:
 
 StorageScope is open source, and commercial support is available for teams or Mac power users who need packaging help, compatibility testing, priority fixes, or sponsored cleanup workflows.
 
-- Request paid support: https://github.com/RasputinKaiser/StorageScope/issues/new?template=commercial_support.yml
+- Request paid support: https://github.com/RasputinKaiser/StorageScope/issues/new
 - Star the repository to improve discovery for other Mac users.
 - Open focused public issues for cleanup workflows, duplicate-review cases, or packaging needs that would make the app more useful.
 
@@ -165,6 +194,9 @@ See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) for the public priva
 Sources/StorageScope/         macOS app shell, stores, services, and SwiftUI views
 Sources/StorageScopeCore/     scanner models and core storage/cleanup logic
 Tests/StorageScopeCoreTests/  scanner and cleanup safety tests
+Tests/StorageScopeTests/      app state, navigation, permission, and Trash-review tests
+Sources/StorageScopeBenchmark/ command-line scanner benchmark
+docs/                        GitHub Pages guides, release notes, and performance evidence
 Resources/                   app icon, privacy manifest, and DMG README
 Config/                      app sandbox entitlements
 script/                      build, package, export, icon, and upload-audit helpers
